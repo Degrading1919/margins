@@ -1,0 +1,36 @@
+# Operating systems
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.log
+
+# Build output
+Build/
+Builds/
+Dist/
+Temp/
+.cache/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Transfer archives
+*.zip
+*.7z
+*.rar
