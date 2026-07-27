@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-These are the current pre-production design pillars aligned with `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md`. They guide design evaluation but do not independently approve features, milestone scope, implementation architecture, or exceptions to the foundational decision record.
+These are the current seven pre-production design pillars aligned with `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md`. They guide design evaluation but do not independently approve features, milestone scope, implementation architecture, or exceptions to the foundational decision record.
 
 ## 1. Learn by doing, advance by delegating
 
@@ -18,24 +18,16 @@ Rent, traffic, demographics, competition, neighboring businesses, delivery acces
 
 ## 4. Financial growth becomes physical
 
-Stores, properties, signage, headquarters, vehicles, residences, and the city should visibly express the player’s success without requiring a full life simulator.
+Stores, properties, signage, headquarters, and the city should visibly change as the player succeeds.
 
 ## 5. Information is actionable
 
-Reports should connect results to understandable causes such as pricing, demand, staffing, inventory, capacity, maintenance, management quality, location, or competition.
+Reports should connect results to causes such as pricing, demand, staffing, inventory, capacity, maintenance, or management quality.
 
 ## 6. Scale changes the game
 
-Early play emphasizes execution. Mid-game play emphasizes systems, people, and delegation. Late-game play emphasizes capital allocation, organizational structure, property development, competition, and portfolio strategy.
+Early play emphasizes execution. Mid-game play emphasizes systems and people. Late-game play emphasizes capital allocation, organizational structure, property development, and portfolio strategy.
 
 ## 7. Complexity creates choices, not clerical burden
 
-Deep simulation should create consequential decisions without burying the player in repetitive administration, paperwork, or avoidable interaction friction.
-
-## 8. Physical and strategic play remain connected
-
-Remote management, aggregate simulation, and portfolio dashboards should remain grounded in physical locations, visible operations, manager performance, and the work the player first learned hands-on.
-
-## 9. Scope follows proof
-
-Vertical-slice work should prove the smallest complete owner-operator-to-portfolio loop and survive into the commercial product. Later businesses, property depth, vehicles, competition, public modding, and other expansions must earn commitment through evidence, reuse, and production capacity.
+Deep simulation should not bury the player in repetitive administration.
