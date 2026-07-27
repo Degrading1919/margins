@@ -13,7 +13,7 @@ Protect the first playable milestone from expanding into the complete long-term 
 
 Prove that a standalone convenience store can support a satisfying progression from guided startup and hands-on work through staffing, delegation, a second location, off-site simulation, and portfolio reporting.
 
-The vertical slice should become durable commercial-game foundation rather than disposable prototype code or content.
+The vertical slice should become a durable commercial-game foundation rather than disposable prototype code or content.
 
 ## Vertical-slice commitments
 
