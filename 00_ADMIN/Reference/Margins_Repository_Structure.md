@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository separates project governance, pre-production decisions, prototypes, canonical systems, production content, implementation, data, and media. It adapts the organizational discipline used in Caelmor while replacing RPG-specific domains with the needs of a first-person business and property simulator.
+This repository separates project governance, pre-production decisions, prototypes, canonical systems, production content, implementation, data, media, and reusable agent workflows. It adapts the organizational discipline used in Caelmor while replacing RPG-specific domains with the needs of a first-person business and property simulator.
 
 ## Source-of-truth hierarchy
 
@@ -16,9 +16,12 @@ When files disagree, prefer material in this order unless an approved decision r
 6. Research and reference notes
 7. Archived or experimental material
 
+Skills and role configurations apply project authority but do not outrank or replace it.
+
 ## Folder roles
 
-- `00_ADMIN`: project governance, milestones, roadmaps, schedules, research, references, and continuity
+- `.agents`: repository-local agent workflows and, only after a consuming format is selected, platform-specific agent configuration
+- `00_ADMIN`: project governance, milestones, roadmaps, schedules, research, references, continuity, and living agent-artifact indexes
 - `01_PRE-PRODUCTION`: the current definition of the game before broad implementation
 - `02_VERTICAL_SLICE`: the smallest complete version proving hands-on operation, delegation, expansion, off-site simulation, and portfolio reporting
 - `03_CORE_SYSTEMS`: shared systems from which individual business types are assembled
@@ -30,6 +33,15 @@ When files disagree, prefer material in this order unless an approved decision r
 - `MEDIA`: non-runtime source media and references
 - `TOOLS`: internal content, editor, build, and validation tooling
 - `ARCHIVE`: material that is no longer authoritative
+
+## Agent artifact rules
+
+- Workflow skills live under `.agents/skills/<skill-name>/`.
+- The living skill index is `00_ADMIN/Reference/Margins_Skill_Catalog.md`.
+- Roles are assumable decision lenses and should remain separate from workflow skills.
+- Canonical role definitions belong in an approved governance document until a native agent-role format is selected.
+- Adding, renaming, repurposing, deprecating, or removing a skill requires a matching skill-catalog update in the same change set.
+- Neither a role nor a skill may become the sole carrier of permanent project truth.
 
 ## Naming rules
 
