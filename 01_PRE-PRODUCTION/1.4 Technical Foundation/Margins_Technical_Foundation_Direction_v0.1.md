@@ -2,8 +2,8 @@
 
 ## Status and authority
 
-- **Status:** Current pre-production technical direction synchronized to the approved foundational decisions
-- **Authority:** This document defines requirements and decision boundaries only. It does not select an engine, language, dependency, rendering stack, or architecture baseline.
+- **Status:** Current pre-production technical direction synchronized to the approved foundational and Unity engine-selection decisions
+- **Authority:** Unity is approved as the production engine. This document defines current technical requirements and decision boundaries but does not approve the Unity version, render pipeline, packages, dependencies, project structure, or architecture baseline.
 
 ## Production context
 
@@ -17,32 +17,40 @@ The technical foundation must support a solo-developed PC game with:
 
 ## Engine-selection status
 
-Margins remains engine-neutral.
+**Unity is the approved production engine for Margins.**
 
-Engine and language selection must be performed through a deliberate evaluation that considers:
+The engine-evaluation package added by PR #7 is retained as historical research. Its unresolved shortlist and proposed three-engine comparison are superseded by `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md`.
 
-- the approved first-person and management gameplay requirements;
-- detailed simulation while the player is present;
-- aggregate off-site simulation while absent;
-- persistence, save migration, and restore safety;
-- structured data, schemas, validation, and internal content tools;
-- modular environment, character, product, and business content;
-- UI and reporting needs across store, location, company, property, and portfolio scales;
-- PC performance and debugging quality;
-- asset availability and compatibility with Stylized Contemporary Americana;
-- licensing, dependency, and maintenance costs;
-- AI-agent compatibility, testability, and automation;
-- solo-development learning and iteration cost; and
-- reversibility or migration risk.
+- Unreal Engine and Godot are not active implementation targets.
+- No parallel multi-engine prototype program is authorized.
+- Engine selection may be reopened only by project-owner decision after a concrete Unity blocker, licensing incompatibility, or unacceptable production burden is demonstrated.
 
-No technology should be selected because it is fashionable, familiar to an assistant, or convenient for one prototype while failing the long-term project requirements.
+## Required Unity baseline decision
+
+Before creating the durable Unity project, the project must approve a small implementation baseline covering:
+
+- Unity editor version and support lane;
+- rendering pipeline;
+- scripting and visual-scripting boundaries;
+- input package;
+- navigation package;
+- UI framework;
+- test framework and execution method;
+- data and validation approach;
+- save and serialization approach;
+- source-control and large-file rules;
+- project folders, assemblies, namespaces, and dependency policy;
+- target desktop operating system and provisional hardware assumptions;
+- agent-assisted code-generation and review boundaries.
+
+This should be one compact decision package, not another broad engine comparison.
 
 ## Required technical capabilities
 
-The eventual foundation must be able to support:
+The Unity foundation must be able to support:
 
 - first-person interaction and reliable tactile-but-assisted object handling;
-- grid-based interior placement and saved layouts;
+- deterministic shelf snapping and grid-based interior placement;
 - persistent employees and managers;
 - nearby instantiated customers driven by aggregate market demand;
 - transitions between detailed local simulation and aggregate off-site simulation;
@@ -53,21 +61,44 @@ The eventual foundation must be able to support:
 - reproducible validation scenarios and diagnostics;
 - versioned save formats and migration planning;
 - modular handcrafted city content;
-- later property, finance, competition, and additional-business expansion without assuming those systems belong in the vertical slice.
+- later property, finance, competition, and additional-business expansion without implementing those systems in the vertical slice.
 
-## Risk-prototype requirement
+## Immediate Unity foundation spike
 
-Before an engine or architecture baseline is approved, the technical evaluation should identify and prototype the assumptions most likely to invalidate a candidate. At minimum, evaluation must account for:
+After the Unity baseline is approved and the project owner has computer access, create the smallest executable proof that Unity can support the initial workflow.
 
-- tactile stocking, snapping, and checkout interaction;
-- customer and employee navigation in a furnished store;
-- transition between detailed and aggregate business simulation;
-- save and restore of layouts plus durable business state;
-- data-driven content loading and validation;
-- portfolio reporting across at least two locations; and
-- performance and debugging visibility suitable for solo development.
+The spike should contain only:
 
-This requirement does not prescribe the number, order, or implementation of prototypes; those belong to the Technical Architect and Producer workflows and require project-owner approval.
+1. a clean Unity project committed through the approved repository workflow;
+2. a graybox store room;
+3. first-person movement and look;
+4. one data-defined product;
+5. product pickup, release, and deterministic shelf snapping;
+6. valid and invalid placement feedback;
+7. save and reload of the product's snapped state;
+8. one placeholder navigation agent moving between fixed points; and
+9. a runnable desktop PC build.
+
+### Spike code standard
+
+- Write only the code required to prove the listed behavior.
+- Prefer small, named components over generic manager layers.
+- Add only logging and assertions needed for simple diagnosis.
+- Do not introduce frameworks, service locators, dependency-injection systems, generalized event buses, databases, production economy logic, or speculative abstractions.
+- Keep generated changes reviewable and testable.
+- Do not count lines of code or generated volume as progress.
+
+### Spike exit evidence
+
+- a fresh repository checkout opens with documented prerequisites;
+- the project runs without unresolved errors;
+- one product can be picked up and snapped only to valid shelf targets;
+- product identity and placement state survive save and reload;
+- the placeholder agent reaches its fixed destinations without crossing solid fixtures;
+- a desktop build launches successfully;
+- the project owner finds the editor and iteration workflow acceptable enough to continue.
+
+Failure of the spike does not automatically reopen engine selection. First identify whether the problem is a Unity limitation, implementation defect, package choice, or unresolved baseline decision.
 
 ## Data and modding boundary
 
@@ -84,17 +115,18 @@ The vertical slice is primarily on foot within one compact block. Early separate
 
 ## Explicitly unresolved
 
-- engine and language;
-- rendering and physics approach;
-- scene, entity, or data architecture;
+- Unity editor version and support lane;
+- rendering pipeline and physics configuration;
+- scripting and visual-scripting boundaries;
+- package and dependency baseline;
+- scene, entity, data, and assembly architecture;
 - detailed aggregate-simulation formulas and update cadence;
 - save format and migration strategy;
-- networking or multiplayer architecture, because multiplayer is outside current scope;
-- performance budgets and target hardware;
+- target desktop operating system, performance budgets, and target hardware;
 - build, deployment, telemetry, and crash-reporting tools;
 - public mod architecture;
 - vehicle implementation;
 - platform services and storefront integrations;
 - exact internal editor and validation tooling.
 
-All recommendations must remain proposals until approved and recorded through the repository authority hierarchy.
+All recommendations remain proposals until approved and recorded through the repository authority hierarchy.
