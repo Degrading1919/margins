@@ -14,7 +14,8 @@ Pre-production and repository foundation.
 
 ## Repository map
 
-- `00_ADMIN` — governance, decisions, roadmaps, references, and continuity
+- `.agents` — repository-local agent workflows
+- `00_ADMIN` — governance, decisions, roadmaps, references, continuity, and agent-artifact indexes
 - `01_PRE-PRODUCTION` — vision, pillars, scope, technical foundation, and content strategy
 - `02_VERTICAL_SLICE` — focused prototypes proving the complete owner-to-portfolio loop
 - `03_CORE_SYSTEMS` — reusable simulation systems
@@ -26,5 +27,11 @@ Pre-production and repository foundation.
 - `MEDIA` — concept art, references, maps, branding, audio reference, and UI mockups
 - `TOOLS` — internal build, content, editor, and validation utilities
 - `ARCHIVE` — deprecated and experimental material outside the active source of truth
+
+## Agent workflows
+
+Repository-local workflow skills live under `.agents/skills`. Their short descriptions and invocation guidance are maintained in `00_ADMIN/Reference/Margins_Skill_Catalog.md`.
+
+Roles and skills are separate artifacts: roles provide bounded professional lenses and decision ownership, while skills provide repeatable procedures. See `00_ADMIN/Reference/Margins_Role_and_Skill_Model.md`.
 
 See `00_ADMIN/Reference/Margins_Repository_Structure.md` for organizational rules.
