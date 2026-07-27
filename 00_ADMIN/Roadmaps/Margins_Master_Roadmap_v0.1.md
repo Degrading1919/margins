@@ -54,7 +54,7 @@ It should move document-heavy stages toward the aggressive end of their ranges. 
 
 ### Estimation model
 
-The planning case assumes roughly **2,000–3,300 direct human hours** from roadmap approval to an internally accepted vertical slice. At 20–30 hours per week, that creates a broad raw range of approximately 16–38 months. Agentic acceleration, overlapping workstreams, strong scope control, and reuse support a practical planning target near the middle rather than the extremes.
+The stage estimates total roughly **2,000–3,400 direct human hours** from roadmap approval to an internally accepted vertical slice. At 20–30 hours per week, that creates a broad raw range of approximately 16–39 months. Agentic acceleration, overlapping workstreams, strong scope control, and reuse support a practical planning target near the middle rather than the extremes.
 
 The baseline target is therefore:
 
