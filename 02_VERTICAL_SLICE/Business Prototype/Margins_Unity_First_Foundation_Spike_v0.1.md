@@ -26,7 +26,7 @@ Implement only:
 
 - Project owner approves Unity 6.3 LTS, URP, package baseline, project location, and Windows x64 development build target.
 - Unity Hub and Unity 6.3 LTS editor are available locally.
-- Unity Personal eligibility is confirmed by the project owner.
+- Project owner confirms the applicable Unity Personal case and confirms the relevant Unity-defined finances remain below the Unity Personal threshold before relying on Unity Personal.
 - Git LFS is installed before adding binary production assets; the spike may use primitive placeholders without binary source assets.
 
 ## Required Behaviors
@@ -37,6 +37,7 @@ Implement only:
 - Product snaps only to compatible, unoccupied snap points.
 - Invalid placement gives visible feedback and does not occupy a slot.
 - Occupied slots reject additional placement.
+- The occupied-slot check may use two temporary scene instances of the same product definition solely as a validation fixture.
 - Save writes the snapped placement.
 - Reload restores the product to the same fixture, snap point, and orientation.
 - One placeholder navigation agent travels between two fixed points without crossing solid fixtures.
@@ -65,19 +66,20 @@ Required fields only:
 - display name;
 - referenced visual prefab or placeholder visual;
 - shelf footprint or size category;
-- snap compatibility tag;
-- scan-demo value.
+- snap compatibility tag.
 
 ### Shelf and Snap Definition
 
-Required fields only:
+Authored required fields only:
 
 - stable fixture identifier;
 - stable snap-point identifiers;
 - snap-point local position and orientation;
-- accepted compatibility tags;
-- occupied state;
-- placement validation result.
+- accepted compatibility tags.
+
+Do not store slot use in authored shelf or snap definitions.
+
+Runtime occupancy must exist on the shelf instance during play or be derived from current placed-product records.
 
 ### Placed Product State
 
@@ -88,7 +90,9 @@ Required fields only:
 - snap-point identifier;
 - quarter-turn orientation integer `0-3`.
 
-Quantity is excluded unless the coding agent proves it is required for the single-product save/reload proof.
+Quantity is excluded from the foundation spike.
+
+The spike uses exactly one product definition. It may place two temporary scene instances of that same definition only to test occupied-slot rejection. This does not create inventory, quantity, product stacks, or multiple product types.
 
 ## Minimal Save Boundary
 
@@ -104,7 +108,15 @@ Safe failure behavior:
 - malformed save: report error, do not overwrite the file, start with empty placement state;
 - unsupported version: report error and refuse load;
 - missing product or snap target: report error, create no product for that record, and leave no slot occupied;
+- occupied or duplicate accepted placement target during load: accept the first valid placement deterministically, reject later conflicting records, and report the conflict;
 - duplicate stable identifiers in authored data: fail validation before play/build.
+
+Load order:
+
+1. Begin with all runtime snap points unoccupied.
+2. Validate saved placement records against authored product, fixture, and snap identifiers.
+3. Place valid products.
+4. Rebuild occupancy only from accepted placements.
 
 No cloud saves, database, encryption, compression, user profiles, complete migration framework, or production save architecture.
 
@@ -141,6 +153,7 @@ The spike is complete only when:
 - the spike scene runs in Play Mode;
 - movement, look, pickup, release, valid snap, invalid feedback, occupied-slot rejection, save, reload, and placeholder navigation all work;
 - save/reload restores the same product definition, fixture, snap point, and orientation;
+- attempting to place the second temporary scene instance into an occupied slot fails without losing, duplicating, or replacing the existing product;
 - a Windows desktop development build is produced and launches locally;
 - required tests or deterministic checks pass;
 - no authored code, asset, data, scene behavior, or direct package dependency implements an excluded system; documented exclusions and unavoidable core/transitive Unity dependencies do not violate this criterion;
@@ -159,10 +172,11 @@ After technical acceptance, the coding agent must report measured setup, impleme
 5. Pick up the product and attempt an invalid placement.
 6. Confirm invalid feedback and no slot occupation.
 7. Snap the product to a valid shelf slot.
-8. Attempt to place another instance or duplicate into the occupied slot and confirm rejection.
-9. Save, reload, and confirm placement equality.
-10. Confirm the navigation placeholder moves between its two points.
-11. Build and launch a Windows desktop development build.
+8. Use a second temporary scene instance of the same product definition to attempt placement into the occupied slot.
+9. Confirm the occupied-slot attempt fails without losing, duplicating, or replacing the existing product.
+10. Save, reload, and confirm placement equality.
+11. Confirm the navigation placeholder moves between its two points.
+12. Build and launch a Windows desktop development build.
 
 ## Automated Checks
 
@@ -170,7 +184,7 @@ Required checks:
 
 - duplicate product identifiers fail validation;
 - invalid snap-point references fail validation or load safely;
-- occupied slots reject placement deterministically;
+- occupied-slot rejection fails cleanly when a second temporary scene instance of the same product definition targets an occupied slot;
 - save/reload placement equality compares product id, fixture id, snap id, and orientation.
 
 ## Completion Evidence

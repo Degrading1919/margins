@@ -13,22 +13,23 @@
 | Area | Recommendation | Reason |
 |---|---|---|
 | Unity release lane | **Unity 6.3 LTS (`6000.3.x`)** | Stable production lane with two-year LTS support, better for locking the first durable project than chasing Update releases. |
+| Project creation patch | Use the latest project-owner-approved `6000.3.x` patch available at execution time. Record the exact editor patch in `CODE/Unity/Margins/ProjectSettings/ProjectVersion.txt` and in the implementation PR body. | Keeps the lane current while making the exact editor version auditable. |
 | Patch policy | Allow `6000.3.x` patch updates only after release-note review and a clean open/run/test/build check. | Keeps security and bug fixes available without silent editor churn. |
 | Major/update migration | No Unity 6.4+ or later LTS migration without owner approval and a short migration note. | Prevents hidden baseline changes during agent work. |
 | Render pipeline | **Universal Render Pipeline** | Best fit for stylized contemporary PC visuals, solo production, broad asset compatibility, lighting control, and agent-debuggable settings. |
 | Implementation language | **C# by default; scenes, prefabs, components, and ScriptableObjects authored in the Unity Editor; no Visual Scripting for spike logic.** | Keeps behavior inspectable, diffable, testable, and easier for small agent patches. |
 | Development build target | **Windows desktop x64 development build first.** | Matches the PC-only vertical-slice constraint and the owner's likely first local build environment. |
-| Mandatory license cost | **$0 only if Unity Personal eligibility is confirmed.** | If the owner/entity does not satisfy Unity's under-$200K revenue-and-funding threshold, implementation is blocked until the owner approves a paid plan. |
+| Mandatory license cost | **$0 only if Unity Personal eligibility is confirmed by the project owner.** | Do not declare eligibility in this document; confirm the applicable Unity-defined case before project creation. |
 | Save proof | Human-readable JSON in local persistent storage. | Enough to prove placement persistence without a database, cloud save, or migration framework. |
 
 ## Official Package Baseline
 
 | Package | Spike status | Why now | Must not depend on it yet |
 |---|---|---|---|
-| Universal Render Pipeline | Mandatory through project template/baseline | Establishes the render pipeline before assets, lighting, and materials accumulate. | No custom shader architecture or final art pipeline. |
-| Input System | Mandatory | First-person movement, mouse look, pickup, release, and future remapping path. | No full control rebinding UI or gamepad support requirement. |
-| AI Navigation | Mandatory | One placeholder navigation agent moving between two points on a NavMesh. | No customer simulation, employee task AI, crowd behavior, or dynamic store routing. |
-| Unity Test Framework | Mandatory | Focused EditMode or PlayMode checks for identifiers, snap references, occupied slots, and save/reload equality. | No CI, coverage targets, performance test package, or broad test architecture. |
+| Universal Render Pipeline | Mandatory through project template/baseline; use the editor-matched Unity 6.3 package lane | Establishes the render pipeline before assets, lighting, and materials accumulate. | No custom shader architecture or final art pipeline. |
+| Input System `1.20.0` | Mandatory | First-person movement, mouse look, pickup, release, and future remapping path. | No full control rebinding UI or gamepad support requirement. |
+| AI Navigation `2.0.14` | Mandatory | One placeholder navigation agent moving between two points on a NavMesh. | No customer simulation, employee task AI, crowd behavior, or dynamic store routing. |
+| Unity Test Framework | Mandatory; use the editor-matched Unity 6.3 package lane | Focused EditMode or PlayMode checks for identifiers, snap references, occupied slots, and save/reload equality. | No CI, coverage targets, performance test package, or broad test architecture. |
 
 ## Explicit Rejections for the First Spike
 
@@ -47,10 +48,15 @@
 
 The spike should define only:
 
-- one product definition with stable identifier, display name, visual prefab reference, physical shelf footprint, snap compatibility, and a scan-demo value;
-- one shelf or fixture definition with stable fixture identifier, explicit snap-point identifiers, local position/orientation, accepted compatibility tags, and occupied state;
+- one product definition with stable identifier, display name, visual prefab reference, physical shelf footprint, and snap compatibility;
+- one authored shelf or fixture definition with stable fixture identifier, explicit snap-point identifiers, local position/orientation, and accepted compatibility tags;
+- runtime occupancy on the shelf instance during play or derived from current placed-product records;
 - one placed-product runtime state with product definition identifier, fixture identifier, snap-point identifier, and quarter-turn orientation;
 - one save file with version field and placed-product records.
+
+On load, begin with every runtime snap point unoccupied, validate saved placement records, place valid products, and rebuild occupancy only from accepted placements.
+
+Do not mutate shared authored definitions or ScriptableObjects to record slot use.
 
 Do not define full inventory, economy, supplier, price, spoilage, theft, customer, employee, property, or multi-location schemas.
 
@@ -60,18 +66,19 @@ Do not define full inventory, economy, supplier, price, spoilage, theft, custome
 |---|---|---|
 | Unity 6 lanes | Unity 6 has LTS releases and Update releases; Unity 6.3 LTS is the latest LTS and is supported until December 2027. | https://unity.com/releases/unity-6/support |
 | Update lane | Unity describes Update releases as production-ready and recommended for new or mid-cycle productions, but supported only until the next release. | https://unity.com/releases/unity-6/support |
-| URP | URP is a core Unity package; Unity 6.3 docs require choosing the render pipeline before development because URP projects are not compatible with HDRP or Built-In. | https://docs.unity3d.com/6000.3/Documentation/Manual/urp/requirements.html |
+| URP | URP is a Unity package documented for Unity 6.3; choose the render pipeline before development because URP projects are not compatible with HDRP or Built-In. | https://docs.unity3d.com/6000.3/Documentation/Manual/urp/urp-introduction.html |
 | Built-In status | Built-In Render Pipeline is deprecated and supported through the Unity 6.7 LTS lifecycle. | https://docs.unity3d.com/6000.5/Documentation/Manual/built-in-render-pipeline.html |
-| Input System | Input System 1.20.0 is released for Unity 6.3; it is Unity's newer extensible input package and supports keyboard and mouse devices. | https://docs.unity3d.com/6000.3/Documentation/Manual/com.unity.inputsystem.html |
-| AI Navigation | AI Navigation 2.0.14 is released for Unity 6.3 and supports NavMesh construction and NavMeshAgent pathfinding. | https://docs.unity3d.com/6000.3/Documentation/Manual/com.unity.ai.navigation.html |
-| Test Framework | Unity Test Framework is a Unity 6.3 core package and supports EditMode, PlayMode, and command-line tests. | https://docs.unity3d.com/6000.3/Documentation/Manual/com.unity.test-framework.html |
+| Input System | Input System 1.20.0 is released for Unity 6.3; it is Unity's newer extensible input package and supports keyboard and mouse devices. | https://docs.unity3d.com/Packages/com.unity.inputsystem@1.20/manual/index.html |
+| AI Navigation | AI Navigation 2.0.14 is released for Unity 6.3 and supports NavMesh construction and NavMeshAgent pathfinding. | https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/index.html |
+| Test Framework | Unity Test Framework is documented for Unity 6.3 and supports EditMode, PlayMode, and command-line tests. Record the resolved editor-matched package version after project creation. | https://docs.unity3d.com/Packages/com.unity.test-framework@1.5/manual/index.html |
 | Runtime UI | UI Toolkit and uGUI are both supported runtime UI systems, but neither is needed for this spike's product proof. | https://docs.unity3d.com/6000.3/Documentation/Manual/UIToolkits.html |
-| Smart Merge | UnityYAMLMerge can semantically merge scene and prefab files and can be configured for Git. | https://docs.unity3d.com/6000.3/Documentation/Manual/SmartMerge.html |
-| Licensing and desktop | Unity Personal is for individuals/small organizations below the stated revenue/funding threshold; Unity 6.3 desktop player supports Windows 10 21H1 or newer with DX10/DX11/DX12/Vulkan-capable GPU. | https://unity.com/products/unity-personal; https://docs.unity3d.com/6000.3/Documentation/Manual/system-requirements.html |
+| Smart Merge | UnityYAMLMerge can semantically merge scene and prefab files and Unity documents Git configuration through a local mergetool workflow. | https://docs.unity3d.com/6000.5/Documentation/Manual/SmartMerge.html |
+| Licensing and desktop | Unity Personal eligibility depends on the applicable Unity-defined case. For an individual developing their own first-party project and not providing Unity-related services to a third party, Unity's terms measure the amount generated in connection with that individual's Unity Software use rather than unrelated personal employment income. Legal entities, organizations, and individuals or entities providing Unity-related development services to third parties are measured under their applicable Unity terms. Unity 6.3 desktop player supports Windows 10 21H1 or newer with DX10/DX11/DX12/Vulkan-capable GPU. This is not legal advice. | https://unity.com/legal/editor-terms-of-service/software; https://docs.unity3d.com/6000.3/Documentation/Manual/system-requirements.html |
 
 ## Unresolved Owner Choices
 
-- Confirm Unity Personal eligibility before project creation.
+- Confirm the project is being developed in the applicable individual first-party capacity or identify the applicable legal-entity/service-provider case before project creation.
+- Confirm the relevant Unity-defined finances remain below the Unity Personal threshold before relying on Unity Personal.
 - Approve Unity 6.3 LTS and URP as the project baseline.
 - Approve `CODE/Unity/Margins` as the Unity project location.
 - Confirm Windows x64 as the first build target.

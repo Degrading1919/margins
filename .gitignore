@@ -22,33 +22,33 @@ desktop.ini
 /CODE/Unity/Margins/[Rr]ecordings/
 
 # Unity generated files
-*.pidb
-*.booproj
-*.svd
-*.pdb
-*.mdb
-*.opendb
-*.VC.db
-sysinfo.txt
-*.stackdump
+/CODE/Unity/Margins/**/*.pidb
+/CODE/Unity/Margins/**/*.booproj
+/CODE/Unity/Margins/**/*.svd
+/CODE/Unity/Margins/**/*.pdb
+/CODE/Unity/Margins/**/*.mdb
+/CODE/Unity/Margins/**/*.opendb
+/CODE/Unity/Margins/**/*.VC.db
+/CODE/Unity/Margins/**/sysinfo.txt
+/CODE/Unity/Margins/**/*.stackdump
 
 # Unity crash reports
-*.dmp
-*.crash
+/CODE/Unity/Margins/**/*.dmp
+/CODE/Unity/Margins/**/*.crash
 
 # Unity Asset Store import cache for the approved project location
 /CODE/Unity/Margins/[Aa]ssets/AssetStoreTools*
 
 # IDE and build intermediates
-*.csproj
-*.sln
-*.sln.DotSettings.user
-*.unityproj
-*.xcodeproj
-*.xcworkspace
-*.pidb.meta
-*.pdb.meta
-*.mdb.meta
+/CODE/Unity/Margins/**/*.csproj
+/CODE/Unity/Margins/**/*.sln
+/CODE/Unity/Margins/**/*.sln.DotSettings.user
+/CODE/Unity/Margins/**/*.unityproj
+/CODE/Unity/Margins/**/*.xcodeproj
+/CODE/Unity/Margins/**/*.xcworkspace
+/CODE/Unity/Margins/**/*.pidb.meta
+/CODE/Unity/Margins/**/*.pdb.meta
+/CODE/Unity/Margins/**/*.mdb.meta
 
 # Temporary files
 *.tmp
@@ -58,7 +58,10 @@ sysinfo.txt
 *.log
 
 # Non-Unity build output
+Build/
+Builds/
 Dist/
+Temp/
 .cache/
 
 # Local environment and secrets

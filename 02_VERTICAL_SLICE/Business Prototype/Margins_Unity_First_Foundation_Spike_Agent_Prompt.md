@@ -29,20 +29,23 @@ Treat Unity as the approved engine. Do not reopen engine selection and do not co
 
 Use:
 
-- Unity 6.3 LTS (`6000.3.x`);
+- the latest project-owner-approved Unity 6.3 LTS patch (`6000.3.x`) available at execution time;
 - Universal Render Pipeline;
 - C# as the default implementation language;
 - editor-authored scenes, prefabs, components, and ScriptableObjects where appropriate;
 - no Visual Scripting for spike behavior;
-- Input System;
-- AI Navigation;
-- Unity Test Framework;
+- Input System `1.20.0`;
+- AI Navigation `2.0.14`;
+- Universal Render Pipeline at the editor-matched Unity 6.3 package lane;
+- Unity Test Framework at the editor-matched Unity 6.3 package lane;
 - Windows desktop x64 development build target;
 - Unity project path `CODE/Unity/Margins`;
 - root namespace `Margins`;
 - human-readable local JSON save proof.
 
-If any baseline item cannot be applied locally, stop, explain the blocker, and do not replace it with an unapproved package or architecture.
+Record the exact Unity editor patch in `CODE/Unity/Margins/ProjectSettings/ProjectVersion.txt` and in the PR body. Record resolved package versions from `CODE/Unity/Margins/Packages/manifest.json` and `CODE/Unity/Margins/Packages/packages-lock.json`.
+
+If any baseline item or named package version cannot be applied locally, stop, explain the blocker, and do not replace it with an unapproved package, package version, or architecture. Do not silently change package versions after project creation.
 
 ## Implementation Scope
 
@@ -66,6 +69,21 @@ Implement only the minimum fields from `Margins_Unity_First_Foundation_Spike_v0.
 
 Do not implement full inventory, suppliers, pricing, customers, employees, economy, properties, multi-location state, production UI, or production save migration.
 
+Product and placement limits:
+
+- use exactly one product definition;
+- the product definition may contain only identity, display, visual representation, shelf footprint or size, and snap compatibility;
+- do not add scanning or checkout data;
+- authored shelf/snap definitions may contain only stable fixture and snap-point identifiers, local position/orientation, and accepted compatibility tags;
+- do not store runtime occupancy in shared authored definitions or ScriptableObjects;
+- runtime occupancy must exist on shelf instances during play or be derived from current placed-product records.
+
+Occupied-slot validation:
+
+- use a second temporary scene instance of the same product definition only as a validation fixture;
+- this does not create inventory, quantity, product stacks, or multiple product types;
+- attempting to place the second instance in an occupied slot must fail without losing, duplicating, or replacing the existing product.
+
 Save behavior must include:
 
 - version field;
@@ -73,6 +91,8 @@ Save behavior must include:
 - safe failure behavior for malformed save, unsupported version, missing product, missing snap point, and duplicate authored identifiers;
 - human-readable JSON;
 - no cloud save and no database.
+
+Load behavior must begin with all runtime snap points unoccupied, validate saved placement records, place valid products, and rebuild occupancy only from accepted placements.
 
 ## Code Standard
 
@@ -149,6 +169,8 @@ Report only:
 - Unity editor version;
 - render pipeline;
 - selected packages;
+- exact editor patch recorded in `ProjectVersion.txt`;
+- resolved package versions from `manifest.json` and `packages-lock.json`;
 - project path;
 - scene path;
 - tests or checks run;

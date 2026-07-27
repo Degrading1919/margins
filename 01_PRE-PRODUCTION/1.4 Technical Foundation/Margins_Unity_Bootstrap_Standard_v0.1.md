@@ -66,22 +66,27 @@ Do not create per-system assemblies, package-style modules, dependency-injection
 - Do not commit generated `Library`, `Temp`, `Obj`, `Logs`, `UserSettings`, build folders, IDE solution files, or local environment files.
 - Keep text, C#, YAML, JSON, Markdown, UXML, USS, shader text, and `.meta` files out of Git LFS.
 - Use Git LFS only for large or non-diffable binary source assets such as textures, models, audio, video, and `.unitypackage` files.
-- Treat Unity scenes, prefabs, materials, and asset files as YAML text eligible for Unity Smart Merge.
-- Configure UnityYAMLMerge locally when merge conflicts appear; this package documents the workflow but adds no custom automation.
+- Treat Unity scenes, prefabs, materials, and asset files as YAML text with LF normalization.
+- Do not expect Smart Merge to run from `.gitattributes`; this repository does not define a low-level UnityYAMLMerge Git driver.
+- When scene, prefab, or other Unity YAML conflicts appear, resolve them with a locally configured UnityYAMLMerge mergetool through `git mergetool`, or resolve manually when the conflict is simple.
+- Do not commit machine-specific Unity installation paths, merge-driver configuration, scripts, or custom automation for this baseline.
 
 ## Package and Dependency Rules
 
 Selected for the first spike:
 
-- Universal Render Pipeline;
-- Input System;
-- AI Navigation;
-- Unity Test Framework.
+- Universal Render Pipeline: editor-matched Unity 6.3 package lane;
+- Input System: `1.20.0`;
+- AI Navigation: `2.0.14`;
+- Unity Test Framework: editor-matched Unity 6.3 package lane.
 
 Rules:
 
 - Add no other package during this spike. If a first-spike acceptance criterion cannot be met with the selected baseline, stop and request owner approval before changing packages.
 - Record any owner-approved package change in the PR body with exact reason and approval status.
+- Record resolved package versions from `CODE/Unity/Margins/Packages/manifest.json` and `CODE/Unity/Margins/Packages/packages-lock.json` in the implementation PR body.
+- Do not silently change package versions after project creation.
+- If a named package version is unavailable or incompatible, stop and report the blocker instead of selecting an unapproved substitute.
 - No paid packages, Asset Store packages, cloud services, analytics, ads, multiplayer, DOTS/ECS, or third-party gameplay frameworks.
 - No package update beyond the selected Unity `6000.3.x` compatible release without release-note review.
 

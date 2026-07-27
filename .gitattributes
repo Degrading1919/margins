@@ -1,20 +1,20 @@
 * text=auto eol=lf
 
-# Unity text assets. Keep these reviewable and eligible for Unity Smart Merge.
-*.unity text eol=lf merge=unityyamlmerge
-*.prefab text eol=lf merge=unityyamlmerge
-*.asset text eol=lf merge=unityyamlmerge
-*.mat text eol=lf merge=unityyamlmerge
-*.controller text eol=lf merge=unityyamlmerge
-*.overrideController text eol=lf merge=unityyamlmerge
-*.anim text eol=lf merge=unityyamlmerge
-*.animator text eol=lf merge=unityyamlmerge
-*.playable text eol=lf merge=unityyamlmerge
-*.physicMaterial text eol=lf merge=unityyamlmerge
-*.physicsMaterial2D text eol=lf merge=unityyamlmerge
-*.renderTexture text eol=lf merge=unityyamlmerge
-*.terrainlayer text eol=lf merge=unityyamlmerge
-*.spriteatlas text eol=lf merge=unityyamlmerge
+# Unity text assets. Keep these reviewable with LF normalization.
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.mat text eol=lf
+*.controller text eol=lf
+*.overrideController text eol=lf
+*.anim text eol=lf
+*.animator text eol=lf
+*.playable text eol=lf
+*.physicMaterial text eol=lf
+*.physicsMaterial2D text eol=lf
+*.renderTexture text eol=lf
+*.terrainlayer text eol=lf
+*.spriteatlas text eol=lf
 *.meta text eol=lf
 
 # Reviewable source and configuration.
