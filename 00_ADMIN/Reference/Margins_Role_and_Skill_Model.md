@@ -43,12 +43,13 @@ The role supplies the lens. The skill supplies the workflow. Approved project do
 
 Until a native role format is deliberately selected:
 
-- canonical role definitions should live in `00_ADMIN/Reference/Margins_Assistant_Roles.md` or another approved governance path;
+- canonical role definitions live in `00_ADMIN/Reference/Margins_Assistant_Roles.md` or another approved governance path;
+- concise copyable activation prompts live in `00_ADMIN/Reference/Margins_Assistant_Activation_Prompts.md` and do not replace the canonical role definitions;
 - platform-specific role configurations may later use `.agents/roles/` after the consuming tool and format are selected;
-- workflow skills live under `.agents/skills/<skill-name>/`;
+- workflow skills live under `.agents/skills/<skill-name>/`; and
 - the living skill index is `00_ADMIN/Reference/Margins_Skill_Catalog.md`.
 
-Do not create a platform-specific role directory merely to anticipate an unselected tool.
+Do not create a platform-specific role directory merely to anticipate an unselected tool. Activation prompts are a convenience layer and must route assistants back to the canonical role document and project authority.
 
 ## When a role needs a companion skill
 
