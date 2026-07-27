@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-- **Status:** Current pre-production brief synchronized to `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md`
-- **Authority:** This brief summarizes approved direction but does not outrank the foundational decision record.
-- **Maturity:** Foundational direction is approved; detailed game design, technical architecture, tuning, schedules, and milestone acceptance criteria remain in development.
+- **Status:** Current pre-production brief synchronized to the approved foundational and engine-selection decisions
+- **Authority:** This brief summarizes approved direction but does not outrank records in `00_ADMIN/Decisions`.
+- **Maturity:** Foundational direction and Unity as the production engine are approved; detailed game design, Unity baseline, technical architecture, tuning, schedules, and milestone acceptance criteria remain in development.
 
 ## Production mandate
 
@@ -18,6 +18,12 @@ Current constraints:
 - a commercial premium single-player release as the end goal.
 
 Later expansion may occur through updates, revenue, collaborators, or a sequel only when justified. None of those expansion paths is presently committed.
+
+## Technical baseline status
+
+**Unity is the approved production engine.**
+
+The exact Unity version, rendering pipeline, packages, coding conventions, project structure, persistence approach, target hardware, and performance budgets remain unresolved. Unreal Engine and Godot are retained only as historical evaluated alternatives unless the project owner later reopens engine selection after a concrete Unity blocker.
 
 ## High concept
 
@@ -115,7 +121,7 @@ Early Access is optional rather than guaranteed. Release date, price, storefront
 
 This brief does not select or define:
 
-- engine, language, rendering stack, or runtime architecture;
+- Unity version, rendering pipeline, packages, scripting boundaries, or runtime architecture;
 - exact economy, progression, difficulty, or balance values;
 - the second business category;
 - city name, map, district roster, or full content plan;
@@ -129,4 +135,4 @@ This brief does not select or define:
 - roadmap stages, schedules, or acceptance criteria; or
 - any post-1.0 expansion promise.
 
-Use `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md` whenever more precise status or boundary language is required.
+Use `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md` and `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` whenever more precise status or boundary language is required.

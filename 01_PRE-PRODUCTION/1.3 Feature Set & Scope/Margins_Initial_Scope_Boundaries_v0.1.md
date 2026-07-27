@@ -2,8 +2,8 @@
 
 ## Status and authority
 
-- **Status:** Current vertical-slice scope synchronized to `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md`
-- **Authority:** This document applies the approved foundational decisions to the first playable milestone. It cannot approve exceptions or expand the milestone on its own.
+- **Status:** Current vertical-slice scope synchronized to the approved foundational and Unity engine-selection decisions
+- **Authority:** This document applies approved decisions to the first playable milestone. It cannot approve exceptions or expand the milestone on its own.
 
 ## Purpose
 
@@ -38,11 +38,12 @@ The vertical slice should become a durable commercial-game foundation rather tha
 ## Vertical-slice constraints
 
 - PC only
+- Unity is the approved production engine
 - Less than **$1,000** in total pre-revenue development spending across the project unless the project owner approves a change
 - Approximately **20–30 direct human development hours per week**, supplemented by agentic AI workflows
 - One fictional contemporary American city block; no full-city procedural generation
 - Primarily on-foot traversal; supplier deliveries or simplified logistics
-- No engine-specific implementation assumptions until the engine-selection process is approved
+- Unity-specific implementation is permitted only within an approved technical baseline; version, render pipeline, packages, and architecture may not be silently selected
 - Off-screen businesses use aggregate simulation; detailed NPCs and interactions are instantiated only where the player is present or a specific event requires them
 - Structured, validated data should support scalable content; permanent runtime invariants remain code-enforced
 
@@ -92,7 +93,7 @@ Deferral does not assign a roadmap stage or guarantee implementation beyond expl
 
 Any proposal that adds a new dependency, simulation domain, content class, technical requirement, or recurring production burden to the vertical slice must be reviewed against:
 
-1. the approved foundational decision record;
+1. the approved foundational and engine-selection records;
 2. the smallest proof needed for the owner-operator-to-portfolio loop;
 3. shared-system reuse;
 4. the budget and solo-development constraints;
@@ -113,8 +114,8 @@ The following remain to be designed or validated:
 - prices, wages, demand formulas, difficulty values, and failure thresholds;
 - exact remote-management controls and reports;
 - local competitor count and behavior;
+- Unity version, render pipeline, package baseline, project structure, and implementation architecture;
 - save architecture and technical performance budgets;
 - onboarding sequence and acceptance criteria;
-- art-production budgets and asset list;
-- accessibility scope; and
-- engine and implementation architecture.
+- art-production budgets and asset list; and
+- accessibility scope.
