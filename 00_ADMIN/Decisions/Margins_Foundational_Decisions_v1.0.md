@@ -5,474 +5,333 @@
 - **Status:** Approved foundational direction
 - **Approved by:** Project owner
 - **Approval session:** July 26, 2026
-- **Authority:** This file is an approved decision record under `00_ADMIN/Decisions` and therefore outranks conflicting working material in lower-authority pre-production, design, prototype, research, or reference documents.
-- **Scope:** These decisions establish the foundation needed to complete project governance, assistant roles, technical evaluation, pre-production specifications, and the first roadmap. They are not a complete game-design specification.
+- **Authority:** This approved record in `00_ADMIN/Decisions` outranks conflicting lower-authority pre-production, design, prototype, research, or reference material.
+- **Scope:** This is the approved foundation for later specifications and roadmap work, not a complete game-design specification.
 
 ## Interpretation rules
 
-1. Only decisions explicitly recorded as **Approved** are locked by this record.
-2. A long-term direction is not automatically a vertical-slice, Early Access, or 1.0 commitment unless the decision states that milestone.
-3. A named reference communicates selected qualities, not permission to copy protected expression, branding, assets, characters, code, or content.
-4. Examples clarify intent but do not create additional scope beyond the approved decision.
-5. Exact numerical tuning, implementation architecture, schedules, and acceptance evidence remain unresolved unless explicitly stated.
-6. When this file conflicts with a lower-authority document, follow this file and schedule the lower-authority document for synchronization.
+1. Only statements marked **Approved** are locked.
+2. Long-term direction is not a vertical-slice, Early Access, or 1.0 commitment unless that milestone is named.
+3. Named games communicate selected reference qualities, not permission to copy protected expression, assets, branding, code, or content.
+4. Examples clarify intent but do not silently add scope.
+5. Exact tuning, architecture, schedules, and completion evidence remain unresolved unless explicitly approved.
+6. When this record conflicts with lower-authority material, follow this record and synchronize the lower-authority artifact.
 7. The project owner retains final creative, technical, production, scope, publication, and release authority.
 
 ---
 
 ## FD-001 — Production mandate
 
-**Status:** Approved
+**Approved:** Use a hybrid development model: build and release a deliberately bounded solo-developed game, then expand through updates, revenue, collaborators, or a sequel only when justified.
 
-Margins will use a **hybrid development model**: build and release a deliberately bounded solo-developed game, then expand through updates, revenue, collaborators, or a sequel only when justified.
-
-Current production constraints:
+Current constraints:
 
 - PC only;
-- less than **$1,000** in pre-revenue development spending;
-- approximately **20–30 hours of direct human work per week**;
-- extensive agentic AI work may run outside the project owner’s active work hours;
-- the first objective is a playable vertical slice; and
-- commercial release is the end goal.
+- less than **$1,000** in pre-revenue spending;
+- approximately **20–30 direct human hours per week**;
+- extensive agentic AI work may run outside active human work hours;
+- first objective: playable vertical slice;
+- end goal: commercial release.
 
-**Boundary:** No console version, release date, external funding, contractor budget, team expansion, or sequel is committed.
+**Boundary:** No console version, release date, funding plan, contractor budget, team expansion, or sequel is committed.
 
 ## FD-002 — Primary product identity
 
-**Status:** Approved
-
-Margins is a **deliberate progression hybrid** whose emphasis changes over time:
+**Approved:** Margins is a deliberate progression hybrid:
 
 **Operate → Systemize → Delegate → Expand → Develop → Control**
 
-- Early game emphasizes tactile first-person business operation.
-- Mid-game emphasizes staffing, procedures, management, and multi-location expansion.
-- Late game emphasizes portfolio strategy, property development, organizational structure, and capital allocation.
+- Early game: tactile first-person operation.
+- Mid-game: staffing, procedures, management, and multi-location expansion.
+- Late game: portfolio strategy, property development, organizational structure, and capital allocation.
 
-Later layers must remain connected to the hands-on business foundation. Delegation should replace repetitive labor with larger decisions rather than remove gameplay.
+Later layers must remain connected to the hands-on foundation. Delegation replaces repetitive labor with larger decisions rather than removing gameplay.
 
 ## FD-003 — Simulation depth
 
-**Status:** Approved
+**Approved:** Use layered simulation. The intended default is approachable mainstream depth, while optional optimization, advanced reporting, automation controls, and harder difficulty can move toward deeper business simulation.
 
-Margins will use a **layered simulation model**:
+Players should understand why businesses succeed or fail without outside guides. Complexity must create choices rather than clerical burden.
 
-- the intended default is approachable mainstream depth;
-- deeper optimization, reporting, automation controls, and difficulty options may move toward a harder business simulation;
-- players should understand why a business succeeds or fails without outside guides; and
-- complexity must create decisions rather than repetitive administration.
-
-**Boundary:** The exact difficulty settings, formulas, automation features, and advanced-reporting depth are not yet specified.
+**Boundary:** Exact settings, formulas, automation features, and reporting depth are unresolved.
 
 ## FD-004 — Vertical-slice business
 
-**Status:** Approved
+**Approved:** The vertical slice uses one complete **standalone convenience store** category.
 
-The vertical slice will use a **standalone convenience store** as its one complete business category.
+It must prove:
 
-It must prove the approved first-playable foundation for:
-
-- tactile first-person receiving, stocking, checkout or service, cleaning, and basic maintenance;
+- first-person receiving, stocking, checkout or service, cleaning, and basic maintenance;
 - data-driven products and inventory;
 - pricing, customer demand, and satisfaction;
-- employee hiring, scheduling, task assignment, delegation, and a manager role;
-- interior layout and equipment placement;
+- hiring, scheduling, task assignment, delegation, **at least two worker roles, and one manager role**;
+- grid-based interior furniture and equipment placement;
 - at least two locations with meaningfully different market conditions;
-- detailed simulation while the player is present;
-- aggregate off-site simulation while absent;
-- location-level and portfolio-level reporting; and
-- saving and loading the layout and business state.
+- detailed simulation while present and aggregate simulation while absent;
+- location and portfolio reporting;
+- saving and loading layout and business state.
 
-**Boundary:** Fuel pumps and combined gas-station systems are deferred, not rejected. Supplier depth, theft or shrinkage, and other convenience-store extensions require later scope and system decisions rather than being silently added by this record.
+**Boundary:** Fuel pumps and combined gas-station systems are deferred, not rejected. Supplier depth, theft or shrinkage, and other extensions require later scope decisions.
 
 ## FD-005 — City and world structure
 
-**Status:** Approved
+**Approved:** Use one fictional, contemporary American city built as expanding handcrafted districts from reusable modules. The city should be authored and recognizable, not procedurally generic. The vertical slice begins with one compact commercial block.
 
-Margins will take place in **one fictional, contemporary American city** built as expanding handcrafted districts from reusable modules.
-
-The city should be authored and recognizable rather than procedurally generic. Reuse should come from modular lots, buildings, storefronts, roads, interiors, and property rules.
-
-The vertical slice begins with one compact commercial block.
-
-**Boundary:** The city name, geography, district roster, map size, and expansion order are not yet approved. Runtime procedural generation of the full city is not part of the current direction.
+**Boundary:** City name, geography, district roster, map size, and expansion order are unresolved. Runtime procedural generation of the full city is not current direction.
 
 ## FD-006 — Economic pressure and failure
 
-**Status:** Approved
+**Approved:** Use layered economic modes, with challenging-but-recoverable as the intended default.
 
-Margins will use **layered economic modes**, with **challenging but recoverable** as the intended default.
+Approved mode purposes, with final labels unresolved:
 
-Four mode purposes are approved; their final names are not:
+- forgiving growth-focused play;
+- intended challenging-but-recoverable play;
+- a harsher simulation with tighter margins and fewer safety nets;
+- sandbox experimentation and construction.
 
-- a forgiving, growth-focused mode with reduced pressure and softer failure;
-- the intended challenging-but-recoverable default;
-- a harsher simulation mode with tighter margins, stronger debt consequences, and fewer safety nets; and
-- a sandbox mode for unrestricted experimentation and construction.
+Failure should usually emerge through visible, correctable problems, with recovery opportunities before bankruptcy or restart.
 
-Failure should usually emerge through visible, correctable problems. Recovery may involve downsizing, selling assets, refinancing, closing a location, changing operations, or returning to hands-on work before bankruptcy or restart becomes unavoidable.
-
-**Boundary:** Exact mode names, numerical modifiers, bankruptcy rules, and recovery mechanics remain to be designed and tested.
+**Boundary:** Exact names, modifiers, bankruptcy rules, and recovery mechanics require design and testing.
 
 ## FD-007 — Player starting position
 
-**Status:** Approved
+**Approved:** Begin with a guided startup hybrid: limited startup capital, a small mostly empty leased storefront, guided fixture and inventory setup, preparation, and opening day. Guidance becomes optional after opening.
 
-A normal game will begin with a **guided startup hybrid**:
-
-- the player has limited startup capital;
-- the player leases a small, mostly empty storefront;
-- onboarding guides essential fixtures, initial inventory, store preparation, and opening day; and
-- guidance becomes optional after the store opens.
-
-The opening progression is:
+Opening progression:
 
 **Lease → Prepare → Open → Operate → Hire → Delegate → Expand**
 
-**Boundary:** Exact loan terms, starting cash, tutorial scripting, store condition, and starting background effects are unresolved.
+**Boundary:** Exact cash, debt, store condition, tutorial scripting, and background effects are unresolved.
 
 ## FD-008 — Management and physical presence
 
-**Status:** Approved
+**Approved:** Use delegated remote management with physical intervention.
 
-Margins will use **delegated remote management with physical intervention**.
+Remote tools may support reports, alerts, prices, policies, schedules, budgets, purchasing rules, and manager communication. Physical presence remains meaningful for hands-on labor, detailed layout or construction, equipment interaction, close inspection, and selected emergencies.
 
-Remote management may support:
-
-- reviewing reports and alerts;
-- setting prices, policies, schedules, budgets, and purchasing rules; and
-- communicating with managers.
-
-Physical presence remains meaningful for:
-
-- hands-on labor;
-- detailed construction and layout changes;
-- direct equipment interaction;
-- close inspection of cleanliness, maintenance, and employee behavior; and
-- selected emergencies or high-impact events.
-
-Managers execute policies and make bounded decisions; they are not merely remote-control menu extensions.
+Managers execute policies and make bounded decisions; they are not remote-control menu extensions.
 
 ## FD-009 — Property-development progression
 
-**Status:** Approved
-
-Property development will follow a **phased hybrid**:
+**Approved:** Use phased property development:
 
 1. lease and furnish existing storefronts;
 2. purchase existing commercial properties;
 3. renovate, expand, subdivide, or combine units;
 4. acquire vacant lots;
-5. construct modular commercial buildings; and
+5. construct modular commercial buildings;
 6. eventually develop headquarters and larger commercial projects.
 
-The vertical slice is limited to leasing, interior setup, and business-relevant improvements.
+The vertical slice is limited to leasing, interior setup, and business-relevant improvements. **FD-021 separately commits property ownership and development as part of the 1.0 minimum.**
 
-**Boundary:** Ground-up construction is later-stage scope. Exact building freedom, mixed-use development, multi-story construction, tenant systems, and milestone placement remain unresolved unless separately approved.
+**Boundary:** Exact 1.0 depth, ground-up building freedom, mixed-use scope, multi-story construction, tenant systems, and sub-milestone placement are unresolved.
 
 ## FD-010 — Engine-selection status
 
-**Status:** Approved
+**Approved:** Remain engine-neutral until a deliberate technical-foundation and engine-selection process evaluates requirements, high-risk prototypes, licensing, tools, asset availability, AI-agent compatibility, performance, solo-development practicality, and migration risk.
 
-Margins remains **engine-neutral** until a deliberate technical-foundation and engine-selection process is completed.
-
-That process must evaluate project-specific requirements, high-risk prototypes, licensing, tools, asset availability, AI-agent compatibility, performance, solo-development practicality, and migration or exit risk.
-
-**Boundary:** No engine, programming language, rendering pipeline, framework, or architecture baseline is currently approved.
+**Boundary:** No engine, language, rendering pipeline, framework, or architecture baseline is approved.
 
 ## FD-011 — Visual identity
 
-**Status:** Approved
-
-Margins will use **Stylized Contemporary Americana**.
+**Approved:** Use **Stylized Contemporary Americana**.
 
 Reference responsibilities:
 
 - **Road 96:** primary visual reference for stylized contemporary and roadside Americana;
-- **Schedule I:** practical model and animation complexity reference; and
+- **Schedule I:** practical model and animation complexity reference;
 - **Firewatch:** lighting, color, atmosphere, silhouettes, and environmental composition reference.
 
-The game should use simplified, readable 3D models and characters with deliberate color, lighting, signage, silhouettes, and authored district identity. Functional spaces retain believable proportions and simulation clarity.
+Use simplified readable 3D forms, deliberate lighting and color, memorable signage and silhouettes, authored district identity, and believable functional proportions. Photorealism and generic asset-pack low-poly presentation are not targets.
 
-Photorealism and generic asset-pack low-poly presentation are not targets.
-
-**Boundary:** These references are influences, not replication targets. The exact art bible, character proportions, palettes, materials, shader approach, animation style, and technical budgets remain unresolved.
+**Boundary:** These are influences, not replication targets. The detailed art bible and technical art budgets are unresolved.
 
 ## FD-012 — Tone
 
-**Status:** Approved
-
-Margins will be **grounded with light humor**.
-
-The business, finance, staffing, debt, and operational consequences are treated seriously. Personality and humor may come through fictional brands, advertising, customers, employees, local businesses, and occasional operational chaos.
-
-Tonal rule:
+**Approved:** Grounded with light humor.
 
 > The business is real; the people and brands have personality.
 
-**Boundary:** Margins is not approved as broad comedy or heavy corporate satire.
+Business, finance, staffing, debt, and operational consequences remain credible. Humor may come through fictional brands, advertising, customers, employees, local businesses, and occasional operational chaos.
+
+**Boundary:** Broad comedy and heavy corporate satire are not approved core tones.
 
 ## FD-013 — Player identity and narrative framing
 
-**Status:** Approved
+**Approved:** Use a customizable owner with optional light starting backgrounds and primarily systemic storytelling. Backgrounds may affect startup capital, debt, early opportunities, or minor dialogue without defining personality or creating separate campaigns.
 
-The player is a **customizable owner** with optional light starting backgrounds and primarily systemic storytelling.
-
-Backgrounds may affect startup capital, debt, early opportunities, or minor dialogue without defining the player’s personality or creating separate campaigns.
-
-The player’s story should emerge from businesses, employees, properties, risks, recoveries, neighborhoods, and the company they build.
-
-**Boundary:** No authored protagonist, fixed biography, branching narrative campaign, or full social-story system is approved.
+**Boundary:** No authored protagonist, fixed biography, branching campaign, or full social-story system is approved.
 
 ## FD-014 — Time and pacing
 
-**Status:** Approved
-
-Margins will use a **hybrid time model**:
+**Approved:** Use hybrid time:
 
 - accelerated real time during first-person operation;
-- pause and speed controls in appropriate strategic management views;
+- pause and speed controls in appropriate management views;
 - automatic slowing or pausing for major alerts and decisions;
-- overnight or closed-hours skipping when intervention is unnecessary; and
-- construction, financing, and corporate actions resolving across calendar time rather than requiring physical waiting.
+- overnight or closed-hours skipping when intervention is unnecessary;
+- long construction, financing, and corporate actions resolving across calendar time.
 
-**Boundary:** Exact day length, time speeds, pause restrictions, calendar scale, and event timing are unresolved.
+**Boundary:** Exact day length, speeds, pause rules, calendar scale, and event timing are unresolved.
 
 ## FD-015 — Customer and employee simulation
 
-**Status:** Approved
+**Approved:** Employees are persistent individuals with names, traits, skills, satisfaction, reliability, employment history, and development potential. Managers have meaningful competence and judgment.
 
-Margins will use:
-
-- persistent employees with names, traits, skills, satisfaction, reliability, and employment history;
-- meaningful managers whose competence and judgment affect delegated operations;
-- aggregate customer populations driven by district demographics, traffic, pricing, reputation, product mix, and local conditions;
-- instantiated nearby customers representing that demand model;
-- a limited number of recurring customers; and
-- aggregate off-site customer activity rather than continuous simulation of every individual.
+Customer demand is primarily aggregate, driven by district demographics, traffic, pricing, reputation, product mix, and local conditions. Nearby customers are instantiated from that model, with a limited number of recurring customers. Off-site customer activity remains aggregate.
 
 **Boundary:** A full persistent-resident or social-life simulation is not approved.
 
 ## FD-016 — Hands-on interaction depth
 
-**Status:** Approved
+**Approved:** Use tactile but assisted interaction, with **TCG Card Shop Simulator** as the stocking and scanning methodology reference.
 
-Hands-on work will be **tactile but assisted**.
-
-The intended interaction reference is the stocking and scanning methodology associated with **TCG Card Shop Simulator**:
-
-- products and boxes are physically represented;
-- valid shelf placement uses reliable snapping rather than unstable freeform physics;
-- checkout retains an item-based scanning rhythm;
-- cleaning and equipment interaction remain clear and responsive; and
-- tools, upgrades, procedures, experience, and employees progressively reduce repetition.
-
-Core rule:
+- Products and boxes are physically represented.
+- Valid shelf placement uses reliable snapping rather than unstable freeform physics.
+- Checkout retains an item-based scanning rhythm.
+- Cleaning and equipment interaction remain clear and responsive.
+- Tools, upgrades, procedures, experience, and employees progressively reduce repetition.
 
 > Teach through physical work, then reward mastery with efficiency and delegation.
 
-**Boundary:** The reference defines interaction qualities, not a commitment to copy its exact controls, assets, UI, timings, or implementation.
+**Boundary:** Do not copy exact controls, UI, assets, timings, or implementation.
 
 ## FD-017 — Company and portfolio structure
 
-**Status:** Approved
+**Approved:** Use a holding-company hybrid that may include multiple locations under one brand, several business brands, standardized or franchised formats, commercial properties housing owned businesses or outside tenants, and a headquarters coordinating the portfolio.
 
-The long-term company structure is a **holding-company hybrid** that may include:
-
-- multiple locations under one brand;
-- several distinct business brands;
-- standardized or franchised operating formats;
-- commercial properties occupied by owned businesses or outside tenants; and
-- a headquarters coordinating the portfolio.
-
-Players may pursue concentration, diversification, franchising, commercial real estate, or vertical integration.
-
-New business categories must justify themselves through shared-system reuse rather than becoming unrelated games.
+Players may pursue concentration, diversification, franchising, commercial real estate, or vertical integration. New categories must justify themselves through shared-system reuse.
 
 ## FD-018 — Progression and unlocks
 
-**Status:** Approved
+**Approved:** Use capability-based progression rather than traditional level gates. Access may depend on capital, cash flow, credit, reputation, operating history, employee and management capacity, relevant permits, and modest owner specialization.
 
-Margins will use **capability-based progression** instead of a traditional level-gated system.
-
-Opportunity and access may depend on:
-
-- capital and cash flow;
-- creditworthiness and financing;
-- reputation and operating history;
-- employee and management capacity;
-- relevant permits or specialized requirements; and
-- modest owner expertise or specialization where useful.
-
-Major opportunities should unlock because the company can support them, not because an arbitrary experience bar filled.
-
-**Boundary:** Exact gates, permits, reputation systems, expertise bonuses, and unlock thresholds remain unresolved.
+**Boundary:** Exact gates, permits, expertise bonuses, and thresholds are unresolved.
 
 ## FD-019 — Endgame and success
 
-**Status:** Approved
+**Approved:** Use a portfolio legacy hybrid. Players may pursue retail dominance, category specialization, franchising, commercial real estate, district redevelopment, or a diversified holding company. A major legacy project may trigger formal victory and a company-history summary while allowing continued play.
 
-Margins will use a **portfolio legacy hybrid**.
-
-Players may pursue different ambitions, including retail dominance, category specialization, franchising, commercial real estate, district redevelopment, or a diversified holding company. A major legacy project—such as a headquarters or flagship development—can provide a formal victory state and company-history summary while allowing continued play.
-
-**Boundary:** Exact victory paths, thresholds, legacy projects, post-victory systems, and narrative presentation are unresolved.
+**Boundary:** Exact paths, thresholds, projects, and post-victory presentation are unresolved.
 
 ## FD-020 — Commercial release path
 
-**Status:** Approved
-
-Margins will follow a **staged commercial path**:
+**Approved:** Use a staged commercial path:
 
 1. internal vertical slice;
 2. polished public demo or controlled playtest;
-3. core stabilization from evidence and feedback;
-4. possible paid Early Access only when the store-to-portfolio loop is enjoyable, stable, and replayable; and
+3. evidence-driven stabilization;
+4. possible paid Early Access only when the store-to-portfolio loop is enjoyable, stable, and replayable;
 5. complete premium release.
 
-The intended commercial model is a **premium single-player purchase** without pay-to-win systems or dependence on microtransactions.
+The intended model is a premium single-player purchase without pay-to-win systems or dependence on microtransactions.
 
-**Boundary:** Early Access is a quality-gated option, not a guaranteed release phase. No release date, price, storefront, marketing schedule, or post-launch cadence is approved.
+**Boundary:** Early Access is optional and quality-gated. Release date, price, storefront, marketing schedule, and post-launch cadence are unresolved.
 
 ## FD-021 — Business-category scope by milestone
 
-**Status:** Approved
+**Approved:**
 
 - **Vertical slice:** one complete standalone convenience-store category.
 - **Initial Early Access, if pursued:** one deep convenience-retail category with meaningful multi-location and portfolio progression.
-- **1.0 minimum:** at least two complete business categories, property ownership and development, and the core holding-company progression.
-- Additional categories require evidence that shared-system reuse and production capacity justify them.
+- **1.0 minimum:** at least two complete business categories, property ownership and development, and core holding-company progression.
+- More categories require evidence of reuse and production capacity.
 
 **Boundary:** Three or more categories are not promised for 1.0.
 
 ## FD-022 — Second-business selection policy
 
-**Status:** Approved
+**Approved:** Select the second category after the convenience-store vertical slice is validated.
 
-The second business category will be selected **after the convenience-store vertical slice is validated**.
-
-The approved shortlist is:
+Approved shortlist:
 
 - coffee shop;
-- laundromat; and
+- laundromat;
 - card or hobby shop.
 
-Selection criteria include shared-system reuse, meaningful mechanical contrast, art/animation/UI/engineering cost, delegation and off-site suitability, contribution to the holding-company and property fantasy, and player feedback.
+Evaluate reuse, meaningful contrast, art/animation/UI/engineering cost, delegation and off-site suitability, contribution to the holding-company and property fantasy, and player feedback.
 
-**Boundary:** No second business is currently selected.
+**Boundary:** No second category is selected.
 
 ## FD-023 — Owner-lifestyle boundary
 
-**Status:** Approved
-
-Margins will include a **bounded owner-lifestyle layer**:
+**Approved:** Include a bounded owner-lifestyle layer:
 
 - no mandatory hunger, thirst, hygiene, bathroom, or similar survival meters;
 - sleep or ending the day may advance time;
 - vehicles may support travel and logistics;
 - clothing and appearance support customization;
-- residences, offices, vehicles, and amenities may visibly express wealth;
-- optional food, rest, or amenities may provide modest benefits; and
-- dating, family, and full social-life simulation are outside the core scope.
+- residences, offices, vehicles, and amenities may express wealth;
+- optional food, rest, or amenities may provide modest benefits;
+- dating, family, and full social-life simulation are outside core scope.
 
-Lifestyle systems should express progression rather than compete with the business game.
+Lifestyle expresses progression rather than competing with the business game.
 
 ## FD-024 — City traversal and vehicles
 
-**Status:** Approved
+**Approved:** Use phased traversal:
 
-Traversal will follow a **phased hybrid**:
-
-- **Vertical slice:** one compact block navigated primarily on foot, with supplier deliveries or simplified logistics;
+- **Vertical slice:** one compact block, primarily on foot, with supplier deliveries or simplified logistics;
 - **Early expansion:** map-based or transitional travel between separated districts;
-- **Later development:** drivable vehicles only after a technical and scope prototype proves they are affordable and enjoyable; and
-- fast travel remains available to reduce late-game repetition.
+- **Later development:** drivable vehicles only after technical and scope prototypes prove them affordable and enjoyable;
+- fast travel remains available to reduce repetition.
 
-If supported, vehicles may serve personal travel, business logistics, deliveries, and visible wealth progression.
+If adopted, vehicles may support personal travel, logistics, deliveries, and visible wealth.
 
-**Boundary:** Full driving is not a vertical-slice requirement or an unconditional later milestone commitment.
+**Boundary:** Full driving is neither a vertical-slice requirement nor an unconditional later commitment.
 
 ## FD-025 — Competition and mergers/acquisitions
 
-**Status:** Approved
+**Approved:** Use layered competitor simulation. Nearby competitors have visible location, category, quality, price, reputation, and capacity; their market effects are primarily aggregate and understandable. Competitors may improve, decline, close, relocate, or be replaced, and limited recognizable rival brands may later expand and react.
 
-Margins will use **layered competitor simulation**:
+The long-term destination is a **Coffee Inc–style competition system** supporting mergers, acquisitions, and changing market share.
 
-- nearby competitors have visible categories, locations, quality, pricing, reputation, and capacity;
-- market effects are simulated primarily through understandable aggregate demand;
-- competitors may improve, decline, close, relocate, or be replaced through bounded behavior or events; and
-- a limited number of recognizable rival brands may later expand and react.
-
-The long-term destination is a **Coffee Inc–style competition system** capable of supporting mergers, acquisitions, and changing market share.
-
-**Boundary:** The vertical slice requires understandable local competition, not deep autonomous company AI. Mergers and acquisitions are approved long-term direction, but their exact milestone and detailed transaction model are not yet committed.
+**Boundary:** The vertical slice requires understandable local competition, not deep autonomous company AI. M&A milestone placement and transaction depth are unresolved.
 
 ## FD-026 — Corporate finance and ownership
 
-**Status:** Approved
-
-Corporate finance will follow a **phased hybrid**:
+**Approved:** Use phased corporate finance:
 
 1. personal capital and startup debt;
 2. commercial loans, credit lines, mortgages, and equipment financing;
 3. optional private investors or strategic partners;
-4. acquisitions using cash, debt, seller financing, or ownership stakes; and
-5. public markets and IPO systems deferred until private-company and acquisition systems prove they are justified.
+4. acquisitions using cash, debt, seller financing, or ownership stakes;
+5. public markets and IPO systems deferred until private-company and acquisition systems justify them.
 
 Ownership dilution, repayment obligations, collateral, control rights, and investor expectations should create meaningful tradeoffs.
 
-**Boundary:** No stock market, IPO, public-share trading, detailed board simulation, or specific acquisition milestone is currently approved.
+**Boundary:** No stock market, IPO, public-share trading, detailed board simulation, or acquisition milestone is approved.
 
 ## FD-027 — Accounting, taxes, and regulation
 
-**Status:** Approved
+**Approved:** Use layered administration. Early play shows understandable cash flow, rent, payroll, inventory costs, debt, and simplified taxes. Permits, inspections, insurance, contracts, and regulatory risks appear when they create meaningful choices. Routine work can be delegated, while advanced reports expose optional depth.
 
-Margins will use a **layered administrative simulation**:
-
-- early play presents understandable cash flow, rent, payroll, inventory costs, debt, and simplified taxes;
-- permits, inspections, insurance, contracts, and regulatory risks appear when they create meaningful choices;
-- routine accounting and compliance can be delegated to professionals or headquarters departments;
-- advanced reports may expose deeper accounting information; and
-- the player makes consequential decisions without manually completing paperwork.
-
-**Boundary:** Margins is not a bookkeeping, tax-filing, or legal-paperwork simulator. Exact jurisdictions, tax rules, insurance products, and regulatory systems are unresolved.
+**Boundary:** Margins is not a bookkeeping, tax-filing, or paperwork simulator. Exact jurisdictions and rule sets are unresolved.
 
 ## FD-028 — Data-driven design and modding
 
-**Status:** Approved
+**Approved:** Be data-driven from the beginning but not mod-platform-first. Use structured validated content, code-enforced permanent invariants, schemas and validators for safe human and agent authoring, and internal content tools before public modding tools. Stabilize formats before promising compatibility.
 
-Margins will be **data-driven from the beginning but not mod-platform-first**:
-
-- structured, validated data should define scalable content;
-- permanent runtime invariants remain code-enforced;
-- schemas and validators should support safe human and agent-assisted authoring;
-- internal content tools precede public modding tools;
-- formats should stabilize before compatibility is promised; and
-- documented public mod support or workshop integration is a later commercial decision.
-
-**Boundary:** Public mod support, Steam Workshop integration, public editors, and long-term schema compatibility are not current commitments.
+**Boundary:** Public mod support, Workshop integration, public editors, and compatibility guarantees are not committed.
 
 ## FD-029 — Asset sourcing and generative AI
 
-**Status:** Approved
-
-Margins will use a **controlled hybrid asset pipeline**:
+**Approved:** Use a controlled hybrid pipeline:
 
 - prefer self-created, properly licensed, open-source, Creative Commons, or affordable commercial assets;
 - use generative AI extensively for concepts, references, drafts, variations, automation, and bounded production;
-- permit generated material in the shipped game only when provenance and tool terms are documented;
+- ship generated material only when provenance and tool terms are documented;
 - require human review and intentional acceptance for every shipped asset;
-- maintain an asset ledger covering source, license, attribution, modifications, and AI involvement;
-- quarantine or replace material whose ownership or usage rights cannot be established; and
-- avoid prompting for direct imitation of living artists or protected franchise styles.
+- maintain an asset ledger for source, license, attribution, modifications, and AI involvement;
+- quarantine or replace unclear material;
+- avoid direct imitation of living artists or protected franchise styles.
 
-**Boundary:** Acceptance remains asset-class-specific. No generated texture, model, voice, music, dialogue, marketing asset, or other class is automatically approved for shipping.
+**Boundary:** No asset class is automatically approved for generated final content.
 
 ## FD-030 — Core assistant-role architecture
 
-**Status:** Approved
-
-Margins begins with nine canonical assistant roles:
+**Approved:** Begin with nine canonical roles:
 
 1. Creative Director Assistant;
 2. Producer and Roadmap Assistant;
@@ -481,47 +340,46 @@ Margins begins with nine canonical assistant roles:
 5. Economy and Progression Designer Assistant;
 6. Business and Content Designer Assistant;
 7. UX and Player-Experience Designer Assistant;
-8. Art and Presentation Director Assistant; and
+8. Art and Presentation Director Assistant;
 9. Data, Validation, and QA Engineer Assistant.
 
-These remain combined roles for now:
+Keep these responsibilities combined for now:
 
 - gameplay systems and simulation architecture;
 - art and audio/presentation direction;
-- data/schema and validation/QA; and
+- data/schema and validation/QA;
 - business design and city/world commercial content.
 
-Roles are assumable operating lenses, not workflow skills or implementation authority. Implementation is performed through separately authorized tasks, skills, or coding workflows, with the project owner retaining final authority.
+Roles are operating lenses, not workflow skills or implementation authority. Implementation occurs through separately authorized tasks, skills, or coding workflows. The project owner retains final authority.
 
-**Boundary:** No additional permanent assistant role is approved merely because a specialty may eventually require expert review.
+**Boundary:** No additional permanent role is approved merely because later specialist review may be useful.
 
 ---
 
 ## Explicitly unresolved foundational items
 
-The following must not be guessed or treated as approved:
+Do not guess or treat as approved:
 
-- engine, language, rendering stack, and runtime architecture;
-- detailed technical budgets and performance targets;
+- engine, language, rendering stack, or architecture;
+- technical budgets and performance targets;
 - the second business category;
 - city name, map, district roster, and full content plan;
-- exact difficulty values, economy tuning, and progression thresholds;
-- exact M&A, rival-company, private-investment, and property-system milestone placement beyond stated commitments;
-- whether and when full driving is adopted;
-- public mod support, workshop integration, and compatibility guarantees;
-- public markets, IPOs, and stock trading;
-- detailed art bible, audio direction, animation standards, and asset budgets;
+- exact difficulty, economy, progression, M&A, rival-company, private-investment, or property tuning and milestone placement beyond the decisions above;
+- whether or when full driving is adopted;
+- public mod support or compatibility guarantees;
+- public markets, IPOs, or stock trading;
+- detailed art bible, audio direction, animation standards, or asset budgets;
 - exact accessibility feature scope;
-- release date, price, Early Access commitment, storefront, and marketing plan;
-- exact roadmap stages, schedules, estimates, and acceptance criteria; and
-- any post-1.0 expansion promise.
+- release date, price, Early Access commitment, storefront, or marketing plan;
+- roadmap stages, schedules, estimates, or acceptance criteria;
+- post-1.0 expansion promises.
 
-## Required synchronization
+## Required synchronization before roadmap authoring
 
-Before roadmap authoring treats pre-production as internally consistent, lower-authority working documents should be reviewed against this record. In particular:
+Lower-authority working documents remain stale in places:
 
-- the project brief still describes the direction as not locked;
-- the initial scope file still describes the first business as a convenience-store or gas-station candidate rather than the approved standalone convenience store; and
-- art, economy, content, technical-foundation, and commercial-strategy documents do not yet contain the approved decisions above.
+- the project brief still says the direction is not locked;
+- the initial scope file still treats the first business as a convenience-store or gas-station candidate;
+- art, economy, content, technical-foundation, and commercial-strategy documents do not yet contain these approved decisions.
 
-This synchronization work must preserve this decision record rather than reinterpret it.
+Synchronize those artifacts to this record before treating pre-production as fully aligned. Do not reinterpret this record during synchronization.
