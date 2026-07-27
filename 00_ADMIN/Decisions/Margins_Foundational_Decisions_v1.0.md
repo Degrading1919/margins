@@ -24,7 +24,7 @@
 
 **Status:** Approved
 
-Margins will use a **hybrid development model**: build and release a deliberately bounded solo-developed game, then expand through updates, revenue, contractors, collaborators, or a larger team only when justified.
+Margins will use a **hybrid development model**: build and release a deliberately bounded solo-developed game, then expand through updates, revenue, collaborators, or a sequel only when justified.
 
 Current production constraints:
 
@@ -35,7 +35,7 @@ Current production constraints:
 - the first objective is a playable vertical slice; and
 - commercial release is the end goal.
 
-**Boundary:** No console version, release date, external funding, contractor budget, or team expansion is committed.
+**Boundary:** No console version, release date, external funding, contractor budget, team expansion, or sequel is committed.
 
 ## FD-002 — Primary product identity
 
@@ -70,19 +70,20 @@ Margins will use a **layered simulation model**:
 
 The vertical slice will use a **standalone convenience store** as its one complete business category.
 
-It must prove the shared foundation for:
+It must prove the approved first-playable foundation for:
 
-- receiving and inventory;
-- shelves, coolers, checkout, cleaning, and maintenance;
-- pricing, product mix, demand, shrinkage, and suppliers;
-- employee scheduling, task assignment, delegation, and management;
+- tactile first-person receiving, stocking, checkout or service, cleaning, and basic maintenance;
+- data-driven products and inventory;
+- pricing, customer demand, and satisfaction;
+- employee hiring, scheduling, task assignment, delegation, and a manager role;
 - interior layout and equipment placement;
-- at least two locations with different market conditions;
+- at least two locations with meaningfully different market conditions;
 - detailed simulation while the player is present;
-- aggregate off-site simulation while absent; and
-- location-level and portfolio-level reporting.
+- aggregate off-site simulation while absent;
+- location-level and portfolio-level reporting; and
+- saving and loading the layout and business state.
 
-**Boundary:** Fuel pumps and combined gas-station systems are deferred, not rejected.
+**Boundary:** Fuel pumps and combined gas-station systems are deferred, not rejected. Supplier depth, theft or shrinkage, and other convenience-store extensions require later scope and system decisions rather than being silently added by this record.
 
 ## FD-005 — City and world structure
 
@@ -102,12 +103,12 @@ The vertical slice begins with one compact commercial block.
 
 Margins will use **layered economic modes**, with **challenging but recoverable** as the intended default.
 
-Planned mode purposes:
+Four mode purposes are approved; their final names are not:
 
-- **Growth:** reduced pressure and softer failure;
-- **Standard:** challenging but recoverable;
-- **Hardcore:** tighter margins, stronger debt consequences, and fewer safety nets; and
-- **Sandbox:** unrestricted experimentation and construction.
+- a forgiving, growth-focused mode with reduced pressure and softer failure;
+- the intended challenging-but-recoverable default;
+- a harsher simulation mode with tighter margins, stronger debt consequences, and fewer safety nets; and
+- a sandbox mode for unrestricted experimentation and construction.
 
 Failure should usually emerge through visible, correctable problems. Recovery may involve downsizing, selling assets, refinancing, closing a location, changing operations, or returning to hands-on work before bankruptcy or restart becomes unavoidable.
 
@@ -193,7 +194,7 @@ Reference responsibilities:
 
 The game should use simplified, readable 3D models and characters with deliberate color, lighting, signage, silhouettes, and authored district identity. Functional spaces retain believable proportions and simulation clarity.
 
-Photorealism, generic asset-pack low poly, surreal grime, broad cartoon exaggeration, and deliberate retro-comic presentation are not targets.
+Photorealism and generic asset-pack low-poly presentation are not targets.
 
 **Boundary:** These references are influences, not replication targets. The exact art bible, character proportions, palettes, materials, shader approach, animation style, and technical budgets remain unresolved.
 
@@ -402,9 +403,9 @@ Margins will use **layered competitor simulation**:
 - competitors may improve, decline, close, relocate, or be replaced through bounded behavior or events; and
 - a limited number of recognizable rival brands may later expand and react.
 
-The long-term destination is a **Coffee Inc–style competition system** capable of supporting mergers, acquisitions, divestitures, consolidation, and changing market share.
+The long-term destination is a **Coffee Inc–style competition system** capable of supporting mergers, acquisitions, and changing market share.
 
-**Boundary:** The vertical slice requires understandable local competition, not deep autonomous company AI. Mergers and acquisitions are approved long-term direction, but their exact milestone is not yet committed.
+**Boundary:** The vertical slice requires understandable local competition, not deep autonomous company AI. Mergers and acquisitions are approved long-term direction, but their exact milestone and detailed transaction model are not yet committed.
 
 ## FD-026 — Corporate finance and ownership
 
