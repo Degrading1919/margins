@@ -61,7 +61,7 @@ The following are not part of the first playable commitment:
 - Drivable vehicles or full traffic simulation
 - Deep autonomous competitor-company AI
 - Mergers and acquisitions
-- Private-equity or strategic-investor systems
+- Private investors, strategic partners, or acquisition-financing systems
 - Public markets, IPOs, or stock trading
 - Full economic cycles
 - Public mod tools or Workshop integration
@@ -81,7 +81,7 @@ The following are approved directions or possibilities but require later milesto
 - At least two complete business categories for 1.0
 - Holding-company and headquarters progression
 - Layered competitor expansion and long-term Coffee Inc–style mergers and acquisitions
-- Commercial lending, mortgages, private investors, and acquisition financing
+- Commercial lending, mortgages, private investors, strategic partners, and acquisition financing
 - Map-based or transitional district travel, with driving adopted only if later prototypes justify it
 - Public mod support only after formats, persistence, and content tools stabilize
 - A public demo or controlled playtest followed by possible quality-gated Early Access
