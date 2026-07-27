@@ -29,7 +29,7 @@ The visual direction should favor:
 - modular characters, clothing, hair, buildings, props, products, fixtures, and commercial spaces;
 - clear visual differences among neglect, maintenance, renovation, prestige, crowding, and financial growth;
 - interaction readability in first-person play;
-- a production standard realistic for a solo developer with limited 3D-modeling experience and a pre-revenue budget below $1,000.
+- a production standard realistic for a solo developer operating under the approved pre-revenue budget.
 
 Photorealism and generic asset-pack low-poly presentation are not targets.
 
