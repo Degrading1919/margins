@@ -1,63 +1,132 @@
 # Margins Project Brief
 
-## Status
+## Status and authority
 
-Early pre-production concept. This direction is not yet a locked game-design specification.
+- **Status:** Current pre-production brief synchronized to `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md`
+- **Authority:** This brief summarizes approved direction but does not outrank the foundational decision record.
+- **Maturity:** Foundational direction is approved; detailed game design, technical architecture, tuning, schedules, and milestone acceptance criteria remain in development.
+
+## Production mandate
+
+Margins is planned as a deliberately bounded solo-developed PC game supported by extensive agentic AI workflows.
+
+Current constraints:
+
+- less than **$1,000** in pre-revenue development spending;
+- approximately **20–30 direct human development hours per week**;
+- a playable vertical slice as the first objective; and
+- a commercial premium single-player release as the end goal.
+
+Later expansion may occur through updates, revenue, collaborators, or a sequel only when justified. None of those expansion paths is presently committed.
 
 ## High concept
 
-A first-person business management and property-development simulator where players begin with one small storefront and gradually build a portfolio across a compact city. It combines tactile owner-operator work with deeper staffing, construction, delegation, franchising, and organizational management.
+A first-person business-management and property-development simulator in which the player begins with one small leased storefront, learns the business through tactile work, develops employees and managers, expands across a fictional contemporary American city, and ultimately controls a diversified business and commercial-property portfolio.
 
 ## Core fantasy
 
-Begin behind the counter. Learn the business by doing the work. Hire and train employees. Build repeatable systems. Acquire or construct new locations. Develop managers and headquarters staff. Eventually control a diversified business and real-estate portfolio from a penthouse office overlooking the city.
+Begin behind the counter. Learn the operation by doing the work. Build reliable procedures. Hire and develop employees. Delegate to managers. Open new locations under different market conditions. Acquire and improve commercial property. Eventually direct brands, properties, financing, and portfolio strategy from a headquarters the player has earned and shaped.
 
-## Directional inspirations
+## Core progression
 
-- The franchising, expansion, and portfolio concepts associated with *Coffee Inc.*
-- The construction, staffing, team, and delegation depth associated with *Software Inc.*
-- The immediacy and tactile satisfaction of first-person shop-management simulators
+**Operate → Systemize → Delegate → Expand → Develop → Control**
 
-## Player progression
+- **Early game:** tactile first-person operation and survival of the first location.
+- **Mid-game:** staffing, procedures, management, multi-location expansion, and remote oversight.
+- **Late game:** holding-company strategy, property development, corporate finance, competition, acquisitions, and legacy projects.
 
-1. Owner-operator
-2. Local operator
-3. Portfolio owner
-4. City developer
+Delegation must replace repetitive labor with larger decisions rather than remove gameplay. Later strategic systems must remain visibly connected to the physical businesses that taught the player how the company works.
 
-## Structural principle
+## Product identity and simulation depth
 
-Business types should share a common simulation foundation and differ through focused mechanics rather than becoming unrelated mini-games.
+Margins is a deliberate progression hybrid rather than exclusively a shop simulator, spreadsheet simulator, or construction game.
 
-Target guideline:
+The default experience should be approachable but meaningfully deep. Advanced optimization, reporting, automation controls, and harder difficulty may provide additional depth. Players should be able to understand why a business succeeds or fails without relying on outside guides.
 
-- Roughly 70% shared systems
-- Roughly 20% business-specific content and rules
-- No more than roughly 10% unique engineering per business type without explicit justification
+Complexity must create choices rather than clerical burden.
 
-## Shared foundation
+## Setting and presentation
 
-- Property and location
-- Customer demand and foot traffic
-- Staffing, scheduling, training, and management
-- Pricing, inventory, service capacity, and promotion
-- Cleanliness, maintenance, reputation, and satisfaction
-- Revenue, expenses, debt, and cash flow
-- Delegation and off-site simulation
-- Construction, furnishing, and repeatable layouts
+Margins takes place in one fictional, contemporary American city composed of expanding handcrafted districts built from reusable modules.
 
-## Candidate businesses
+The approved visual direction is **Stylized Contemporary Americana**:
 
-Convenience store, gas station, coffee shop, laundromat, card and hobby shop, arcade, and book or comic shop.
+- **Road 96** is the primary visual reference for stylized contemporary and roadside Americana;
+- **Schedule I** is the practical model and animation complexity reference; and
+- **Firewatch** is the reference for lighting, color, atmosphere, silhouettes, and environmental composition.
 
-## Construction direction
+The approved tone is grounded with light humor:
 
-One grid architecture should support internal modular city authoring, player furniture placement, interior remodeling, property construction, and franchise blueprints. Construction should be introduced progressively rather than attempting a complete multi-story builder before the business loop is proven.
+> The business is real; the people and brands have personality.
+
+Named references identify selected qualities only and are not replication targets.
+
+## Shared-system principle
+
+Business categories should feel distinct while sharing a reusable simulation foundation rather than becoming unrelated mini-games.
+
+The current planning guideline remains:
+
+- roughly 70% shared systems;
+- roughly 20% business-specific content and rules; and
+- no more than roughly 10% unique engineering per business category without explicit justification.
+
+The shared foundation includes property and location, customer demand, staffing and management, pricing and inventory, service capacity, maintenance, reputation, finance, delegation, off-site aggregate simulation, reporting, construction, and repeatable layouts.
 
 ## Vertical-slice objective
 
-Prove that it is fun to launch one business, perform its essential work, hire and delegate, appoint a manager, open a second location under different market conditions, simulate the first location while absent, and review both through combined portfolio reporting.
+The first playable proof is a **standalone convenience store** operating across at least two commercial locations with meaningfully different market conditions.
 
-## Endgame image
+The vertical slice must prove that it is enjoyable and understandable to:
 
-A player-designed or acquired headquarters with useful administrative departments and a penthouse office overlooking the city and the businesses the player owns.
+1. lease and prepare the first store;
+2. perform essential receiving, stocking, checkout or service, cleaning, and maintenance work;
+3. manage products, pricing, customers, and satisfaction;
+4. hire and schedule at least two worker roles;
+5. appoint a manager and delegate operations;
+6. open a second location;
+7. simulate the first location while absent;
+8. review both locations through location and portfolio reporting; and
+9. save and restore layouts and business state.
+
+Vertical-slice work should survive into the commercial product rather than be treated as disposable implementation.
+
+## Long-term company structure
+
+The long-term company fantasy is a holding-company hybrid that may include:
+
+- multiple locations under one brand;
+- multiple distinct business brands;
+- standardized or franchised formats;
+- owned commercial properties containing player-operated businesses or outside tenants; and
+- a headquarters coordinating the portfolio.
+
+The 1.0 minimum targets at least two complete business categories, property ownership and development, and the core holding-company progression. The second category will be selected only after the convenience-store vertical slice is validated.
+
+## Commercial path
+
+The approved release path is:
+
+**Internal vertical slice → public demo or controlled playtest → evidence-driven stabilization → possible quality-gated Early Access → complete premium release**
+
+Early Access is optional rather than guaranteed. Release date, price, storefront, and marketing plan remain unresolved.
+
+## Explicitly unresolved
+
+This brief does not select or define:
+
+- engine, language, rendering stack, or runtime architecture;
+- exact economy, progression, difficulty, or balance values;
+- the second business category;
+- city name, map, district roster, or full content plan;
+- exact property-construction depth;
+- whether full driving is ultimately adopted;
+- detailed rival-company or acquisition implementation;
+- public markets, IPOs, or stock trading;
+- public mod support or compatibility guarantees;
+- detailed art bible, audio direction, animation standards, or technical budgets;
+- accessibility feature scope;
+- roadmap stages, schedules, or acceptance criteria; or
+- any post-1.0 expansion promise.
+
+Use `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md` whenever more precise status or boundary language is required.
