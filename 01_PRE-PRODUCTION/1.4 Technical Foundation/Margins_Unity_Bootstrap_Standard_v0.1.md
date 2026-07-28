@@ -75,10 +75,10 @@ Do not create per-system assemblies, package-style modules, dependency-injection
 
 Selected for the first spike:
 
-- Universal Render Pipeline: editor-matched Unity 6.3 package lane;
+- Universal Render Pipeline: editor-matched Unity 6.5 package lane;
 - Input System: `1.20.0`;
 - AI Navigation: `2.0.14`;
-- Unity Test Framework: editor-matched Unity 6.3 package lane.
+- Unity Test Framework: editor-matched Unity 6.5 package lane.
 
 Rules:
 
@@ -88,7 +88,7 @@ Rules:
 - Do not silently change package versions after project creation.
 - If a named package version is unavailable or incompatible, stop and report the blocker instead of selecting an unapproved substitute.
 - No paid packages, Asset Store packages, cloud services, analytics, ads, multiplayer, DOTS/ECS, or third-party gameplay frameworks.
-- No package update beyond the selected Unity `6000.3.x` compatible release without release-note review.
+- No package update beyond the selected Unity `6000.5.x` compatible release without release-note review and a clean open, Play Mode, test, and build check.
 
 ## Code Minimization Standard
 
