@@ -1,0 +1,8 @@
+{
+  "name": "Margins.Runtime",
+  "rootNamespace": "Margins",
+  "references": [
+    "Unity.InputSystem"
+  ],
+  "autoReferenced": true
+}
