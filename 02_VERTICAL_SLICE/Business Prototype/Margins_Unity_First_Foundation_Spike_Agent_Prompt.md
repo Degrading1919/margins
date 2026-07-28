@@ -29,15 +29,15 @@ Treat Unity as the approved engine. Do not reopen engine selection and do not co
 
 Use:
 
-- the latest project-owner-approved Unity 6.3 LTS patch (`6000.3.x`) available at execution time;
+- the latest project-owner-approved Unity 6.5 Supported patch (`6000.5.x`) available at execution time;
 - Universal Render Pipeline;
 - C# as the default implementation language;
 - editor-authored scenes, prefabs, components, and ScriptableObjects where appropriate;
 - no Visual Scripting for spike behavior;
 - Input System `1.20.0`;
 - AI Navigation `2.0.14`;
-- Universal Render Pipeline at the editor-matched Unity 6.3 package lane;
-- Unity Test Framework at the editor-matched Unity 6.3 package lane;
+- Universal Render Pipeline at the editor-matched Unity 6.5 package lane;
+- Unity Test Framework at the editor-matched Unity 6.5 package lane;
 - Windows desktop x64 development build target;
 - Unity project path `CODE/Unity/Margins`;
 - root namespace `Margins`;
