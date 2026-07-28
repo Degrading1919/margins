@@ -24,8 +24,8 @@ Implement only:
 
 ## Prerequisites
 
-- Project owner approves Unity 6.3 LTS, URP, package baseline, project location, and Windows x64 development build target.
-- Unity Hub and Unity 6.3 LTS editor are available locally.
+- Project owner approves Unity 6.5 Supported, URP, package baseline, project location, and Windows x64 development build target.
+- Unity Hub and Unity 6.5 Supported editor are available locally.
 - Project owner confirms the applicable Unity Personal case and confirms the relevant Unity-defined finances remain below the Unity Personal threshold before relying on Unity Personal.
 - Git LFS is installed before adding binary production assets; the spike may use primitive placeholders without binary source assets.
 
@@ -165,7 +165,7 @@ After technical acceptance, the coding agent must report measured setup, impleme
 
 ## Manual Validation Steps
 
-1. Open `CODE/Unity/Margins` in Unity 6.3 LTS.
+1. Open `CODE/Unity/Margins` in Unity 6.5 Supported.
 2. Open the first foundation spike scene.
 3. Enter Play Mode.
 4. Move and look around the graybox room.
@@ -205,7 +205,7 @@ The coding-agent PR must include:
 
 Stop and report instead of expanding scope when:
 
-- Unity 6.3 LTS cannot be installed or licensed;
+- Unity 6.5 Supported cannot be installed or licensed;
 - URP project creation fails repeatedly;
 - selected packages cannot be installed in a clean project;
 - first-person movement, snapping, save/reload, or build cannot be proven without adding a broad framework;
