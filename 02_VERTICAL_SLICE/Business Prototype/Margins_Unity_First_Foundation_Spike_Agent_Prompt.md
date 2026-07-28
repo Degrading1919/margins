@@ -29,7 +29,7 @@ Treat Unity as the approved engine. Do not reopen engine selection and do not co
 
 Use:
 
-- the latest project-owner-approved Unity 6.5 Supported patch (`6000.5.x`) available at execution time;
+- the latest stable project-owner-approved Unity 6.5 Supported patch (`6000.5.x`) available at execution time;
 - Universal Render Pipeline;
 - C# as the default implementation language;
 - editor-authored scenes, prefabs, components, and ScriptableObjects where appropriate;
@@ -45,7 +45,9 @@ Use:
 
 Record the exact Unity editor patch in `CODE/Unity/Margins/ProjectSettings/ProjectVersion.txt` and in the PR body. Record resolved package versions from `CODE/Unity/Margins/Packages/manifest.json` and `CODE/Unity/Margins/Packages/packages-lock.json`.
 
-If any baseline item or named package version cannot be applied locally, stop, explain the blocker, and do not replace it with an unapproved package, package version, or architecture. Do not silently change package versions after project creation.
+Do not update Unity or its packages automatically after project creation. Any editor patch or Update migration requires release-note review and clean project-open, Play Mode, test, and build checks.
+
+If any baseline item or named package version cannot be applied locally, stop, explain the blocker, and do not replace it with an unapproved package, package version, or architecture.
 
 ## Implementation Scope
 
