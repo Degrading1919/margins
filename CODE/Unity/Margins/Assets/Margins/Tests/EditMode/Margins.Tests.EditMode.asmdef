@@ -1,0 +1,13 @@
+{
+  "name": "Margins.Tests.EditMode",
+  "rootNamespace": "Margins.Tests",
+  "references": [
+    "Margins.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

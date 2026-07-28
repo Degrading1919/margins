@@ -1,0 +1,10 @@
+{
+  "name": "Margins.Tests.PlayMode",
+  "rootNamespace": "Margins.Tests",
+  "references": [
+    "Margins.Runtime"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
