@@ -24,8 +24,9 @@ Implement only:
 
 ## Prerequisites
 
-- Project owner approves Unity 6.5 Supported, URP, package baseline, project location, and Windows x64 development build target.
-- Unity Hub and Unity 6.5 Supported editor are available locally.
+- Project owner approves Unity 6.5 Supported (`6000.5.x`), URP, package baseline, project location, and Windows x64 development build target.
+- Unity Hub and the latest stable project-owner-approved `6000.5.x` patch available at execution time are available locally.
+- The exact editor patch must be recorded in `CODE/Unity/Margins/ProjectSettings/ProjectVersion.txt` and in the implementation PR body.
 - Project owner confirms the applicable Unity Personal case and confirms the relevant Unity-defined finances remain below the Unity Personal threshold before relying on Unity Personal.
 - Git LFS is installed before adding binary production assets; the spike may use primitive placeholders without binary source assets.
 
@@ -191,7 +192,7 @@ Required checks:
 
 The coding-agent PR must include:
 
-- Unity editor version and packages actually used;
+- exact Unity editor patch matching `ProjectVersion.txt` and packages actually resolved from `manifest.json` and `packages-lock.json`;
 - project path;
 - scene path;
 - test results or unrun-test explanation;
