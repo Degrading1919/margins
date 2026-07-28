@@ -1,0 +1,7 @@
+status,product_id,display_name,category,unit_form,case_units,shelf_compatibility,wholesale_unit_cost_min_cents,wholesale_unit_cost_max_cents,retail_price_min_cents,retail_price_max_cents,target_gross_margin_min_percent,target_gross_margin_max_percent,scope_note
+Proposed for project-owner review,prod-water-still-500ml,Still Water 500 mL,cold_beverage,plastic_bottle,12,shelf-small,45,70,99,149,30,55,Nonperishable validation product
+Proposed for project-owner review,prod-cola-can-355ml,Cola Can 355 mL,cold_beverage,aluminum_can,12,shelf-small,55,85,129,179,30,55,Original fictional packaging required
+Proposed for project-owner review,prod-potato-chips-small,Potato Chips Small,salty_snack,flexible_bag,8,shelf-small,60,95,149,219,35,55,Distinct soft-bag silhouette
+Proposed for project-owner review,prod-chocolate-bar-standard,Chocolate Bar Standard,candy,wrapped_bar,12,shelf-small,50,85,129,199,35,60,No temperature or spoilage simulation
+Proposed for project-owner review,prod-canned-soup-standard,Canned Soup Standard,grocery,metal_can,6,shelf-small,95,145,199,299,30,55,Adds grocery category and can silhouette
+Proposed for project-owner review,prod-paper-towels-single,Paper Towels Single Roll,household,wrapped_roll,4,shelf-medium,175,250,349,499,28,50,Tests a larger footprint without bulk packs
