@@ -2,11 +2,12 @@
 
 ## Status and Authority
 
-- **Status:** Proposed technical baseline for project-owner review.
-- **Primary authority:** `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md`.
+- **Status:** Approved technical baseline for the first Unity foundation spike.
+- **Primary authority:** `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md`.
+- **Supporting authority:** `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md`.
 - **Role lens:** Technical Architect Assistant, with Producer and Roadmap Assistant as a secondary scope lens.
-- **Approved:** Unity is the production engine for Margins.
-- **Not approved by this file:** exact editor patch, render pipeline, packages, folder structure, save approach, testing conventions, target hardware, paid dependencies, or production architecture beyond the first spike.
+- **Approved by:** Project owner on July 27, 2026.
+- **Scope boundary:** This approval does not establish production architecture beyond the first spike.
 
 ## Recommended Baseline
 
@@ -75,11 +76,8 @@ Do not define full inventory, economy, supplier, price, spoilage, theft, custome
 | Smart Merge | UnityYAMLMerge can semantically merge scene and prefab files and Unity documents Git configuration through a local mergetool workflow. | https://docs.unity3d.com/6000.5/Documentation/Manual/SmartMerge.html |
 | Licensing and desktop | Unity Personal eligibility depends on the applicable Unity-defined case. For an individual developing their own first-party project and not providing Unity-related services to a third party, Unity's terms measure the amount generated in connection with that individual's Unity Software use rather than unrelated personal employment income. Legal entities, organizations, and individuals or entities providing Unity-related development services to third parties are measured under their applicable Unity terms. Unity 6.5 desktop player supports Windows 10 21H1 or newer with DX10/DX11/DX12/Vulkan-capable GPU. This is not legal advice. | https://unity.com/legal/editor-terms-of-service/software; https://docs.unity3d.com/6000.5/Documentation/Manual/system-requirements.html |
 
-## Unresolved Owner Choices
+## Remaining Execution Conditions
 
-- Confirm the project is being developed in the applicable individual first-party capacity or identify the applicable legal-entity/service-provider case before project creation.
-- Confirm the relevant Unity-defined finances remain below the Unity Personal threshold before relying on Unity Personal.
-- Approve Unity 6.5 Supported and URP as the project baseline.
-- Approve `CODE/Unity/Margins` as the Unity project location.
-- Confirm Windows x64 as the first build target.
-- Decide later whether any UI framework is needed after the tactile spike.
+- Confirm the applicable Unity Personal case and relevant Unity-defined finances before relying on Unity Personal.
+- Record the exact installed `6000.5.x` patch and resolved package versions in the implementation pull request.
+- Decide whether any runtime UI framework is needed only after the tactile spike demonstrates a requirement.
