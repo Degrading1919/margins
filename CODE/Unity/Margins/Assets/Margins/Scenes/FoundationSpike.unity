@@ -1193,7 +1193,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Margins.Runtime::Margins.PlacementSaveController
   productDefinitions:
-  - {fileID: 0}
+  - {fileID: 11400000, guid: 7b34b39358434074494eea1a4c3815e1, type: 2}
   fixtures:
   - {fileID: 992549569}
   sceneProducts:
@@ -2004,7 +2004,7 @@ NavMeshAgent:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1967765241}
-  m_Enabled: 1
+  m_Enabled: 0
   m_AgentTypeID: 0
   m_Radius: 0.35
   m_Speed: 2.2

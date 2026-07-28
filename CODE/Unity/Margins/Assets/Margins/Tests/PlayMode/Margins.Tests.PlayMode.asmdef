@@ -2,7 +2,9 @@
   "name": "Margins.Tests.PlayMode",
   "rootNamespace": "Margins.Tests",
   "references": [
-    "Margins.Runtime"
+    "Margins.Runtime",
+    "Unity.InputSystem",
+    "Unity.InputSystem.TestFramework"
   ],
   "optionalUnityReferences": [
     "TestAssemblies"

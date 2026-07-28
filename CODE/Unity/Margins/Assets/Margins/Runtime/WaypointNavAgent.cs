@@ -27,6 +27,10 @@ namespace Margins
 
         private void Start()
         {
+            if (navMeshAgent != null && !navMeshAgent.enabled)
+            {
+                navMeshAgent.enabled = true;
+            }
             SetTarget(pointB);
         }
 
