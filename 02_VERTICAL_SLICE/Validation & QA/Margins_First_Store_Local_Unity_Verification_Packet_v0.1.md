@@ -22,7 +22,7 @@ Record every result in
 | 1 | #13 | `agent/define-first-store-vertical-slice-package` | `main` | Proposed design, tuning, content, acceptance scenarios, integration review |
 | 2 | #14 | `agent/implement-first-store-domain-foundation` | `agent/define-first-store-vertical-slice-package` | Engine-light domain rules, snapshot contract, authored domain tests |
 | 3 | #15 | `agent/implement-first-store-unity-adapters` | `agent/implement-first-store-domain-foundation` | Explicit Unity-facing adapters and authored adapter tests |
-| 4 | final validation PR | `agent/prepare-first-store-local-validation` | `agent/implement-first-store-unity-adapters` | This local execution and evidence packet |
+| 4 | #16 | `agent/prepare-first-store-local-validation` | `agent/implement-first-store-unity-adapters` | This local execution and evidence packet |
 
 Fetch all four branch refs, check out
 `agent/prepare-first-store-local-validation`, pull with fast-forward only, and record
@@ -182,8 +182,8 @@ required local evidence has a final recommendation.
    additive snapshot disposition, and authored-test coverage.
 3. Review PR #15 against Tasks 1 and 2. Confirm explicit references, physical/domain
    boundaries, and all Unity-unverified concerns.
-4. Review the final validation PR and this packet.
-5. Execute the complete 18-step sequence at the final validation PR head.
+4. Review PR #16 and this packet.
+5. Execute the complete 18-step sequence at the PR #16 head.
 6. Resolve blocker and major defects in their owning branches, refresh descendant
    branches, and repeat affected review and verification.
 7. Record exactly one final recommendation: **continue**, **adjust**, or **stop**.
@@ -195,8 +195,8 @@ required local evidence has a final recommendation.
    then merge PR #14.
 3. Confirm PR #15 now targets or is retargeted to `main`; compare its new base/head,
    then merge PR #15.
-4. Confirm the final validation PR now targets or is retargeted to `main`; compare
-   its new base/head, then merge it last.
+4. Confirm PR #16 now targets or is retargeted to `main`; compare its new
+   base/head, then merge it last.
 5. After every merge, confirm `main` contains the intended commit and that the next
    PR contains only its own layer. Stop on an unexpected diff or conflict.
 
@@ -215,4 +215,3 @@ Stop and record evidence if any of the following occurs:
 - Restore partially mutates accepted state after rejecting a snapshot.
 - Physical shelf occupancy disagrees with authoritative inventory after restore.
 - The Windows build fails to launch or `Player.log` contains an unresolved blocker.
-
