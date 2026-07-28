@@ -82,13 +82,13 @@ Selected for the first spike:
 
 Rules:
 
+- Create the project with the latest stable project-owner-approved Unity 6.5 Supported (`6000.5.x`) patch available at execution time. Record the exact patch from `CODE/Unity/Margins/ProjectSettings/ProjectVersion.txt` in the implementation PR body.
 - Add no other package during this spike. If a first-spike acceptance criterion cannot be met with the selected baseline, stop and request owner approval before changing packages.
 - Record any owner-approved package change in the PR body with exact reason and approval status.
 - Record resolved package versions from `CODE/Unity/Margins/Packages/manifest.json` and `CODE/Unity/Margins/Packages/packages-lock.json` in the implementation PR body.
-- Do not silently change package versions after project creation.
+- Do not update the Unity editor or packages automatically after project creation. Any editor patch or Update migration requires release-note review and clean project-open, Play Mode, test, and build checks.
 - If a named package version is unavailable or incompatible, stop and report the blocker instead of selecting an unapproved substitute.
 - No paid packages, Asset Store packages, cloud services, analytics, ads, multiplayer, DOTS/ECS, or third-party gameplay frameworks.
-- No package update beyond the selected Unity `6000.5.x` compatible release without release-note review and a clean open, Play Mode, test, and build check.
 
 ## Code Minimization Standard
 
