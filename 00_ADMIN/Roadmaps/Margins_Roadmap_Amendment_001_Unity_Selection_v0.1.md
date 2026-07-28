@@ -4,7 +4,7 @@
 
 - **Status:** Current amendment to `Margins_Master_Roadmap_v0.1.md`
 - **Effective date:** July 27, 2026
-- **Authority:** Applies `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` to the proposed roadmap baseline.
+- **Authority:** Applies `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` and `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md` to the proposed roadmap baseline.
 - **Scope:** This amendment changes the engine-selection path only. It does not approve a new full-project schedule.
 
 ## Reason for amendment
@@ -29,7 +29,7 @@ The research package remains historical evidence, but its comparison plan is not
 
 ### Amended Stage 1 — Unity decision and repository synchronization
 
-**Status:** In progress through this amendment change set
+**Status:** Complete
 
 Exit evidence:
 
@@ -40,23 +40,23 @@ Exit evidence:
 
 ### Amended Stage 2 — Unity technical baseline
 
+**Status:** Complete
+
 **Computer access required:** No
 
-Define and approve only the decisions required to create a clean durable Unity project:
+Approved outputs:
 
-- Unity editor version and support lane;
-- rendering pipeline;
-- scripting and visual-scripting boundary;
-- input, navigation, UI, and testing packages;
-- data, validation, and save approach for the first spike;
-- source-control and large-file rules;
-- folders, assemblies, namespaces, and dependency policy;
-- agent-assisted implementation and review rules;
-- provisional desktop build target.
+- `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md`;
+- `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Technical_Baseline_v0.1.md`;
+- `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Bootstrap_Standard_v0.1.md`;
+- `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_v0.1.md`; and
+- `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_Agent_Prompt.md`.
 
-This stage should produce one compact decision record and one implementation-ready bootstrap prompt. It must not become a general architecture specification for the full game.
+This stage approves only the decisions required to create and evaluate the first clean Unity project. It does not establish full production architecture.
 
 ### Amended Stage 3 — Unity foundation spike
+
+**Status:** Ready after required local installation and licensing confirmation
 
 **Computer access required:** Yes
 
@@ -93,7 +93,7 @@ Do not issue another full-project forecast until the Unity foundation spike prov
 
 The next useful timing evidence is:
 
-- hours to approve the Unity baseline;
+- hours to install and verify the Unity baseline;
 - hours to create and commit the project;
 - hours to achieve the first snapped product;
 - hours to save and restore it;
@@ -104,4 +104,4 @@ Use those measurements to replace speculation with project-specific velocity.
 
 ## Immediate next task
 
-While computer access is unavailable, complete the Unity technical baseline and the exact bootstrap prompt. When computer access returns, execute that prompt and measure the result.
+Complete the local Unity 6.5 Supported installation, confirm the applicable Unity licensing case, then execute `Margins_Unity_First_Foundation_Spike_Agent_Prompt.md` from current `main` and measure the result.

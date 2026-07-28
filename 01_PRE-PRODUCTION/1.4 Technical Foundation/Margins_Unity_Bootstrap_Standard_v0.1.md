@@ -2,8 +2,8 @@
 
 ## Status
 
-- **Status:** Proposed bootstrap standard for the first Unity project.
-- **Authority boundary:** Implements the approved Unity engine decision without recording lower-level choices as approved.
+- **Status:** Approved bootstrap standard for the first Unity foundation spike.
+- **Primary authority:** `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md`.
 - **Purpose:** Make the first Unity coding session reproducible, reviewable, and small.
 
 ## Repository Location
