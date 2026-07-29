@@ -172,7 +172,6 @@ namespace Margins
                 operatingController.IsFixtureModificationRestricted(
                     fixture.StableFixtureInstanceId))
             {
-                fixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
                 return FixturePlacementResult.Reject(
                     FixturePlacementFailure.OperatingStateRestricted,
                     fixture.StableFixtureInstanceId);
@@ -180,10 +179,10 @@ namespace Margins
 
             FixturePlacementResult result =
                 Layout.TryRemove(fixture.StableFixtureInstanceId);
-            fixture.SetPreviewState(
-                result.IsSuccess
-                    ? FixturePlacementPreviewState.None
-                    : FixturePlacementPreviewState.Invalid);
+            if (result.IsSuccess)
+            {
+                fixture.ClearPlacement();
+            }
             return result;
         }
 
@@ -228,6 +227,11 @@ namespace Margins
             if (!CanApplyRestoredLayout(restored, out error))
             {
                 return false;
+            }
+
+            foreach (PlaceableFixtureComponent fixture in fixturesById.Values)
+            {
+                fixture.ClearPlacement();
             }
 
             Layout = restored;

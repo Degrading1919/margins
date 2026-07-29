@@ -211,6 +211,93 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void FixtureRemovalClearsDomainAndPresentationAndAllowsReplacement()
+        {
+            PlaceableFixtureComponent fixture =
+                CreatePlaceableFixture("fixture-removable-01", 2, 1);
+            FixturePlacementController controller =
+                CreateFixtureController(fixture);
+
+            Assert.That(
+                controller.TryPlace(fixture, new GridPosition(1, 1), 0).IsSuccess,
+                Is.True);
+            Assert.That(controller.IsPlaced(fixture.StableFixtureInstanceId), Is.True);
+            Assert.That(fixture.gameObject.activeSelf, Is.True);
+
+            Assert.That(controller.TryRemove(fixture).IsSuccess, Is.True);
+            Assert.That(controller.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
+            Assert.That(controller.PlacedCount, Is.Zero);
+            Assert.That(fixture.gameObject.activeSelf, Is.False);
+
+            Assert.That(
+                controller.TryPlace(fixture, new GridPosition(1, 1), 1).IsSuccess,
+                Is.True);
+            Assert.That(controller.IsPlaced(fixture.StableFixtureInstanceId), Is.True);
+            Assert.That(controller.PlacedCount, Is.EqualTo(1));
+            Assert.That(fixture.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void RestoreOmittingCurrentlyPlacedFixtureLeavesItUnplaced()
+        {
+            PlaceableFixtureComponent fixture =
+                CreatePlaceableFixture("fixture-omitted-01", 2, 1);
+            FixturePlacementController controller =
+                CreateFixtureController(fixture);
+            Assert.That(
+                controller.TryPlace(fixture, new GridPosition(1, 1), 0).IsSuccess,
+                Is.True);
+
+            FixtureLayout restored = new(8, 8);
+            Assert.That(
+                controller.TryApplyRestoredLayout(restored, out string error),
+                Is.True,
+                error);
+
+            Assert.That(controller.PlacedCount, Is.Zero);
+            Assert.That(controller.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
+            Assert.That(fixture.gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void RestoreResetsAllFixturesAndAppliesIncludedFixture()
+        {
+            PlaceableFixtureComponent included =
+                CreatePlaceableFixture("fixture-included-01", 2, 1);
+            PlaceableFixtureComponent omitted =
+                CreatePlaceableFixture("fixture-omitted-02", 1, 1);
+            FixturePlacementController controller =
+                CreateFixtureController(included, omitted);
+            Assert.That(
+                controller.TryPlace(included, new GridPosition(1, 1), 0).IsSuccess,
+                Is.True);
+            Assert.That(
+                controller.TryPlace(omitted, new GridPosition(4, 1), 0).IsSuccess,
+                Is.True);
+
+            FixtureLayout restored = new(8, 8);
+            Assert.That(
+                restored.TryPlace(
+                    included.StableFixtureInstanceId,
+                    new GridPosition(2, 3),
+                    included.Footprint,
+                    1).IsSuccess,
+                Is.True);
+            Assert.That(
+                controller.TryApplyRestoredLayout(restored, out string error),
+                Is.True,
+                error);
+
+            Assert.That(controller.PlacedCount, Is.EqualTo(1));
+            Assert.That(controller.IsPlaced(included.StableFixtureInstanceId), Is.True);
+            Assert.That(included.gameObject.activeSelf, Is.True);
+            Assert.That(controller.IsPlaced(omitted.StableFixtureInstanceId), Is.False);
+            Assert.That(omitted.gameObject.activeSelf, Is.False);
+            Assert.That(included.transform.position, Is.EqualTo(new Vector3(1.25f, 0f, 2f)));
+            Assert.That(included.transform.rotation.eulerAngles.y, Is.EqualTo(90f).Within(0.01f));
+        }
+
+        [Test]
         public void ClosingDerivesGrossCogsExpensesContributionAndCounts()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 1);
@@ -757,16 +844,32 @@ namespace Margins.Tests
 
         private static void AssertRestrictedFixtureChanges(AdapterRig rig)
         {
+            Vector3 priorPosition = rig.PlaceableFixture.transform.position;
+            Quaternion priorRotation = rig.PlaceableFixture.transform.rotation;
+            FixturePlacementPreviewState priorPreview = rig.PlaceableFixture.PreviewState;
+            int priorPlacedCount = rig.FixturePlacement.PlacedCount;
+
+            Assert.That(
+                rig.FixturePlacement.TryRemove(rig.PlaceableFixture).Failure,
+                Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
+            Assert.That(rig.FixturePlacement.IsPlaced("fixture-essential-01"), Is.True);
+            Assert.That(rig.FixturePlacement.PlacedCount, Is.EqualTo(priorPlacedCount));
+            Assert.That(rig.PlaceableFixture.gameObject.activeSelf, Is.True);
+            Assert.That(rig.PlaceableFixture.transform.position, Is.EqualTo(priorPosition));
+            Assert.That(rig.PlaceableFixture.transform.rotation, Is.EqualTo(priorRotation));
+            Assert.That(rig.PlaceableFixture.PreviewState, Is.EqualTo(priorPreview));
+
             Assert.That(
                 rig.FixturePlacement.TryMove(
                     rig.PlaceableFixture,
                     new GridPosition(3, 3),
                     1).Failure,
                 Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
-            Assert.That(
-                rig.FixturePlacement.TryRemove(rig.PlaceableFixture).Failure,
-                Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
             Assert.That(rig.FixturePlacement.IsPlaced("fixture-essential-01"), Is.True);
+            Assert.That(rig.FixturePlacement.PlacedCount, Is.EqualTo(priorPlacedCount));
+            Assert.That(rig.PlaceableFixture.gameObject.activeSelf, Is.True);
+            Assert.That(rig.PlaceableFixture.transform.position, Is.EqualTo(priorPosition));
+            Assert.That(rig.PlaceableFixture.transform.rotation, Is.EqualTo(priorRotation));
         }
 
         private GameObject CreateGameObject(string objectName)

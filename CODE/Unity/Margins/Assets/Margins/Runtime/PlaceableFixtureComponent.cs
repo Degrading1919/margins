@@ -68,6 +68,7 @@ namespace Margins
             Transform gridOrigin,
             float cellSize)
         {
+            gameObject.SetActive(true);
             GridFootprint rotated = placement.RotatedFootprint;
             Vector3 localCenter = new(
                 (placement.gridPosition.x + rotated.width * 0.5f) * cellSize,
@@ -78,6 +79,12 @@ namespace Margins
                 gridOrigin.rotation *
                 Quaternion.Euler(0f, placement.quarterTurns * 90f, 0f));
             SetPreviewState(FixturePlacementPreviewState.None);
+        }
+
+        public void ClearPlacement()
+        {
+            SetPreviewState(FixturePlacementPreviewState.None);
+            gameObject.SetActive(false);
         }
     }
 }
