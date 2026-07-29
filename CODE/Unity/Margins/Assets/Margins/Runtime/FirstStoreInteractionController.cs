@@ -344,6 +344,12 @@ namespace Margins
             }
         }
 
+        public void ResetTransientStateAfterRestore()
+        {
+            fixturePlacementMode?.ResetTransientStateAfterRestore();
+            ClearFocus();
+        }
+
         private void ClearFocus()
         {
             HeldProduct?.ClearPlacementPreview();

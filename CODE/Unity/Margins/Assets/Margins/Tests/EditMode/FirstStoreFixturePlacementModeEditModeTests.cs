@@ -108,6 +108,32 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void RestoreResetDiscardsPreviewAndReappliesAuthoritativePlacement()
+        {
+            PlacementRig rig = CreateRig();
+            Assert.That(
+                rig.Controller.TryPlace(rig.Fixture, new GridPosition(1, 1), 1).IsSuccess,
+                Is.True);
+            Vector3 acceptedPosition = rig.Fixture.transform.position;
+            Quaternion acceptedRotation = rig.Fixture.transform.rotation;
+
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 3.2f), out error),
+                Is.True,
+                error);
+            Assert.That(rig.Fixture.transform.position, Is.Not.EqualTo(acceptedPosition));
+
+            rig.Mode.ResetTransientStateAfterRestore();
+
+            Assert.That(rig.Mode.IsActive, Is.False);
+            Assert.That(rig.Fixture.transform.position, Is.EqualTo(acceptedPosition));
+            Assert.That(rig.Fixture.transform.rotation, Is.EqualTo(acceptedRotation));
+            Assert.That(rig.Fixture.PreviewState, Is.EqualTo(FixturePlacementPreviewState.None));
+            Assert.That(rig.Mode.TryConfirm(out error), Is.False);
+        }
+
+        [Test]
         public void ConfirmCommitsOnlyThePreviewedPlacement()
         {
             PlacementRig rig = CreateRig();

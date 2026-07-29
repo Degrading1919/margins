@@ -121,6 +121,29 @@ namespace Margins.Tests
             Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(2));
         }
 
+        [Test]
+        public void RestoreResetDerivesFirstIncompleteBasketFromCompletedLedger()
+        {
+            CheckoutRig rig = CreateRig();
+            Begin(rig.Staged);
+            Scan(rig.Staged);
+            Scan(rig.Staged);
+            Scan(rig.Staged);
+            Assert.That(
+                rig.Staged.TryPrimary(out _, out CheckoutFailure failure, out string error),
+                Is.True,
+                error);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.None));
+            Assert.That(rig.Staged.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Replay));
+
+            rig.Staged.ResetTransientStateAfterRestore();
+
+            Assert.That(rig.Staged.CurrentBasketNumber, Is.EqualTo(2));
+            Assert.That(rig.Staged.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Begin));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Begin(rig.Staged);
+        }
+
         private static void Begin(StagedCheckoutInteractionComponent staged)
         {
             Assert.That(staged.TryPrimary(out _, out CheckoutFailure failure, out string error), Is.True, error);

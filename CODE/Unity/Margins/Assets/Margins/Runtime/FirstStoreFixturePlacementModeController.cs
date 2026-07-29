@@ -263,6 +263,28 @@ namespace Margins
             return true;
         }
 
+        public void ResetTransientStateAfterRestore()
+        {
+            if (activeFixture != null && fixturePlacement != null)
+            {
+                if (fixturePlacement.TryGetPlacement(
+                        activeFixture.StableFixtureInstanceId,
+                        out FixturePlacementSnapshot restoredPlacement))
+                {
+                    activeFixture.ApplyPlacement(
+                        restoredPlacement,
+                        fixturePlacement.GridOrigin,
+                        fixturePlacement.CellSize);
+                }
+                else
+                {
+                    activeFixture.ClearPlacement();
+                }
+            }
+
+            ClearSession();
+        }
+
         public bool TryRemove(PlaceableFixtureComponent fixture, out string error)
         {
             if (!TryValidateConfiguration(out error) || fixture == null)

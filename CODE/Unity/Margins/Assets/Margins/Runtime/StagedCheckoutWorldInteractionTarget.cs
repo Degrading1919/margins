@@ -149,6 +149,11 @@ namespace Margins
             return stagedCheckout.TryCorrect(out _, out error);
         }
 
+        public void ResetTransientStateAfterRestore()
+        {
+            replayAcknowledged = false;
+        }
+
         private bool CanUseCheckout(out string blocker)
         {
             if (operatingController == null || !operatingController.IsInitialized)

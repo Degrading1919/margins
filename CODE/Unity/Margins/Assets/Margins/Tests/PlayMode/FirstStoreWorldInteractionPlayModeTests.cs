@@ -90,6 +90,9 @@ namespace Margins.Tests
             ProductDefinition cola = FindProduct("prod-cola-can-355ml");
             int totalBefore = inventory.Inventory.GetTotalQuantity(cola.StableProductId);
 
+            Assert.That(colaTarget.IsAvailable, Is.True);
+            StringAssert.Contains("delivery sealed", colaTarget.Prompt.FormattedText);
+            StringAssert.Contains(cola.DisplayName, colaTarget.Prompt.FormattedText);
             Assert.That(colaTarget.TryPrimary(out string sealedError), Is.False);
             StringAssert.Contains("Open the delivery", sealedError);
             Assert.That(delivery.TryGetConfiguredProductRemaining(cola, out string name, out int remaining, out string error), Is.True, error);

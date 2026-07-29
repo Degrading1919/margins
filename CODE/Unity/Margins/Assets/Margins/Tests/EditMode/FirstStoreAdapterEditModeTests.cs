@@ -968,6 +968,23 @@ namespace Margins.Tests
             playerSerialized.FindProperty("cameraPivot").objectReferenceValue = cameraPivot;
             playerSerialized.ApplyModifiedPropertiesWithoutUndo();
 
+            FirstStoreFixturePlacementModeController fixturePlacementMode =
+                CreateGameObject("Persistence Fixture Placement Mode")
+                    .AddComponent<FirstStoreFixturePlacementModeController>();
+            FirstStoreInteractionController interactionController =
+                CreateGameObject("Persistence Interaction")
+                    .AddComponent<FirstStoreInteractionController>();
+            SerializedObject interactionSerialized = new(interactionController);
+            interactionSerialized.FindProperty("fixturePlacementMode").objectReferenceValue =
+                fixturePlacementMode;
+            interactionSerialized.ApplyModifiedPropertiesWithoutUndo();
+            StagedCheckoutInteractionComponent stagedCheckout =
+                CreateGameObject("Persistence Staged Checkout")
+                    .AddComponent<StagedCheckoutInteractionComponent>();
+            StagedCheckoutWorldInteractionTarget stagedCheckoutWorldTarget =
+                CreateGameObject("Persistence Staged Checkout Target")
+                    .AddComponent<StagedCheckoutWorldInteractionTarget>();
+
             FirstStoreDiskPersistenceController disk =
                 CreateGameObject("Disk Persistence")
                     .AddComponent<FirstStoreDiskPersistenceController>();
@@ -975,6 +992,12 @@ namespace Margins.Tests
             diskSerialized.FindProperty("persistenceMapper").objectReferenceValue = mapper;
             diskSerialized.FindProperty("firstPersonController").objectReferenceValue =
                 firstPerson;
+            diskSerialized.FindProperty("interactionController").objectReferenceValue =
+                interactionController;
+            diskSerialized.FindProperty("stagedCheckout").objectReferenceValue =
+                stagedCheckout;
+            diskSerialized.FindProperty("stagedCheckoutWorldTarget").objectReferenceValue =
+                stagedCheckoutWorldTarget;
             diskSerialized.FindProperty("saveFileName").stringValue =
                 "first-store-adapter-test.json";
             diskSerialized.ApplyModifiedPropertiesWithoutUndo();

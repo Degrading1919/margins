@@ -931,6 +931,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Margins.Runtime::Margins.FirstStoreDiskPersistenceController
   persistenceMapper: {fileID: 311586446}
   firstPersonController: {fileID: 33272900}
+  interactionController: {fileID: 33272902}
+  stagedCheckout: {fileID: 1595772827}
+  stagedCheckoutWorldTarget: {fileID: 1547846857}
   saveFileName: first-store-vertical-slice.json
 --- !u!4 &311586447
 Transform:

@@ -10,7 +10,7 @@ namespace Margins
 
         public string StableTargetId => stableTargetId;
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Delivery;
-        public bool IsAvailable => HasValidReference() && deliveryBox.IsOpen;
+        public bool IsAvailable => HasValidReference();
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get

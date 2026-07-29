@@ -281,6 +281,22 @@ namespace Margins
             return true;
         }
 
+        public void ResetTransientStateAfterRestore()
+        {
+            currentBasketIndex = 0;
+            sessionStarted = false;
+            scanHistory.Clear();
+            scannedQuantities = null;
+            firstBlocker = null;
+
+            while (baskets != null &&
+                   currentBasketIndex < baskets.Length &&
+                   TryGetCompletedSummary(baskets[currentBasketIndex], out _))
+            {
+                currentBasketIndex++;
+            }
+        }
+
         private bool TryPrepare(out string error)
         {
             if (!TryValidateConfiguration(out error))

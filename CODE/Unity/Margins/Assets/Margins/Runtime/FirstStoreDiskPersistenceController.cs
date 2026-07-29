@@ -77,6 +77,9 @@ namespace Margins
 
         [SerializeField] private FirstStorePersistenceMapperComponent persistenceMapper;
         [SerializeField] private FirstPersonController firstPersonController;
+        [SerializeField] private FirstStoreInteractionController interactionController;
+        [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StagedCheckoutWorldInteractionTarget stagedCheckoutWorldTarget;
         [SerializeField] private string saveFileName = "first-store-vertical-slice.json";
 
         public string LastDiagnostic { get; private set; } =
@@ -107,10 +110,14 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (persistenceMapper == null || firstPersonController == null)
+            if (persistenceMapper == null ||
+                firstPersonController == null ||
+                interactionController == null ||
+                stagedCheckout == null ||
+                stagedCheckoutWorldTarget == null)
             {
                 error =
-                    "First-store disk persistence requires explicit mapper and player references.";
+                    "First-store disk persistence requires explicit mapper, player, interaction, and staged-checkout references.";
                 return false;
             }
 
@@ -276,6 +283,10 @@ namespace Margins
 
                 return Reject($"Load rejected: {playerError}");
             }
+
+            stagedCheckout.ResetTransientStateAfterRestore();
+            stagedCheckoutWorldTarget.ResetTransientStateAfterRestore();
+            interactionController.ResetTransientStateAfterRestore();
 
             return Accept("Loaded first-store state from disk.");
         }
