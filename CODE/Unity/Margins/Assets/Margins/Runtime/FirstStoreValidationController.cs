@@ -13,12 +13,11 @@ namespace Margins
         [SerializeField] private StoreOperatingController store;
         [SerializeField] private FixturePlacementController fixturePlacement;
         [SerializeField] private PlaceableFixtureComponent essentialFixture;
-        [SerializeField] private FirstStorePersistenceMapperComponent persistence;
+        [SerializeField] private FirstStoreDiskPersistenceController diskPersistence;
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
         [SerializeField] private FirstPersonController firstPersonController;
 
-        private FirstStoreSnapshot capturedSnapshot;
         private int transactionOrdinal = 1;
         private string lastCompletedTransactionId;
         private string lastAction = "Validation scene ready.";
@@ -31,9 +30,10 @@ namespace Margins
         {
             string error = null;
             if (firstPersonController == null ||
+                diskPersistence == null ||
                 !delivery.TryInitialize(out error) ||
                 !store.TryInitialize(out error) ||
-                !persistence.TryValidateConfiguration(out error))
+                !diskPersistence.TryValidateConfiguration(out error))
             {
                 Record(
                     $"Initialization failed: " +
@@ -109,14 +109,6 @@ namespace Margins
             {
                 AttemptDuplicateTransaction();
             }
-            if (keyboard.f5Key.wasPressedThisFrame)
-            {
-                CaptureSnapshot();
-            }
-            if (keyboard.f9Key.wasPressedThisFrame)
-            {
-                RestoreSnapshot();
-            }
         }
 
         private void OnGUI()
@@ -136,7 +128,7 @@ namespace Margins
             GUILayout.Label("HUD shortcuts: 1 place fixture | 2 open delivery");
             GUILayout.Label("3/4 remove cola/chips | 5/6 pick cola/chips | 7 stock held");
             GUILayout.Label("8/9 sell cola/chips | D duplicate-ID attempt | C clean | O advance store");
-            GUILayout.Label("M move fixture | Backspace remove fixture | F5 capture | F9 restore");
+            GUILayout.Label("M move fixture | Backspace remove fixture | F5 save to disk | F9 load from disk");
             GUILayout.Space(5f);
             GUILayout.Label($"State: {store.State} | physical units: {stocking.PhysicalUnits.VisibleUnitCount}");
             GUILayout.Label(
@@ -155,7 +147,7 @@ namespace Margins
                     $"expenses ${totals.includedOperatingExpensesCents / 100f:0.00} | contribution ${totals.contributionAfterCostOfGoodsCents / 100f:0.00}");
             }
             GUILayout.Label($"Last: {lastAction}");
-            GUILayout.Label("F5/F9 remains the temporary in-memory snapshot until the disk-persistence layer.");
+            GUILayout.Label($"Persistence: {diskPersistence.LastDiagnostic}");
             GUILayout.EndArea();
 
             GUI.Box(
@@ -182,8 +174,8 @@ namespace Margins
             if (GUILayout.Button("Remove Fixture")) RemoveRequiredFixture();
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Capture Snapshot")) CaptureSnapshot();
-            if (GUILayout.Button("Restore Snapshot")) RestoreSnapshot();
+            if (GUILayout.Button("Save to Disk (F5)")) SaveToDisk();
+            if (GUILayout.Button("Load from Disk (F9)")) LoadFromDisk();
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
         }
@@ -237,25 +229,16 @@ namespace Margins
             Record($"Remove required fixture: {result.Failure}.");
         }
 
-        private void CaptureSnapshot()
+        private void SaveToDisk()
         {
-            bool success = persistence.TryCapture(
-                out capturedSnapshot,
-                out string error);
-            Record(
-                $"Capture temporary in-memory snapshot: " +
-                $"{success}, {error ?? "ok"}.");
+            bool success = diskPersistence.TrySave();
+            Record($"Disk save: {success}, {diskPersistence.LastDiagnostic}");
         }
 
-        private void RestoreSnapshot()
+        private void LoadFromDisk()
         {
-            string error = null;
-            bool success = capturedSnapshot != null &&
-                           persistence.TryRestore(capturedSnapshot, out error);
-            Record(
-                capturedSnapshot == null
-                    ? "Restore temporary snapshot: false, no capture exists."
-                    : $"Restore temporary snapshot: {success}, {error ?? "ok"}.");
+            bool success = diskPersistence.TryLoad();
+            Record($"Disk load: {success}, {diskPersistence.LastDiagnostic}");
         }
 
         private void RemoveDeliveryUnit(ProductDefinition product)

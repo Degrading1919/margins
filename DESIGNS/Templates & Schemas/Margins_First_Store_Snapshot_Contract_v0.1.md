@@ -2,11 +2,13 @@
 
 ## Status
 
-- **Status:** Proposed for project-owner review
-- **Implementation marker:** Draft implementation — local compilation, EditMode,
-  and PlayMode verification complete; manual build validation pending
-- **Contract version:** `1` inside the distinct first-store snapshot envelope
-- **Disposition:** Temporary vertical-slice snapshot and mapper target awaiting project-owner approval
+- **Status:** Owner-authorized temporary vertical-slice implementation
+- **Implementation marker:** Disk implementation and focused EditMode/PlayMode
+  verification complete; final integrated suites, build, and owner testing pending
+- **File-envelope version:** `1`
+- **First-store snapshot version:** `2`
+- **Disposition:** Reversible first-store validation implementation only; it is not
+  approval of the eventual production save architecture, migration policy, or slots
 
 ## Relationship to the foundation save
 
@@ -16,7 +18,25 @@ This contract is additive. It does not replace, rename, migrate, or silently rei
 - `PlacementSaveController.CurrentSaveVersion == 1`; or
 - `foundation-spike-save.json`.
 
-The existing foundation placement-save contract remains valid for its approved spike. A future owner-approved persistence decision may map foundation placements into the first-store envelope, keep both during development, or define a migration. This draft does not choose among those production options.
+The existing foundation placement-save contract remains valid for its approved
+spike. The first-store validation scene writes only the distinct file below and
+does not write the FoundationSpike sidecar for the same state. A future
+owner-approved production persistence decision may replace this temporary proof;
+this contract does not choose its migration or compatibility policy.
+
+## Temporary disk disposition
+
+- File: `Margins/first-store-vertical-slice.json` beneath
+  `Application.persistentDataPath`.
+- `F5` writes and `F9` loads in the first-store validation scene.
+- A same-directory temporary file is fully written and flushed before replacing
+  the accepted file. The prior accepted file remains available until replacement
+  succeeds.
+- Unsupported versions, malformed JSON, invalid identifiers, contradictory
+  totals, and invalid physical reconciliation reject before live-state mutation.
+- Saving is rejected while a product is held or a checkout is incomplete.
+- This proof has one file, no slots, migration tooling, cloud storage,
+  encryption, compression, or save-menu framework.
 
 ## Envelope
 
@@ -31,11 +51,13 @@ The first-store snapshot contains:
 - visible physical-unit identifiers, product/location references, and shelf
   fixture/snap placement when the unit is shelved;
 - the next deterministic physical-unit ordinal;
-- one bounded completed-transaction ledger with deterministic transaction-ID order;
+- one bounded completed-transaction ledger with deterministic transaction-ID
+  order and sale-time unit price and unit cost on every completed line;
 - store operating state, session identity, and end totals including gross sales,
   cost of goods sold, included operating expenses, contribution after COGS, units,
   and transaction count;
-- one bounded cleaning-task snapshot.
+- one bounded cleaning-task snapshot;
+- player world position, body yaw, and camera pitch.
 
 ## Invariants
 
@@ -47,16 +69,19 @@ The first-store snapshot contains:
 - Inventory restoration registers products and locations before seeding quantities.
 - Ledger restoration validates every transaction subtotal and unit total but never
   replays stock consumption.
-- Ledger totals are derived from its completed transactions.
+- Ledger totals are derived from its completed transactions. Historical COGS is
+  derived from each line's captured sale-time unit cost, never from later product
+  configuration.
 - Every domain unit in a loose, held, or shelf location has exactly one visible
   physical-unit record; delivery-container units remain represented by the box.
 - Physical-unit product/location counts must exactly match accepted inventory.
 - Held units restore to the explicit hold point. Shelved units restore only to
   configured product-specific shelf locations and snap points.
 - `closed_with_result_pending` requires totals that reconcile to the ledger and
-  configured product unit-cost inputs.
+  its captured sale-time unit costs.
 - Unsupported versions reject the snapshot without partial mutation.
-- Presentation state, prompts, target selection, materials, animations, and cached occupancy are excluded.
+- Player targeting, prompts, previews, development-HUD state, derived objective
+  text, presentation materials, animations, and cached occupancy are excluded.
 
 ## Restoration order
 
@@ -66,22 +91,24 @@ The first-store snapshot contains:
 4. Restore delivery containers against delivery-type inventory locations.
 5. Restore the bounded transaction ledger against known products without
    consuming inventory.
-6. Restore store operating state and validate totals against the ledger and
-   configured product unit costs.
+6. Restore store operating state and validate totals against the ledger's
+   captured sale-time product unit costs.
 7. Validate the optional cleaning task.
 8. Validate physical-unit counts and shelf placements against the accepted
    inventory without mutating the scene.
-9. Reconcile distinct Unity physical-unit objects only after the complete domain
-   restore succeeds.
+9. Validate player position, body yaw, and camera pitch.
+10. Reconcile distinct Unity physical-unit objects only after the complete domain
+    restore succeeds, then apply the validated player transform.
 
 ## Deferred decisions
 
-- JSON codec and file path for the first-store envelope
 - Production save-slot behavior
 - Migration from the foundation save
-- Atomic disk-write and backup strategy
-- Corruption recovery and player-facing messaging
+- Production atomic-write, backup-retention, corruption-recovery, and
+  player-facing messaging policies
 - Multi-location envelope and aggregate-simulation state
 - Compatibility guarantees
 
-No draft field becomes a production compatibility promise until the project owner approves the consuming schema and local Unity validation succeeds.
+No temporary field becomes a production compatibility promise. The eventual
+production envelope, migration policy, and compatibility guarantees remain
+separate owner decisions.

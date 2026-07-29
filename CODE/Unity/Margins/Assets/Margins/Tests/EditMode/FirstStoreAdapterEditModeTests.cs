@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -9,6 +10,7 @@ namespace Margins.Tests
     public sealed class FirstStoreAdapterEditModeTests
     {
         private readonly List<Object> createdObjects = new();
+        private readonly List<string> temporaryDirectories = new();
 
         [TearDown]
         public void TearDown()
@@ -21,6 +23,16 @@ namespace Margins.Tests
                 }
             }
             createdObjects.Clear();
+
+            for (int index = temporaryDirectories.Count - 1; index >= 0; index--)
+            {
+                string directory = temporaryDirectories[index];
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+            temporaryDirectories.Clear();
         }
 
         [Test]
@@ -572,6 +584,76 @@ namespace Margins.Tests
             Assert.That(rig.Inventory.Inventory.GetQuantity("loc-loose", "prod-cola"), Is.Zero);
         }
 
+        [Test]
+        [Category("FirstStoreDiskPersistence")]
+        public void DiskSaveRejectsHeldPhysicalUnitWithoutCreatingAcceptedFile()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out _,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Stocking.TryPickUpLooseUnit(rig.Cola, out _, out error),
+                Is.True,
+                error);
+
+            FirstStoreDiskPersistenceController disk =
+                CreateDiskPersistenceController(rig);
+            string acceptedPath = Path.Combine(CreateTemporaryDirectory(), "held.json");
+
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.False);
+            StringAssert.Contains("held product", disk.LastDiagnostic);
+            Assert.That(File.Exists(acceptedPath), Is.False);
+        }
+
+        [Test]
+        [Category("FirstStoreDiskPersistence")]
+        public void DiskSaveRejectsIncompleteCheckoutWithoutCreatingAcceptedFile()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            StockOne(rig, rig.Cola);
+            Assert.That(
+                rig.Checkout.TryBeginSession(
+                    "transaction-save-incomplete-001",
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(rig.Checkout.TryScan(rig.Cola, 1, out _), Is.True);
+
+            FirstStoreDiskPersistenceController disk =
+                CreateDiskPersistenceController(rig);
+            string acceptedPath = Path.Combine(CreateTemporaryDirectory(), "checkout.json");
+
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.False);
+            StringAssert.Contains("active checkout", disk.LastDiagnostic);
+            Assert.That(File.Exists(acceptedPath), Is.False);
+        }
+
+        [Test]
+        [Category("FirstStoreDiskPersistence")]
+        public void DiskSaveInterruptedWritePreservesPreviousAcceptedFileByteForByte()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            FirstStoreDiskPersistenceController disk =
+                CreateDiskPersistenceController(rig);
+            string acceptedPath = Path.Combine(CreateTemporaryDirectory(), "accepted.json");
+
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.True, disk.LastDiagnostic);
+            byte[] acceptedBytes = File.ReadAllBytes(acceptedPath);
+            Directory.CreateDirectory(acceptedPath + ".tmp");
+
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.False);
+            StringAssert.Contains("Save write failed", disk.LastDiagnostic);
+            CollectionAssert.AreEqual(acceptedBytes, File.ReadAllBytes(acceptedPath));
+        }
+
         private AdapterRig CreateAdapterRig(
             int colaBoxQuantity,
             int chipsBoxQuantity,
@@ -874,6 +956,32 @@ namespace Margins.Tests
             return mapper;
         }
 
+        private FirstStoreDiskPersistenceController CreateDiskPersistenceController(
+            AdapterRig rig)
+        {
+            FirstStorePersistenceMapperComponent mapper = CreatePersistenceMapper(rig);
+            FirstPersonController firstPerson =
+                CreateGameObject("Persistence Player").AddComponent<FirstPersonController>();
+            Transform cameraPivot = CreateGameObject("Persistence Camera Pivot").transform;
+            cameraPivot.SetParent(firstPerson.transform, false);
+            SerializedObject playerSerialized = new(firstPerson);
+            playerSerialized.FindProperty("cameraPivot").objectReferenceValue = cameraPivot;
+            playerSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+            FirstStoreDiskPersistenceController disk =
+                CreateGameObject("Disk Persistence")
+                    .AddComponent<FirstStoreDiskPersistenceController>();
+            SerializedObject diskSerialized = new(disk);
+            diskSerialized.FindProperty("persistenceMapper").objectReferenceValue = mapper;
+            diskSerialized.FindProperty("firstPersonController").objectReferenceValue =
+                firstPerson;
+            diskSerialized.FindProperty("saveFileName").stringValue =
+                "first-store-adapter-test.json";
+            diskSerialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(disk.TryValidateConfiguration(out string error), Is.True, error);
+            return disk;
+        }
+
         private FixturePlacementController CreateFixtureController(
             params PlaceableFixtureComponent[] fixtures)
         {
@@ -1051,6 +1159,16 @@ namespace Margins.Tests
             GameObject gameObject = new(objectName);
             createdObjects.Add(gameObject);
             return gameObject;
+        }
+
+        private string CreateTemporaryDirectory()
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                $"margins-first-store-adapter-{System.Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            temporaryDirectories.Add(directory);
+            return directory;
         }
 
         private static string[] CreateSnapPointIds(string prefix, int count)

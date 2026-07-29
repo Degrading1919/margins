@@ -56,7 +56,7 @@ namespace Margins
     [Serializable]
     public sealed class FirstStoreSnapshot : IEquatable<FirstStoreSnapshot>
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         public int version = CurrentVersion;
         public int fixtureGridWidth;
@@ -198,8 +198,7 @@ namespace Margins
             IReadOnlyList<DeliveryContainer> deliveryContainers,
             CompletedTransactionLedger transactionLedger,
             StoreOperatingSession storeOperating,
-            CleaningTaskSnapshot cleaningTask,
-            IReadOnlyDictionary<string, int> productUnitCostsCents)
+            CleaningTaskSnapshot cleaningTask)
         {
             if (fixtureLayout == null)
             {
@@ -226,11 +225,6 @@ namespace Margins
                 throw new ArgumentNullException(nameof(transactionLedger));
             }
 
-            if (productUnitCostsCents == null)
-            {
-                throw new ArgumentNullException(nameof(productUnitCostsCents));
-            }
-
             foreach (CheckoutTransactionSummary transaction in transactionLedger.Transactions)
             {
                 foreach (CheckoutLineSnapshot line in transaction.lines)
@@ -247,7 +241,6 @@ namespace Margins
             if (!StoreOperatingSession.TryRestore(
                     storeOperating.CreateSnapshot(),
                     transactionLedger,
-                    productUnitCostsCents,
                     out _,
                     out string operatingError))
             {
@@ -300,7 +293,6 @@ namespace Margins
 
         public static bool TryRestore(
             FirstStoreSnapshot snapshot,
-            IReadOnlyDictionary<string, int> productUnitCostsCents,
             out RestoredFirstStoreState state,
             out string error)
         {
@@ -406,7 +398,6 @@ namespace Margins
             if (!StoreOperatingSession.TryRestore(
                     snapshot.storeOperating,
                     transactionLedger,
-                    productUnitCostsCents,
                     out StoreOperatingSession storeOperating,
                     out error))
             {

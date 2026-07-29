@@ -131,8 +131,7 @@ namespace Margins
                     containers,
                     checkout.TransactionLedger,
                     storeOperating.Session,
-                    cleaningTask.CreateSnapshot(),
-                    checkout.ProductUnitCostsCents);
+                    cleaningTask.CreateSnapshot());
                 snapshot.physicalProductUnits = physicalSnapshots;
                 snapshot.nextPhysicalUnitOrdinal = nextPhysicalUnitOrdinal;
                 error = null;
@@ -149,15 +148,129 @@ namespace Margins
             FirstStoreSnapshot snapshot,
             out string error)
         {
-            if (!TryValidateConfiguration(out error))
+            if (!TryPrepareRestore(
+                    snapshot,
+                    out RestoredFirstStoreState restored,
+                    out Dictionary<string, DeliveryContainer> restoredContainers,
+                    out error))
             {
                 return false;
             }
 
-            if (!FirstStoreSnapshotMapper.TryRestore(
+            if (!physicalUnits.TryCapture(
+                    inventoryComponent.Inventory,
+                    out List<PhysicalProductUnitSnapshot> previousPhysicalUnits,
+                    out int previousPhysicalUnitOrdinal,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!physicalUnits.TryApplySnapshot(
+                    restored.Inventory,
+                    snapshot.physicalProductUnits,
+                    snapshot.nextPhysicalUnitOrdinal,
+                    storeOperating.Stocking,
+                    out error))
+            {
+                string applyError = error;
+                if (!physicalUnits.TryApplySnapshot(
+                        inventoryComponent.Inventory,
+                        previousPhysicalUnits,
+                        previousPhysicalUnitOrdinal,
+                        storeOperating.Stocking,
+                        out string rollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"First-store physical restore failed ('{applyError}') and rollback failed ('{rollbackError}').");
+                }
+
+                error = applyError;
+                return false;
+            }
+
+            if (!inventoryComponent.TryApplyRestoredInventory(
+                    restored.Inventory,
+                    out error) ||
+                !fixturePlacement.TryApplyRestoredLayout(
+                    restored.FixtureLayout,
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted first-store layout restore failed after physical restoration: {error}");
+            }
+
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                if (!deliveryBox.TryApplyRestoredContainer(
+                        restoredContainers[deliveryBox.StableContainerId],
+                        out error))
+                {
+                    throw new InvalidOperationException(
+                        $"A preflighted delivery restore failed after physical restoration: {error}");
+                }
+            }
+
+            if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
+                !storeOperating.TryApplySnapshot(
+                    restored.StoreOperating.CreateSnapshot(),
+                    restored.TransactionLedger,
+                    out error) ||
+                !cleaningTask.TryApplySnapshot(
+                    restored.CleaningTask,
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted first-store domain restore failed after physical restoration: {error}");
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool TryValidateSnapshot(
+            FirstStoreSnapshot snapshot,
+            out string error)
+        {
+            return TryPrepareRestore(snapshot, out _, out _, out error);
+        }
+
+        public bool TryGetDiskSaveBlocker(out string blocker)
+        {
+            if (!TryValidateConfiguration(out string configurationError))
+            {
+                blocker = configurationError;
+                return true;
+            }
+
+            if (storeOperating.Stocking.HasHeldUnit)
+            {
+                blocker = "Place or return the held product before saving.";
+                return true;
+            }
+
+            if (checkout.HasActiveIncompleteSession)
+            {
+                blocker = "Complete the active checkout before saving.";
+                return true;
+            }
+
+            blocker = null;
+            return false;
+        }
+
+        private bool TryPrepareRestore(
+            FirstStoreSnapshot snapshot,
+            out RestoredFirstStoreState restored,
+            out Dictionary<string, DeliveryContainer> restoredContainers,
+            out string error)
+        {
+            restored = null;
+            restoredContainers = null;
+            if (!TryValidateConfiguration(out error) ||
+                !FirstStoreSnapshotMapper.TryRestore(
                     snapshot,
-                    checkout.ProductUnitCostsCents,
-                    out RestoredFirstStoreState restored,
+                    out restored,
                     out error))
             {
                 return false;
@@ -189,8 +302,8 @@ namespace Margins
                 return false;
             }
 
-            Dictionary<string, DeliveryContainer> restoredContainers =
-                new(StringComparer.Ordinal);
+            restoredContainers = new Dictionary<string, DeliveryContainer>(
+                StringComparer.Ordinal);
             foreach (DeliveryContainer container in restored.DeliveryContainers)
             {
                 restoredContainers.Add(container.ContainerId, container);
@@ -215,44 +328,6 @@ namespace Margins
                         $"No restored delivery container matches '{deliveryBox.StableContainerId}'.";
                     return false;
                 }
-            }
-
-            if (!inventoryComponent.TryApplyRestoredInventory(
-                    restored.Inventory,
-                    out error) ||
-                !fixturePlacement.TryApplyRestoredLayout(
-                    restored.FixtureLayout,
-                    out error))
-            {
-                return false;
-            }
-
-            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
-            {
-                if (!deliveryBox.TryApplyRestoredContainer(
-                        restoredContainers[deliveryBox.StableContainerId],
-                        out error))
-                {
-                    return false;
-                }
-            }
-
-            if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
-                !storeOperating.TryApplySnapshot(
-                    restored.StoreOperating.CreateSnapshot(),
-                    restored.TransactionLedger,
-                    out error) ||
-                !cleaningTask.TryApplySnapshot(
-                    restored.CleaningTask,
-                    out error) ||
-                !physicalUnits.TryApplySnapshot(
-                    restored.Inventory,
-                    snapshot.physicalProductUnits,
-                    snapshot.nextPhysicalUnitOrdinal,
-                    storeOperating.Stocking,
-                    out error))
-            {
-                return false;
             }
 
             error = null;

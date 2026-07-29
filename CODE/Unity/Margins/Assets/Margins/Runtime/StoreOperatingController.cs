@@ -278,7 +278,6 @@ namespace Margins
 
             if (!Session.TryFinalizeClosing(
                     checkout.TransactionLedger,
-                    checkout.ProductUnitCostsCents,
                     includedOperatingExpensesCents,
                     out StoreOperatingFailure failure))
             {
@@ -386,7 +385,6 @@ namespace Margins
             return StoreOperatingSession.TryRestore(
                 snapshot,
                 transactionLedger,
-                checkout.ProductUnitCostsCents,
                 out _,
                 out error);
         }
@@ -404,7 +402,6 @@ namespace Margins
             return StoreOperatingSession.TryRestore(
                        snapshot,
                        transactionLedger,
-                       checkout.ProductUnitCostsCents,
                        out StoreOperatingSession restored,
                        out error) &&
                    AssignRestored(restored);

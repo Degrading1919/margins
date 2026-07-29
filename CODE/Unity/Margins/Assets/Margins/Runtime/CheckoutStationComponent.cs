@@ -272,6 +272,7 @@ namespace Margins
             return ActiveSession.TryScan(
                 price.ProductDefinition.StableProductId,
                 price.UnitPriceCents,
+                price.UnitCostCents,
                 quantityUnits,
                 out failure);
         }

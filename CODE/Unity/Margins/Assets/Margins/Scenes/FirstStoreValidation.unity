@@ -889,6 +889,7 @@ GameObject:
   m_Component:
   - component: {fileID: 311586447}
   - component: {fileID: 311586446}
+  - component: {fileID: 311586448}
   m_Layer: 0
   m_Name: First-Store Persistence Mapper
   m_TagString: Untagged
@@ -916,6 +917,21 @@ MonoBehaviour:
   checkout: {fileID: 1595772825}
   storeOperating: {fileID: 2123028612}
   cleaningTask: {fileID: 1585079517}
+--- !u!114 &311586448
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 311586445}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b3726c32b124f1eae1eaee445cf892c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Margins.Runtime::Margins.FirstStoreDiskPersistenceController
+  persistenceMapper: {fileID: 311586446}
+  firstPersonController: {fileID: 33272900}
+  saveFileName: first-store-vertical-slice.json
 --- !u!4 &311586447
 Transform:
   m_ObjectHideFlags: 0
@@ -1246,7 +1262,7 @@ MonoBehaviour:
   store: {fileID: 2123028612}
   fixturePlacement: {fileID: 1558599835}
   essentialFixture: {fileID: 1362594655}
-  persistence: {fileID: 311586446}
+  diskPersistence: {fileID: 311586448}
   colaProduct: {fileID: 11400000, guid: 210ac9c19d9e50748b52257b560c29d1, type: 2}
   chipsProduct: {fileID: 11400000, guid: 772e8be3753c1bf4cb5f5ac442ebc934, type: 2}
   firstPersonController: {fileID: 33272900}

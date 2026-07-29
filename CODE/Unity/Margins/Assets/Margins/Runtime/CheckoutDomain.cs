@@ -9,25 +9,30 @@ namespace Margins
     {
         public string productId;
         public int unitPriceCents;
+        public int unitCostCents;
         public int quantityUnits;
 
         public CheckoutLineSnapshot(
             string productId,
             int unitPriceCents,
+            int unitCostCents,
             int quantityUnits)
         {
             this.productId = productId;
             this.unitPriceCents = unitPriceCents;
+            this.unitCostCents = unitCostCents;
             this.quantityUnits = quantityUnits;
         }
 
         public long LineTotalCents => (long)unitPriceCents * quantityUnits;
+        public long LineCostCents => (long)unitCostCents * quantityUnits;
 
         public bool Equals(CheckoutLineSnapshot other)
         {
             return other != null &&
                    string.Equals(productId, other.productId, StringComparison.Ordinal) &&
                    unitPriceCents == other.unitPriceCents &&
+                   unitCostCents == other.unitCostCents &&
                    quantityUnits == other.quantityUnits;
         }
 
@@ -38,7 +43,11 @@ namespace Margins
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(productId, unitPriceCents, quantityUnits);
+            return HashCode.Combine(
+                productId,
+                unitPriceCents,
+                unitCostCents,
+                quantityUnits);
         }
     }
 
@@ -121,6 +130,7 @@ namespace Margins
                     new CheckoutLineSnapshot(
                         line.productId,
                         line.unitPriceCents,
+                        line.unitCostCents,
                         line.quantityUnits));
             }
 
@@ -502,6 +512,7 @@ namespace Margins
         public bool TryScan(
             string productId,
             int unitPriceCents,
+            int unitCostCents,
             int quantityUnits,
             out CheckoutFailure failure)
         {
@@ -532,6 +543,12 @@ namespace Margins
                 return false;
             }
 
+            if (unitCostCents < 0)
+            {
+                failure = CheckoutFailure.InvalidPrice;
+                return false;
+            }
+
             if (quantityUnits <= 0)
             {
                 failure = CheckoutFailure.InvalidQuantity;
@@ -539,7 +556,9 @@ namespace Margins
             }
 
             CheckoutLineSnapshot line = FindLine(productId);
-            if (line != null && line.unitPriceCents != unitPriceCents)
+            if (line != null &&
+                (line.unitPriceCents != unitPriceCents ||
+                 line.unitCostCents != unitCostCents))
             {
                 failure = CheckoutFailure.PriceMismatch;
                 return false;
@@ -591,7 +610,12 @@ namespace Margins
 
             if (line == null)
             {
-                lines.Add(new CheckoutLineSnapshot(productId, unitPriceCents, quantityUnits));
+                lines.Add(
+                    new CheckoutLineSnapshot(
+                        productId,
+                        unitPriceCents,
+                        unitCostCents,
+                        quantityUnits));
                 lines.Sort((left, right) => string.CompareOrdinal(left.productId, right.productId));
             }
             else
@@ -777,6 +801,7 @@ namespace Margins
                     new CheckoutLineSnapshot(
                         line.productId,
                         line.unitPriceCents,
+                        line.unitCostCents,
                         line.quantityUnits));
             }
             session.completedSummary = CheckoutSnapshotCopies.CloneSummary(summary);
@@ -806,6 +831,7 @@ namespace Margins
                 if (line == null ||
                     !FirstStoreIdentifier.IsValid(line.productId) ||
                     line.unitPriceCents <= 0 ||
+                    line.unitCostCents < 0 ||
                     line.quantityUnits <= 0 ||
                     !productIds.Add(line.productId))
                 {
@@ -872,6 +898,7 @@ namespace Margins
                 CheckoutLineSnapshot copy = new(
                     line.productId,
                     line.unitPriceCents,
+                    line.unitCostCents,
                     line.quantityUnits);
                 summary.lines.Add(copy);
                 summary.subtotalCents = checked(summary.subtotalCents + copy.LineTotalCents);
