@@ -3,10 +3,10 @@
 ## Status and authority
 
 - **Status:** Executed; adjust recommended before merge
-- **Execution status:** Local correction and verification run completed 2026-07-29;
-  see the evidence record for exact results, limitations, and the persistence block
-- **Implementation marker:** Draft implementation — Unity-verified; fixture-presentation
-  correction and downstream rerun complete
+- **Execution status:** Local correction and verification rerun completed 2026-07-29;
+  see the evidence record for exact results and the persistence block
+- **Implementation marker:** Draft implementation — Unity-verified; built-player
+  cursor, first-store interaction, and fixture-presentation corrections rerun
 - **Required editor:** Unity `6000.5.5f1`
 - **Remediation owner:** Technical Architect Assistant
 - **Sequence owner:** Margins Producer and Roadmap Assistant
@@ -15,8 +15,8 @@
 This packet is the desktop handoff for the complete first-store stack. The 2026-07-29
 run results are recorded in
 `Margins_First_Store_Local_Unity_Evidence_Record_v0.1.md`. Full disk
-save/exit/reload remains blocked; direct held-key translation and the legacy
-pickup/rotate/release loop remain manual evidence gaps rather than inferred passes.
+save/exit/reload remains blocked. The owner-reported pre-correction input failures
+and the corrected first-store interaction checks are recorded separately.
 
 ## Stack under review
 
@@ -101,12 +101,13 @@ branch, refresh descendants, and restart at the earliest affected step.
     must restore normally. Confirm that revenue and stock consumption are not
     replayed. Full disk save/exit/reload remains **blocked** unless a separate
     owner-approved persistence decision exists.
-17. [ ] **Produce a Windows x64 development build.** Record the exact output path,
-    build report, warnings, size, and whether symbols and development diagnostics
-    were included.
-18. [ ] **Launch and manually exercise controls.** Launch the produced executable,
-    verify movement/look and every first-store interaction, exit cleanly, and
-    inspect `Player.log`.
+17. [ ] **Produce a Windows x64 player build.** Record the exact output path,
+    build report, warnings, size, and build configuration.
+18. [ ] **Launch and manually exercise controls.** Launch the produced executable.
+    Verify mouse look, `Tab` entry to and exit from the validation HUD, targeted
+    `E` pickup, mouse-wheel rotation in both directions, and `E` stocking. Confirm
+    HUD mode does not trigger world pickup or held-product rotation, exit cleanly,
+    and inspect `Player.log`.
 
 ## Inspector and runtime wiring checklist
 
@@ -128,6 +129,11 @@ permission to add runtime object discovery.
 - [ ] `StockingController`: shared inventory and physical registry, hold point,
   loose/held locations, and one product-specific shelf/fixture/snap-point set per
   sellable product.
+- [ ] `FirstPersonController`: gameplay starts with a locked cursor; `Tab` toggles
+  gameplay input and unlocked validation-HUD mode.
+- [ ] `FirstStoreInteractionController`: explicit first-person camera and stocking
+  references, bounded raycast distance/layers, and no legacy `ProductInteraction`
+  on the validation player.
 - [ ] `CheckoutStationComponent`: shared inventory and physical registry, bounded
   ledger capacity, and exactly one product/shelf/price/unit-cost mapping per priced
   product.
@@ -253,4 +259,8 @@ Stop and record evidence if any of the following occurs:
 - Removal leaves a fixture visibly placed after occupancy is released, or restore
   leaves a fixture visible when it is absent from the accepted snapshot.
 - Physical shelf occupancy disagrees with authoritative inventory after restore.
+- Gameplay starts unlocked, `Tab` cannot restore cursor lock, or HUD mode permits
+  world pickup or held-product rotation.
+- Targeted `E` pickup selects another loose unit, or failed pickup/stocking changes
+  conserved physical/domain quantities.
 - The Windows build fails to launch or `Player.log` contains an unresolved blocker.

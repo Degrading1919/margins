@@ -3,8 +3,8 @@
 ## Record status
 
 - **Status:** Executed; adjust recommended before merge
-- **Execution status:** Local Unity fixture-presentation correction and downstream verification completed on 2026-07-29 with the limitations and persistence block recorded below
-- **Implementation marker:** Draft implementation — Unity-verified at refreshed source commit `1659b8b9c8112afb193085c34a8b20a62da6fb4e`
+- **Execution status:** Corrected first-store built-player input source, automated suites, and Windows build rerun on 2026-07-29; executable interaction rerun awaits dismissal of the Windows Security firewall prompt recorded below
+- **Implementation marker:** Draft implementation — corrected PR #15 commit `3c99ad62307f9f9821a7be28a08ff7020240fcfb`; rebased PR #16 source head `0e4be4773f6a3d1e1d216f2d8b6e89474808c8c9`
 - **Packet:** `Margins_First_Store_Local_Unity_Verification_Packet_v0.1.md`
 
 Leave a field as `not run`, `blocked`, or `not applicable` rather than inferring a
@@ -14,9 +14,9 @@ pass. Link or attach durable evidence for every pass or failure.
 
 | Field | Required record |
 |---|---|
-| Exact tested commit (`git rev-parse HEAD`) | `1659b8b9c8112afb193085c34a8b20a62da6fb4e` |
-| Test date/time and timezone | 2026-07-29 07:34–07:41 EDT (`UTC-04:00`) |
-| Tester | Codex, Technical Architect primary; Producer/Roadmap sequencing; Data/Validation/QA evidence |
+| Exact tested commit (`git rev-parse HEAD`) | `0e4be4773f6a3d1e1d216f2d8b6e89474808c8c9` |
+| Test date/time and timezone | 2026-07-29 08:56–09:00 EDT (`UTC-04:00`) |
+| Tester | Codex, Technical Architect primary; Data/Validation/QA secondary evidence lens |
 | OS and version | Microsoft Windows 11 Home `10.0.26200`, build `26200` |
 | CPU / RAM / GPU | AMD Ryzen 9 270 with Radeon 780M; 31.3 GiB RAM; Radeon 780M and NVIDIA RTX 5070 Laptop GPU |
 | Unity editor version | `6000.5.5f1` (`d16e074b49fd`) |
@@ -33,7 +33,7 @@ pass. Link or attach durable evidence for every pass or failure.
 |---|---|---|
 | Initial import completed | Pass | Editor opened the project and became idle in exact Unity `6000.5.5f1` |
 | `.meta` reconciliation | Pass | Unity-created scene/content `.meta` files imported; no unexpected reconciliation remained |
-| New or modified serialized files | Pass | Unity-created validation scene, two ProductDefinitions, two prefabs, and validation materials; no serialized YAML hand-authored |
+| New or modified serialized files | Pass | Unity serialized the explicit `FirstStoreInteractionController`, camera, stocking, and first-person references in `FirstStoreValidation.unity`; no serialized YAML hand-authored |
 | Import warnings | Pass | Editor Console 0 warnings |
 | Import errors | Pass | Editor Console 0 errors |
 | C# compile result | Pass | Unity `6000.5.5f1`; 0 compiler errors and 0 compiler warnings in both complete-suite logs |
@@ -44,10 +44,11 @@ pass. Link or attach durable evidence for every pass or failure.
 
 | Suite | Exact filter | Passed | Failed | Skipped/Inconclusive | Duration | Result artifact / screenshot |
 |---|---|---:|---:|---:|---:|---|
-| Complete EditMode | all EditMode tests | 41 | 0 | 0 | 0.2183044 s | `C:/Users/CK/AppData/Local/Temp/margins-pr16-fixture-editmode.xml` |
-| First-store domain EditMode | `Margins.Tests.FirstStoreDomainEditModeTests` | 22 | 0 | 0 | 0.045997 s | same XML |
-| First-store adapter EditMode | `Margins.Tests.FirstStoreAdapterEditModeTests` | 12 | 0 | 0 | 0.126234 s | same XML |
-| Complete PlayMode | all PlayMode tests | 6 | 0 | 0 | 1.787458 s | `C:/Users/CK/AppData/Local/Temp/margins-pr16-fixture-playmode.xml` |
+| Complete EditMode | all EditMode tests | 42 | 0 | 0 | 0.1708064 s | `CODE/Unity/Margins/Logs/pr16-pre-editmode.xml` |
+| First-store domain EditMode | `Margins.Tests.FirstStoreDomainEditModeTests` | 22 | 0 | 0 | 0.015804 s | same XML |
+| First-store adapter EditMode | `Margins.Tests.FirstStoreAdapterEditModeTests` | 13 | 0 | 0 | 0.116383 s | same XML |
+| Complete PlayMode | all PlayMode tests | 12 | 0 | 0 | 3.0179807 s | `CODE/Unity/Margins/Logs/pr16-pre-playmode.xml` |
+| First-store input PlayMode | `Margins.Tests.FirstStoreInputPlayModeTests` | 6 | 0 | 0 | 1.305969 s | same XML |
 
 Focused evidence must identify the exact tests or manual steps proving checkout
 line mutation resistance, two completed transactions, duplicate transaction-ID
@@ -66,6 +67,7 @@ results for the source-authored fixture-presentation correction tests.
 |---|---|---|---|
 | Inventory authority and locations | `loc-delivery`, `loc-loose`, `loc-held`, `loc-shelf-cola`, `loc-shelf-chips` | Pass | One explicitly referenced inventory authority; capacities 16/16/1/4/4 |
 | Product definitions | `prod-cola-can-355ml`, `prod-potato-chips-small` | Pass | Unity-created validation ProductDefinition assets |
+| Player mode and first-store interaction | `Validation Player`, `Validation Camera`, `FirstPersonController`, `FirstStoreInteractionController` | Pass | Explicit references; no validation-scene `ProductInteraction`; focused cursor, look, target, scroll, HUD suppression, and stocking tests passed |
 | Fixture grid and required fixtures | `fixture-checkout-essential-01`; two shelf fixtures | Pass | Explicit scene references; placement and restriction checks passed |
 | Mixed-product delivery container | `container-mixed-starter-01`; both products; 4 units each | Pass | Explicit container/inventory/loose/physical references |
 | Physical-unit prefabs, spawns, and reconciliation | Cola/chips validation prefabs | Pass | Distinct runtime IDs `physical-unit-000001` through `000006`; repeated restore reconciled |
@@ -83,8 +85,12 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 
 | Interaction / scenario | Expected result | Result | Evidence / defect |
 |---|---|---|---|
-| First-person move and look | Existing foundation controls remain usable | Partial | Mouse look changed the executable view. UI automation could not sustain held-key translation; the dedicated PlayMode movement test passed. |
-| Foundation pickup, rotate, release | Existing product behavior remains compatible | Automated pass; direct manual not completed | Foundation runtime-loop PlayMode test passed; legacy pickup/rotate/release was not directly exercised. |
+| Owner built-player baseline before correction | WASD, mouse look, and `E` pickup work | Failed | Owner reported WASD **pass**, mouse look **failed**, and `E` pickup **failed**. |
+| Gameplay cursor, mouse look, and `Tab` HUD switching | Gameplay locks cursor and looks; `Tab` unlocks for HUD and relocks on return | Automated pass; executable rerun pending | `GameplayStartsLockedAndTabTogglesHudMode` and `LockedCursorMouseInputRotatesPlayerAndCamera` passed; final player is behind a Windows Security firewall prompt. |
+| Targeted `E` pickup | Exact raycast target moves loose→held in both physical and domain state | Automated pass; executable rerun pending | Exact-target and rejection-conservation EditMode/PlayMode tests passed. |
+| Mouse-wheel held rotation | Up/down change opposite single quarter turns, wrap 0–3, and update the held visual | Automated pass; executable rerun pending | `ScrollDirectionsAreOppositeAndQuarterTurnsWrap` passed. |
+| HUD input suppression | HUD mode does not trigger world pickup, stocking, or product rotation | Automated pass; executable rerun pending | `HudModeSuppressesPickupStockingAndRotation` passed. |
+| `E` stocking | Accepted held orientation reaches the existing domain-safe stocking path without unit loss | Automated pass; executable rerun pending | `EStocksAcceptedRotationAndPreservesConservation` and failed-stocking conservation checks passed. |
 | `fs-accept-014` invalid/duplicate IDs | Blocked with bounded diagnostic and no partial state | Pass | Duplicate checkout begin rejected with no active session or stock mutation; configuration tests passed. |
 | `fs-accept-001` fixture placement | In-bounds, deterministic footprint/orientation | Pass | Required checkout fixture placed; deterministic placement tests passed. |
 | `fs-accept-002` overlap/move rejection | Prior accepted placement preserved | Pass | Open/Closing move rejected manually; overlap/prior-state tests passed. |
@@ -145,18 +151,18 @@ automated tests and leave the full restart result blocked.
 | Field | Required record |
 |---|---|
 | Build target and architecture | Windows x64 |
-| Development build settings | Development build enabled by the existing validation build method |
+| Build configuration | Standard Windows x64 player (`BuildOptions.None`) |
 | Exact output path | `C:/Users/CK/Documents/margins/CODE/Unity/Margins/Builds/FirstStoreValidation/MarginsFirstStoreValidation.exe` |
-| Build start/end time | 2026-07-29 07:35:24–07:35:55 EDT |
+| Build start/end time | 2026-07-29 09:08–09:09 EDT |
 | Build result | Pass — `Build Finished, Result: Success.` |
 | Build warnings/errors | No build failure; 0 C# compiler warnings / 0 C# compiler errors |
-| Executable and data-folder sizes | EXE 667,648 bytes; complete build 178 files / 102,925,344 bytes |
+| Executable and data-folder sizes | EXE 667,648 bytes; complete build 176 files / 102,901,168 bytes |
 | Executable hash | SHA-256 `C7E7C0FB799BC979D2A086D8836D9570443F925C753442C2979FAC9E38D69C13` |
-| Launch result | Pass — exact Unity `6000.5.5f1` player launched |
-| Manual controls result | Fixture remove/re-place, omitted/included restore, and Open/Closing restrictions passed; held-key translation and direct legacy pickup remained unverified |
-| Clean exit result | Pass — normal Input System and physics shutdown logged |
+| Launch result | Blocked after process launch — the Windows Security firewall prompt created by the earlier development-player launch remains over the standard player; automation is not permitted to act on Windows Security |
+| Manual controls result | Not run on this build pending manual dismissal of the Windows Security prompt |
+| Clean exit result | Pending executable interaction rerun |
 | `Player.log` path | `C:/Users/CK/AppData/LocalLow/DefaultCompany/Margins/Player.log` |
-| `Player.log` findings | 0 warning/error/exception entries; normal physics/Input System shutdown. One non-fatal D3D12 info-queue diagnostic only. |
+| `Player.log` findings | Pending executable interaction rerun and clean exit |
 
 ## Defect log
 
@@ -164,7 +170,7 @@ automated tests and leave the full restart result blocked.
 |---|---|---|---|---|---|---|---|---|---|
 | `FSV-001` | major | Duplicate checkout transaction | Complete two sales, begin the second ID again, then try a unique sale | Replay rejected without opening a session; unique sale remains possible | Replay rejected only at completion and left an active session, wedging later checkout | PR #15 | `9f84800` | EditMode 38/38, PlayMode 6/6; manual replay rejected at begin and transaction 003 then completed | Resolved |
 | `FSV-002` | major | Fixture removal and snapshot presentation | Remove a placed fixture; separately restore a snapshot that omits a currently placed fixture | Occupancy and presentation both clear; omitted fixture remains unplaced; fixture can be re-placed | Domain occupancy cleared, but the visible fixture remained; omitted restore left stale visible placement | PR #15 | `a49bc2a` | EditMode 41/41, PlayMode 6/6; Windows player remove/re-place and omitted/included restore passed | Resolved |
-| `FSV-OBS-001` | observation | Direct executable input evidence | UI automation emits taps, not sustained key state | Directly observe translation and legacy pickup/rotate/release | Mouse look observed; translation and legacy pickup not directly completed | PR #16 evidence | none | Foundation input/interaction PlayMode tests 4/4 | Open evidence gap |
+| `FSV-003` | major | Built-player cursor and first-store interaction | At prior PR #16 head `77b3212`, launch the player, move with WASD, move the mouse, and press `E` while targeting a loose product | WASD moves; mouse controls look; `E` transfers the exact target through authoritative inventory | Owner result: WASD passed; mouse look failed because the validation controller permanently unlocked the cursor; `E` pickup failed because no domain-safe world interaction path existed | PR #15 | `3c99ad6` | EditMode 42/42 and PlayMode 12/12, including six focused first-store input tests; Windows build passed | Correction verified automatically; executable rerun pending |
 | `FSV-OBS-002` | observation | Full disk restart | Request first-store disk persistence without an approved contract | Approved save boundary exists first | No approved first-store disk contract | Owner decision | none | In-memory restore passed | Blocked by decision |
 
 Severity must be one of `blocker`, `major`, `minor`, or `observation`, using the
@@ -176,7 +182,7 @@ definitions in the verification packet.
 |---:|---|---|---|---|---|---:|
 | 1 | `FSV-001` | `CheckoutStationComponent.cs` and focused adapter test | Reject completed transaction IDs before creating an active session | #15 at `9f84800` | #16 rebased/force-with-lease updated | 5 |
 | 2 | `FSV-002` | `FixturePlacementController.cs`, `PlaceableFixtureComponent.cs`, and focused adapter tests | Clear/re-activate fixture presentation and reset all configured fixtures before applying restore | #15 at `a49bc2a` | #16 rebased onto the correction | 5 |
-| 3 | `FSV-OBS-001` support | Development-only validation HUD mouse controls | Directly exercise scoped domain interactions under available UI automation | #16 rebased at `bde42fa` | Not applicable | 5 |
+| 3 | `FSV-003` | `FirstPersonController.cs`, narrow `FirstStoreInteractionController.cs`, targeted `StockingController` overload, `ProductItem.cs`, Unity-serialized validation scene, and focused tests | Restore locked-cursor look and route exact-target pickup/held rotation/stocking through first-store authority while suppressing HUD leakage | #15 at `3c99ad6` | #16 rebased; obsolete #16 cursor-unlock commit dropped | 5 |
 
 ## Final recommendation
 
@@ -189,16 +195,18 @@ Select exactly one after all required evidence and reruns are complete.
 - [ ] **Stop** — a blocker, invalid assumption, or unacceptable scope/risk requires
   the stack to pause.
 
-**Recommendation rationale:** The corrected implementation compiles, all 47 Unity
-tests pass, the Windows build runs, scoped interactions and in-memory restore are
-coherent, and both discovered major defects are resolved. Merge should wait for
-project-owner disposition of proposed tuning/content, an explicit persistence
-decision if disk restart is required, and direct human confirmation of held-key
-movement plus the legacy pickup/rotate/release loop.
+**Recommendation rationale:** The corrected implementation compiles, all 54 Unity
+tests pass, and the standard Windows x64 player build succeeds. The owner-reported
+cursor and `E` failures are covered by focused automated correction evidence, but
+the final executable interaction rerun remains pending behind the Windows Security
+prompt. Merge should also wait for project-owner disposition of proposed
+tuning/content and an explicit persistence decision if disk restart is required.
 
 **Unresolved owner decisions:** Proposed tuning/content approval; first-store disk
 persistence boundary.
 
-**Unresolved blocker/major defects:** None.
+**Unresolved blocker/major defects:** `FSV-003` remains open until the corrected
+Windows player is manually exercised after the Windows Security prompt is
+dismissed.
 
 **Project-owner reviewer and date:**
