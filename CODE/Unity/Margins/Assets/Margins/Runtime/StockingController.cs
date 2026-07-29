@@ -30,6 +30,23 @@ namespace Margins
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
         public Transform HoldPoint => holdPoint;
+        public ProductItem HeldPhysicalUnit
+        {
+            get
+            {
+                if (physicalUnits != null &&
+                    physicalUnits.TryGetOldestUnitAtLocation(
+                        heldLocationId,
+                        out ProductItem item) &&
+                    item.IsHeld)
+                {
+                    return item;
+                }
+
+                return null;
+            }
+        }
+
         public bool HasHeldUnit
         {
             get
@@ -212,15 +229,78 @@ namespace Margins
                 !physicalUnits.TryGetOldestUnit(
                     configuration.ProductDefinition.StableProductId,
                     looseLocationId,
-                    out selectedUnit) ||
-                !physicalUnits.IsAtLocation(selectedUnit, looseLocationId))
+                    out ProductItem oldestUnit) ||
+                !physicalUnits.IsAtLocation(oldestUnit, looseLocationId))
             {
                 error = "No matching loose physical product unit is available.";
-                selectedUnit = null;
                 return false;
             }
 
+            return TryPickUpLooseUnit(
+                configuration,
+                oldestUnit,
+                out selectedUnit,
+                out error);
+        }
+
+        public bool TryPickUpLooseUnit(
+            ProductItem targetedUnit,
+            out ProductItem selectedUnit,
+            out string error)
+        {
+            selectedUnit = null;
+            if (!TryInitializeDependencies(out error))
+            {
+                return false;
+            }
+
+            StockingProductConfiguration configuration =
+                FindProduct(targetedUnit?.Definition?.StableProductId);
+            if (configuration == null ||
+                !physicalUnits.IsAtLocation(targetedUnit, looseLocationId) ||
+                targetedUnit.IsHeld ||
+                targetedUnit.IsSnapped)
+            {
+                error = "The targeted physical product unit is not available at the loose location.";
+                return false;
+            }
+
+            return TryPickUpLooseUnit(
+                configuration,
+                targetedUnit,
+                out selectedUnit,
+                out error);
+        }
+
+        private bool TryPickUpLooseUnit(
+            StockingProductConfiguration configuration,
+            ProductItem unit,
+            out ProductItem selectedUnit,
+            out string error)
+        {
+            selectedUnit = null;
             string productId = configuration.ProductDefinition.StableProductId;
+            InventoryTransferResult preview =
+                inventoryComponent.Inventory.CanTransfer(
+                    productId,
+                    looseLocationId,
+                    heldLocationId,
+                    1);
+            if (!preview.IsSuccess)
+            {
+                error = $"Product pickup transfer rejected ({preview.Failure}).";
+                return false;
+            }
+
+            if (!physicalUnits.TryChangeLocation(
+                    unit,
+                    looseLocationId,
+                    heldLocationId,
+                    out error))
+            {
+                return false;
+            }
+
             InventoryTransferResult transfer =
                 inventoryComponent.Inventory.TryTransfer(
                     productId,
@@ -229,32 +309,22 @@ namespace Margins
                     1);
             if (!transfer.IsSuccess)
             {
-                error = $"Product pickup transfer rejected ({transfer.Failure}).";
-                selectedUnit = null;
-                return false;
-            }
-
-            selectedUnit.PickUp(holdPoint);
-            if (!physicalUnits.TryChangeLocation(
-                    selectedUnit,
-                    looseLocationId,
+                bool rolledBack = physicalUnits.TryChangeLocation(
+                    unit,
                     heldLocationId,
-                    out error))
-            {
-                InventoryTransferResult rollback =
-                    inventoryComponent.Inventory.TryTransfer(
-                        productId,
-                        heldLocationId,
-                        looseLocationId,
-                        1);
-                selectedUnit.ReleaseLoose();
+                    looseLocationId,
+                    out string rollbackError);
                 Debug.LogError(
-                    $"Physical pickup rollback applied ({rollback.Failure}): {error}",
+                    $"Domain pickup rejected after physical reservation " +
+                    $"({transfer.Failure}); physical rollback {rolledBack}: " +
+                    $"{rollbackError ?? "ok"}.",
                     this);
-                selectedUnit = null;
+                error = $"Product pickup transfer rejected ({transfer.Failure}).";
                 return false;
             }
 
+            unit.PickUp(holdPoint);
+            selectedUnit = unit;
             error = null;
             return true;
         }

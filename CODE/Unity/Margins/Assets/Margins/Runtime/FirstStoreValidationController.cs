@@ -16,6 +16,7 @@ namespace Margins
         [SerializeField] private FirstStorePersistenceMapperComponent persistence;
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
+        [SerializeField] private FirstPersonController firstPersonController;
 
         private FirstStoreSnapshot capturedSnapshot;
         private int transactionOrdinal = 1;
@@ -23,14 +24,21 @@ namespace Margins
         private string lastAction = "Validation scene ready.";
 
         public string LastAction => lastAction;
+        public bool IsHudModeActive =>
+            firstPersonController != null && !firstPersonController.IsGameplayMode;
 
         private void Start()
         {
-            if (!delivery.TryInitialize(out string error) ||
+            string error = null;
+            if (firstPersonController == null ||
+                !delivery.TryInitialize(out error) ||
                 !store.TryInitialize(out error) ||
                 !persistence.TryValidateConfiguration(out error))
             {
-                Record($"Initialization failed: {error}", true);
+                Record(
+                    $"Initialization failed: " +
+                    $"{error ?? "the first-person controller reference is missing."}",
+                    true);
                 return;
             }
 
@@ -40,23 +48,18 @@ namespace Margins
         private void Update()
         {
             Keyboard keyboard = Keyboard.current;
-            if (keyboard == null)
+            if (keyboard == null || !IsHudModeActive)
             {
                 return;
             }
 
             if (keyboard.digit1Key.wasPressedThisFrame)
             {
-                FixturePlacementResult result = fixturePlacement.TryPlace(
-                    essentialFixture,
-                    new GridPosition(1, 1),
-                    0);
-                Record($"Place required fixture: {result.Failure}.");
+                PlaceRequiredFixture();
             }
             if (keyboard.digit2Key.wasPressedThisFrame)
             {
-                bool success = delivery.TryOpen(out DeliveryContainerOpenResult result, out string error);
-                Record($"Open delivery: {success}, {result}, {error ?? "ok"}.");
+                OpenDelivery();
             }
             if (keyboard.digit3Key.wasPressedThisFrame)
             {
@@ -76,8 +79,7 @@ namespace Margins
             }
             if (keyboard.digit7Key.wasPressedThisFrame)
             {
-                bool success = stocking.TryStockHeldUnit(0, out string error);
-                Record($"Stock held unit: {success}, {error ?? "ok"}.");
+                StockHeldUnit();
             }
             if (keyboard.digit8Key.wasPressedThisFrame)
             {
@@ -89,8 +91,7 @@ namespace Margins
             }
             if (keyboard.cKey.wasPressedThisFrame)
             {
-                CleaningProgressResult result = cleaning.TryApplyProgress(1);
-                Record($"Cleaning progress: {result} ({cleaning.CompletedProgressUnits}/{cleaning.RequiredProgressUnits}).");
+                CleanOneUnit();
             }
             if (keyboard.oKey.wasPressedThisFrame)
             {
@@ -98,17 +99,11 @@ namespace Margins
             }
             if (keyboard.mKey.wasPressedThisFrame)
             {
-                FixturePlacementResult result = fixturePlacement.TryMove(
-                    essentialFixture,
-                    new GridPosition(4, 3),
-                    1);
-                Record($"Move required fixture: {result.Failure}.");
+                MoveRequiredFixture();
             }
             if (keyboard.backspaceKey.wasPressedThisFrame)
             {
-                FixturePlacementResult result =
-                    fixturePlacement.TryRemove(essentialFixture);
-                Record($"Remove required fixture: {result.Failure}.");
+                RemoveRequiredFixture();
             }
             if (keyboard.dKey.wasPressedThisFrame)
             {
@@ -116,29 +111,28 @@ namespace Margins
             }
             if (keyboard.f5Key.wasPressedThisFrame)
             {
-                bool success = persistence.TryCapture(
-                    out capturedSnapshot,
-                    out string error);
-                Record($"Capture temporary in-memory snapshot: {success}, {error ?? "ok"}.");
+                CaptureSnapshot();
             }
             if (keyboard.f9Key.wasPressedThisFrame)
             {
-                string error = null;
-                bool success = capturedSnapshot != null &&
-                               persistence.TryRestore(capturedSnapshot, out error);
-                Record(
-                    capturedSnapshot == null
-                        ? "Restore temporary snapshot: false, no capture exists."
-                        : $"Restore temporary snapshot: {success}, {error ?? "ok"}.");
+                RestoreSnapshot();
             }
         }
 
         private void OnGUI()
         {
+            if (!IsHudModeActive)
+            {
+                GUI.Label(
+                    new Rect(12f, 12f, 560f, 24f),
+                    "Tab: validation HUD | E: pick up / stock | Mouse wheel: rotate held product");
+                return;
+            }
+
             GUI.Box(new Rect(12f, 12f, 650f, 286f), "");
             GUILayout.BeginArea(new Rect(24f, 20f, 626f, 270f));
             GUILayout.Label("MARGINS FIRST-STORE LOCAL VALIDATION (development HUD)");
-            GUILayout.Label("WASD/mouse: movement/look | 1 place fixture | 2 open delivery");
+            GUILayout.Label("Tab returns to gameplay | 1 place fixture | 2 open delivery");
             GUILayout.Label("3/4 remove cola/chips | 5/6 pick cola/chips | 7 stock held");
             GUILayout.Label("8/9 sell cola/chips | D duplicate-ID attempt | C clean | O advance store");
             GUILayout.Label("M move fixture | Backspace remove fixture | F5 capture | F9 restore");
@@ -162,6 +156,105 @@ namespace Margins
             GUILayout.Label($"Last: {lastAction}");
             GUILayout.Label("Disk save/exit/reload remains blocked; F5/F9 is the temporary in-memory snapshot only.");
             GUILayout.EndArea();
+
+            GUI.Box(
+                new Rect(12f, Screen.height - 158f, Screen.width - 24f, 146f),
+                "VALIDATION CONTROLS");
+            GUILayout.BeginArea(
+                new Rect(24f, Screen.height - 134f, Screen.width - 48f, 116f));
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Place Fixture")) PlaceRequiredFixture();
+            if (GUILayout.Button("Open Delivery")) OpenDelivery();
+            if (GUILayout.Button("Remove Cola")) RemoveDeliveryUnit(colaProduct);
+            if (GUILayout.Button("Remove Chips")) RemoveDeliveryUnit(chipsProduct);
+            if (GUILayout.Button("Pick Cola")) PickUpLooseUnit(colaProduct);
+            if (GUILayout.Button("Pick Chips")) PickUpLooseUnit(chipsProduct);
+            if (GUILayout.Button("Stock Held")) StockHeldUnit();
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Sell Cola")) CompleteSale(colaProduct);
+            if (GUILayout.Button("Sell Chips")) CompleteSale(chipsProduct);
+            if (GUILayout.Button("Duplicate ID")) AttemptDuplicateTransaction();
+            if (GUILayout.Button("Clean +1")) CleanOneUnit();
+            if (GUILayout.Button("Advance State")) AdvanceOperatingState();
+            if (GUILayout.Button("Move Fixture")) MoveRequiredFixture();
+            if (GUILayout.Button("Remove Fixture")) RemoveRequiredFixture();
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Capture Snapshot")) CaptureSnapshot();
+            if (GUILayout.Button("Restore Snapshot")) RestoreSnapshot();
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        private void PlaceRequiredFixture()
+        {
+            FixturePlacementResult result = fixturePlacement.TryPlace(
+                essentialFixture,
+                new GridPosition(1, 1),
+                0);
+            Record($"Place required fixture: {result.Failure}.");
+        }
+
+        private void OpenDelivery()
+        {
+            bool success = delivery.TryOpen(
+                out DeliveryContainerOpenResult result,
+                out string error);
+            Record($"Open delivery: {success}, {result}, {error ?? "ok"}.");
+        }
+
+        private void StockHeldUnit()
+        {
+            ProductItem held = stocking.HeldPhysicalUnit;
+            int quarterTurns = held?.QuarterTurns ?? 0;
+            bool success = stocking.TryStockHeldUnit(quarterTurns, out string error);
+            Record($"Stock held unit: {success}, {error ?? "ok"}.");
+        }
+
+        private void CleanOneUnit()
+        {
+            CleaningProgressResult result = cleaning.TryApplyProgress(1);
+            Record(
+                $"Cleaning progress: {result} " +
+                $"({cleaning.CompletedProgressUnits}/{cleaning.RequiredProgressUnits}).");
+        }
+
+        private void MoveRequiredFixture()
+        {
+            FixturePlacementResult result = fixturePlacement.TryMove(
+                essentialFixture,
+                new GridPosition(4, 3),
+                1);
+            Record($"Move required fixture: {result.Failure}.");
+        }
+
+        private void RemoveRequiredFixture()
+        {
+            FixturePlacementResult result =
+                fixturePlacement.TryRemove(essentialFixture);
+            Record($"Remove required fixture: {result.Failure}.");
+        }
+
+        private void CaptureSnapshot()
+        {
+            bool success = persistence.TryCapture(
+                out capturedSnapshot,
+                out string error);
+            Record(
+                $"Capture temporary in-memory snapshot: " +
+                $"{success}, {error ?? "ok"}.");
+        }
+
+        private void RestoreSnapshot()
+        {
+            string error = null;
+            bool success = capturedSnapshot != null &&
+                           persistence.TryRestore(capturedSnapshot, out error);
+            Record(
+                capturedSnapshot == null
+                    ? "Restore temporary snapshot: false, no capture exists."
+                    : $"Restore temporary snapshot: {success}, {error ?? "ok"}.");
         }
 
         private void RemoveDeliveryUnit(ProductDefinition product)

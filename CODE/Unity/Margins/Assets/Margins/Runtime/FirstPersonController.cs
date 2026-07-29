@@ -14,22 +14,51 @@ namespace Margins
         private float pitch;
         private float verticalVelocity;
 
+        public bool IsGameplayMode { get; private set; }
+        public CursorLockMode RequestedCursorLockState { get; private set; }
+        public bool IsGameplayInputActive =>
+            IsGameplayMode &&
+            (Application.isBatchMode ||
+             Cursor.lockState == CursorLockMode.Locked);
+
         private void OnEnable()
         {
-            LockCursor();
+            SetGameplayMode(true);
         }
 
         private void OnDisable()
         {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            IsGameplayMode = false;
+            RequestedCursorLockState = CursorLockMode.None;
+            UnlockCursor();
         }
 
         private void Update()
         {
-            HandleCursorLock();
+            HandleModeToggle();
+            if (!IsGameplayMode)
+            {
+                return;
+            }
+
             HandleLook();
             HandleMovement();
+        }
+
+        public void SetGameplayMode(bool isGameplayMode)
+        {
+            IsGameplayMode = isGameplayMode;
+            RequestedCursorLockState = isGameplayMode
+                ? CursorLockMode.Locked
+                : CursorLockMode.None;
+            if (isGameplayMode)
+            {
+                LockCursor();
+            }
+            else
+            {
+                UnlockCursor();
+            }
         }
 
         private void HandleMovement()
@@ -63,7 +92,9 @@ namespace Margins
 
         private void HandleLook()
         {
-            if (cameraPivot == null || Mouse.current == null || Cursor.lockState != CursorLockMode.Locked)
+            if (cameraPivot == null ||
+                Mouse.current == null ||
+                !IsGameplayInputActive)
             {
                 return;
             }
@@ -74,16 +105,11 @@ namespace Margins
             cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
         }
 
-        private void HandleCursorLock()
+        private void HandleModeToggle()
         {
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
             {
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
-            else if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            {
-                LockCursor();
+                SetGameplayMode(!IsGameplayMode);
             }
         }
 
@@ -91,6 +117,12 @@ namespace Margins
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+        }
+
+        private static void UnlockCursor()
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
         }
     }
 }

@@ -154,6 +154,64 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void TargetedPickupUsesExactLooseUnitAndRejectedPickupChangesNothing()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out ProductItem first,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out ProductItem targeted,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+
+            Assert.That(
+                rig.Stocking.TryPickUpLooseUnit(
+                    targeted,
+                    out ProductItem selected,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(selected, Is.SameAs(targeted));
+            Assert.That(targeted.IsHeld, Is.True);
+            Assert.That(first.IsHeld, Is.False);
+            Assert.That(rig.PhysicalUnits.IsAtLocation(targeted, "loc-held"), Is.True);
+            Assert.That(rig.PhysicalUnits.IsAtLocation(first, "loc-loose"), Is.True);
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-held", "prod-cola"),
+                Is.EqualTo(1));
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-loose", "prod-cola"),
+                Is.EqualTo(1));
+
+            FirstStoreInventorySnapshot before =
+                rig.Inventory.Inventory.CreateSnapshot();
+            Vector3 firstPosition = first.transform.position;
+            Assert.That(
+                rig.Stocking.TryPickUpLooseUnit(first, out selected, out error),
+                Is.False);
+            Assert.That(selected, Is.Null);
+            Assert.That(rig.Inventory.Inventory.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(first.transform.position, Is.EqualTo(firstPosition));
+            Assert.That(rig.PhysicalUnits.IsAtLocation(first, "loc-loose"), Is.True);
+            Assert.That(rig.PhysicalUnits.IsAtLocation(targeted, "loc-held"), Is.True);
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(2));
+            Assert.That(rig.Inventory.Inventory.GetTotalQuantity("prod-cola"), Is.EqualTo(2));
+        }
+
+        [Test]
         public void FailedPhysicalPlacementKeepsOneHeldUnitWithoutDuplication()
         {
             AdapterRig rig = CreateAdapterRig(
@@ -180,9 +238,18 @@ namespace Margins.Tests
                 error);
             Assert.That(held, Is.SameAs(loose));
 
+            FirstStoreInventorySnapshot beforeFailure =
+                rig.Inventory.Inventory.CreateSnapshot();
             Assert.That(rig.Stocking.TryStockHeldUnit(0, out error), Is.False);
             StringAssert.Contains("snap point", error);
+            Assert.That(
+                rig.Inventory.Inventory.CreateSnapshot(),
+                Is.EqualTo(beforeFailure));
             Assert.That(held.IsHeld, Is.True);
+            Assert.That(rig.Stocking.HeldPhysicalUnit, Is.SameAs(held));
+            Assert.That(
+                rig.PhysicalUnits.IsAtLocation(held, "loc-held"),
+                Is.True);
             Assert.That(shelved.IsSnapped, Is.True);
             Assert.That(rig.Inventory.Inventory.GetQuantity("loc-held", "prod-cola"), Is.EqualTo(1));
             Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(1));

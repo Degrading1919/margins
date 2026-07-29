@@ -101,13 +101,20 @@ namespace Margins
 
         public void AdvanceQuarterTurn()
         {
-            if (!IsHeld)
+            AdjustQuarterTurns(1);
+        }
+
+        public bool AdjustQuarterTurns(int delta)
+        {
+            if (!IsHeld || delta == 0)
             {
-                return;
+                return false;
             }
 
-            QuarterTurns = (QuarterTurns + 1) % 4;
-            transform.localRotation = Quaternion.Euler(0f, QuarterTurns * 90f, 0f);
+            QuarterTurns = ((QuarterTurns + delta) % 4 + 4) % 4;
+            transform.localRotation =
+                Quaternion.Euler(0f, QuarterTurns * 90f, 0f);
+            return true;
         }
 
         public void SetPlacementPreview(bool isValid)

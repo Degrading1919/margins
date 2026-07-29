@@ -87,6 +87,10 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<DeliveryBoxComponent>();
             PhysicalProductUnitRegistry physicalUnits =
                 Object.FindAnyObjectByType<PhysicalProductUnitRegistry>();
+            FirstStoreInteractionController interaction =
+                Object.FindAnyObjectByType<FirstStoreInteractionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
 
             Assert.That(validation, Is.Not.Null);
             Assert.That(store, Is.Not.Null);
@@ -95,6 +99,13 @@ namespace Margins.Tests
             Assert.That(delivery.IsInitialized, Is.True);
             Assert.That(physicalUnits, Is.Not.Null);
             Assert.That(physicalUnits.VisibleUnitCount, Is.Zero);
+            Assert.That(interaction, Is.Not.Null);
+            Assert.That(
+                interaction.TryValidateConfiguration(out string error),
+                Is.True,
+                error);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(player.IsGameplayMode, Is.True);
         }
 
         private ProductDefinition CreateProduct(string productId, string displayName)

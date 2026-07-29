@@ -130,6 +130,7 @@ GameObject:
   - component: {fileID: 33272899}
   - component: {fileID: 33272901}
   - component: {fileID: 33272900}
+  - component: {fileID: 33272902}
   m_Layer: 0
   m_Name: Validation Player
   m_TagString: Untagged
@@ -195,6 +196,25 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &33272902
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 33272898}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31700c50d19b94f4d8336c20648fc301, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Margins.Runtime::Margins.FirstStoreInteractionController
+  firstPersonController: {fileID: 33272900}
+  viewCamera: {fileID: 369055669}
+  stocking: {fileID: 2012944953}
+  pickupDistance: 3
+  pickupLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!1 &40788132
 GameObject:
   m_ObjectHideFlags: 0
@@ -744,6 +764,7 @@ MonoBehaviour:
   persistence: {fileID: 311586446}
   colaProduct: {fileID: 11400000, guid: 210ac9c19d9e50748b52257b560c29d1, type: 2}
   chipsProduct: {fileID: 11400000, guid: 772e8be3753c1bf4cb5f5ac442ebc934, type: 2}
+  firstPersonController: {fileID: 33272900}
 --- !u!4 &794714427
 Transform:
   m_ObjectHideFlags: 0
