@@ -3,8 +3,8 @@
 ## Record status
 
 - **Status:** Executed; adjust recommended before merge
-- **Execution status:** Local Unity correction and verification completed on 2026-07-29 with the limitations and persistence block recorded below
-- **Implementation marker:** Draft implementation — Unity-verified at source commit `72e3463a40bce75c99ab42f83a5bbd92e79fe47e`; documentation-only descendant rerun required before handoff
+- **Execution status:** Local Unity fixture-presentation correction and downstream verification completed on 2026-07-29 with the limitations and persistence block recorded below
+- **Implementation marker:** Draft implementation — Unity-verified at refreshed source commit `1659b8b9c8112afb193085c34a8b20a62da6fb4e`
 - **Packet:** `Margins_First_Store_Local_Unity_Verification_Packet_v0.1.md`
 
 Leave a field as `not run`, `blocked`, or `not applicable` rather than inferring a
@@ -14,8 +14,8 @@ pass. Link or attach durable evidence for every pass or failure.
 
 | Field | Required record |
 |---|---|
-| Exact tested commit (`git rev-parse HEAD`) | `72e3463a40bce75c99ab42f83a5bbd92e79fe47e` |
-| Test date/time and timezone | 2026-07-29 01:37–01:52 EDT (`UTC-04:00`) |
+| Exact tested commit (`git rev-parse HEAD`) | `1659b8b9c8112afb193085c34a8b20a62da6fb4e` |
+| Test date/time and timezone | 2026-07-29 07:34–07:41 EDT (`UTC-04:00`) |
 | Tester | Codex, Technical Architect primary; Producer/Roadmap sequencing; Data/Validation/QA evidence |
 | OS and version | Microsoft Windows 11 Home `10.0.26200`, build `26200` |
 | CPU / RAM / GPU | AMD Ryzen 9 270 with Radeon 780M; 31.3 GiB RAM; Radeon 780M and NVIDIA RTX 5070 Laptop GPU |
@@ -36,7 +36,7 @@ pass. Link or attach durable evidence for every pass or failure.
 | New or modified serialized files | Pass | Unity-created validation scene, two ProductDefinitions, two prefabs, and validation materials; no serialized YAML hand-authored |
 | Import warnings | Pass | Editor Console 0 warnings |
 | Import errors | Pass | Editor Console 0 errors |
-| C# compile result | Pass | `CODE/Unity/Margins/Logs/pr16-post-fix-compile.log` |
+| C# compile result | Pass | Unity `6000.5.5f1`; 0 compiler errors and 0 compiler warnings in both complete-suite logs |
 | Final Console error count | Pass | 0 |
 | Final Console warning count | Pass | 0 |
 
@@ -44,10 +44,10 @@ pass. Link or attach durable evidence for every pass or failure.
 
 | Suite | Exact filter | Passed | Failed | Skipped/Inconclusive | Duration | Result artifact / screenshot |
 |---|---|---:|---:|---:|---:|---|
-| Complete EditMode | all EditMode tests | 38 | 0 | 0 | 0.2276881 s | `CODE/Unity/Margins/Logs/pr16-post-fix-editmode-results.xml` |
-| First-store domain EditMode | `Margins.Tests.FirstStoreDomainEditModeTests` | 22 | 0 | 0 | 0.024612 s | same XML |
-| First-store adapter EditMode | `Margins.Tests.FirstStoreAdapterEditModeTests` | 9 | 0 | 0 | 0.149647 s | same XML |
-| Complete PlayMode | all PlayMode tests | 6 | 0 | 0 | 1.6256942 s | `CODE/Unity/Margins/Logs/pr16-post-fix-playmode-results.xml` |
+| Complete EditMode | all EditMode tests | 41 | 0 | 0 | 0.2183044 s | `C:/Users/CK/AppData/Local/Temp/margins-pr16-fixture-editmode.xml` |
+| First-store domain EditMode | `Margins.Tests.FirstStoreDomainEditModeTests` | 22 | 0 | 0 | 0.045997 s | same XML |
+| First-store adapter EditMode | `Margins.Tests.FirstStoreAdapterEditModeTests` | 12 | 0 | 0 | 0.126234 s | same XML |
+| Complete PlayMode | all PlayMode tests | 6 | 0 | 0 | 1.787458 s | `C:/Users/CK/AppData/Local/Temp/margins-pr16-fixture-playmode.xml` |
 
 Focused evidence must identify the exact tests or manual steps proving checkout
 line mutation resistance, two completed transactions, duplicate transaction-ID
@@ -57,8 +57,8 @@ consumption, repeated distinct physical units, failed-placement rollback, and
 required-fixture restrictions.
 
 For every failure, record the full test name, stack trace, reproduction frequency,
-owning branch, defect ID, and rerun result. The source-authored tests remain
-Unity-unverified until this table contains actual local results.
+owning branch, defect ID, and rerun result. This table contains the actual local
+results for the source-authored fixture-presentation correction tests.
 
 ## Scene and inspector evidence
 
@@ -88,7 +88,8 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 | `fs-accept-014` invalid/duplicate IDs | Blocked with bounded diagnostic and no partial state | Pass | Duplicate checkout begin rejected with no active session or stock mutation; configuration tests passed. |
 | `fs-accept-001` fixture placement | In-bounds, deterministic footprint/orientation | Pass | Required checkout fixture placed; deterministic placement tests passed. |
 | `fs-accept-002` overlap/move rejection | Prior accepted placement preserved | Pass | Open/Closing move rejected manually; overlap/prior-state tests passed. |
-| Fixture remove and recovery | Domain and visible state agree; no orphan occupancy | Automated pass; direct recovery not completed | Open/Closing removal rejected manually; domain removal/recovery covered in EditMode. |
+| Fixture remove and recovery | Domain and visible state agree; no orphan occupancy | Pass | In the Windows player, successful removal returned `None` and hid the fixture; immediate re-placement returned `None` and restored it. `FixtureRemovalClearsDomainAndPresentationAndAllowsReplacement` passed. |
+| Fixture snapshot omission/inclusion | Restore resets all configured fixtures; omitted stays unplaced; included restores normally | Pass | Empty snapshot → place → restore hid the fixture; placed snapshot → remove → restore reinstated it. Both focused restore tests passed. |
 | `fs-accept-003` receiving | Sealed reject; open then conserved box-to-loose transfer | Partial manual / automated pass | Mixed box opened manually; sealed rejection and conservation covered in automated tests. |
 | Mixed-product removal | Requested cola/chips unit removed; invalid/exhausted request changes nothing | Pass | Four cola and two chips removed; fifth cola request rejected `InsufficientQuantity` without a new unit. |
 | `fs-accept-004` valid stocking | Loose-to-held-to-shelf moves exactly one unit and one visible item | Pass | Two cola and two chips stocked through held state to product-specific shelves. |
@@ -106,7 +107,7 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 | `fs-accept-010` close/result | Valid sequence and totals retained until acknowledgement | Pass | Open → Closing → ClosedWithResultPending completed after cleaning. |
 | Required fixture move/remove while open | Both operations rejected; accepted placement preserved | Pass | Both returned `OperatingStateRestricted`. |
 | Required fixture move/remove while closing | Both operations rejected; accepted placement preserved | Pass | Both returned `OperatingStateRestricted`. |
-| In-memory physical/domain restore | Physical counts/placements equal inventory after repeated restore; no replay | Pass | A third post-snapshot sale mutated state; two restores returned ledger, inventory, and visible shelf state to the same two-sale snapshot. |
+| In-memory physical/domain restore | Physical counts/placements equal inventory after repeated restore; no replay | Pass | Fixture omission/inclusion was exercised directly; prior repeated restore evidence returned ledger, inventory, and visible shelf state to the same two-sale snapshot. |
 | `fs-accept-011` full disk persistence | Save/exit/reload equality | Blocked pending persistence decision | No approved first-store disk persistence contract exists. |
 | `fs-accept-012` E1 arithmetic | `$10,000-$3,000-$2,250-$1,100-$205+$500=$3,945`; contribution `$10` | Pass | Independently recomputed; proposed tuning remains unapproved. |
 | `fs-accept-012` E2 arithmetic | `$10,000-$3,000-$2,250-$1,100-$205+$300=$3,745`; contribution `-$85` | Pass | Independently recomputed; proposed tuning remains unapproved. |
@@ -134,6 +135,7 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 | Operating-state and totals equality | Pass at the approved in-memory boundary |
 | Distinct physical-unit / shelf-placement reconciliation | Pass at the approved in-memory boundary |
 | Rejected or repaired records | Contradictory totals rejected by focused domain test |
+| Future historical COGS requirement | Completed transaction lines must preserve unit cost at sale so later cost changes cannot alter historical COGS. |
 
 If only the in-memory mapper round trip is available, record that result under
 automated tests and leave the full restart result blocked.
@@ -145,22 +147,23 @@ automated tests and leave the full restart result blocked.
 | Build target and architecture | Windows x64 |
 | Development build settings | Development build enabled by the existing validation build method |
 | Exact output path | `C:/Users/CK/Documents/margins/CODE/Unity/Margins/Builds/FirstStoreValidation/MarginsFirstStoreValidation.exe` |
-| Build start/end time | 2026-07-29 01:39:45–01:40:06 EDT |
+| Build start/end time | 2026-07-29 07:35:24–07:35:55 EDT |
 | Build result | Pass — `Build Finished, Result: Success.` |
-| Build warnings/errors | No build failure; final editor Console 0 warnings / 0 errors |
-| Executable and data-folder sizes | EXE 667,648 bytes; complete build 178 files / 102,924,832 bytes |
+| Build warnings/errors | No build failure; 0 C# compiler warnings / 0 C# compiler errors |
+| Executable and data-folder sizes | EXE 667,648 bytes; complete build 178 files / 102,925,344 bytes |
 | Executable hash | SHA-256 `C7E7C0FB799BC979D2A086D8836D9570443F925C753442C2979FAC9E38D69C13` |
 | Launch result | Pass — exact Unity `6000.5.5f1` player launched |
-| Manual controls result | Feature-validation mouse controls and mouse look passed; held-key translation and direct legacy pickup remained unverified |
+| Manual controls result | Fixture remove/re-place, omitted/included restore, and Open/Closing restrictions passed; held-key translation and direct legacy pickup remained unverified |
 | Clean exit result | Pass — normal Input System and physics shutdown logged |
 | `Player.log` path | `C:/Users/CK/AppData/LocalLow/DefaultCompany/Margins/Player.log` |
-| `Player.log` findings | 0 warning/error/exception entries. Non-fatal D3D12 info-queue diagnostic only. |
+| `Player.log` findings | 0 warning/error/exception entries; normal physics/Input System shutdown. One non-fatal D3D12 info-queue diagnostic only. |
 
 ## Defect log
 
 | Defect ID | Severity | Area / scenario | Reproduction | Expected | Actual | Owning branch | Correction commit | Rerun evidence | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `FSV-001` | major | Duplicate checkout transaction | Complete two sales, begin the second ID again, then try a unique sale | Replay rejected without opening a session; unique sale remains possible | Replay rejected only at completion and left an active session, wedging later checkout | PR #15 | `9f84800` | EditMode 38/38, PlayMode 6/6; manual replay rejected at begin and transaction 003 then completed | Resolved |
+| `FSV-002` | major | Fixture removal and snapshot presentation | Remove a placed fixture; separately restore a snapshot that omits a currently placed fixture | Occupancy and presentation both clear; omitted fixture remains unplaced; fixture can be re-placed | Domain occupancy cleared, but the visible fixture remained; omitted restore left stale visible placement | PR #15 | `a49bc2a` | EditMode 41/41, PlayMode 6/6; Windows player remove/re-place and omitted/included restore passed | Resolved |
 | `FSV-OBS-001` | observation | Direct executable input evidence | UI automation emits taps, not sustained key state | Directly observe translation and legacy pickup/rotate/release | Mouse look observed; translation and legacy pickup not directly completed | PR #16 evidence | none | Foundation input/interaction PlayMode tests 4/4 | Open evidence gap |
 | `FSV-OBS-002` | observation | Full disk restart | Request first-store disk persistence without an approved contract | Approved save boundary exists first | No approved first-store disk contract | Owner decision | none | In-memory restore passed | Blocked by decision |
 
@@ -172,7 +175,8 @@ definitions in the verification packet.
 | Order | Defect ID | Files/assets changed through approved workflow | Reason | Owning PR updated | Descendants refreshed | Verification restarted at step |
 |---:|---|---|---|---|---|---:|
 | 1 | `FSV-001` | `CheckoutStationComponent.cs` and focused adapter test | Reject completed transaction IDs before creating an active session | #15 at `9f84800` | #16 rebased/force-with-lease updated | 5 |
-| 2 | `FSV-OBS-001` support | Development-only validation HUD mouse controls | Directly exercise scoped domain interactions under available UI automation | #16 at `72e3463` | Not applicable | 5 |
+| 2 | `FSV-002` | `FixturePlacementController.cs`, `PlaceableFixtureComponent.cs`, and focused adapter tests | Clear/re-activate fixture presentation and reset all configured fixtures before applying restore | #15 at `a49bc2a` | #16 rebased onto the correction | 5 |
+| 3 | `FSV-OBS-001` support | Development-only validation HUD mouse controls | Directly exercise scoped domain interactions under available UI automation | #16 rebased at `bde42fa` | Not applicable | 5 |
 
 ## Final recommendation
 
@@ -185,9 +189,9 @@ Select exactly one after all required evidence and reruns are complete.
 - [ ] **Stop** — a blocker, invalid assumption, or unacceptable scope/risk requires
   the stack to pause.
 
-**Recommendation rationale:** The corrected implementation compiles, all 44 Unity
+**Recommendation rationale:** The corrected implementation compiles, all 47 Unity
 tests pass, the Windows build runs, scoped interactions and in-memory restore are
-coherent, and the discovered major defect is resolved. Merge should wait for
+coherent, and both discovered major defects are resolved. Merge should wait for
 project-owner disposition of proposed tuning/content, an explicit persistence
 decision if disk restart is required, and direct human confirmation of held-key
 movement plus the legacy pickup/rotate/release loop.

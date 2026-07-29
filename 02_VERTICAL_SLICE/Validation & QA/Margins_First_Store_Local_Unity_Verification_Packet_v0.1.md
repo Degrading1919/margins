@@ -5,8 +5,8 @@
 - **Status:** Executed; adjust recommended before merge
 - **Execution status:** Local correction and verification run completed 2026-07-29;
   see the evidence record for exact results, limitations, and the persistence block
-- **Implementation marker:** Draft implementation — Unity-verified; documentation-only
-  final-head rerun required before handoff
+- **Implementation marker:** Draft implementation — Unity-verified; fixture-presentation
+  correction and downstream rerun complete
 - **Required editor:** Unity `6000.5.5f1`
 - **Remediation owner:** Technical Architect Assistant
 - **Sequence owner:** Margins Producer and Roadmap Assistant
@@ -70,8 +70,11 @@ branch, refresh descendants, and restart at the earliest affected step.
     of the Task 1 proposed data, create the minimum ProductDefinition and other
     required runtime assets in Unity. Record stable IDs and source-row mappings.
 11. [ ] **Verify fixture placement.** Exercise place, rotate, reject overlap,
-    reject out-of-bounds, move, remove, cancel/recovery, and required-fixture
-    opening checks. Confirm accepted state and visible state agree.
+    reject out-of-bounds, move, successful removal, and re-placement. Confirm a
+    successful removal clears both layout occupancy and visible placement, the
+    removed fixture remains available for re-placement, and a rejected removal
+    preserves its prior domain and visible state. Complete the required-fixture
+    opening checks and confirm accepted state and visible state agree.
 12. [ ] **Verify receiving and stocking.** Exercise sealed-box rejection, open a
     mixed-product container, request each configured product explicitly, reject
     invalid and exhausted product requests without mutation, remove repeated
@@ -92,9 +95,12 @@ branch, refresh descendants, and restart at the earliest affected step.
     then acknowledge the result.
 16. [ ] **Verify restoration at the approved boundary.** Repeat the temporary
     in-memory restore and compare fixture, inventory, delivery, ledger, cleaning,
-    operating, physical-unit, and shelf-placement state. Confirm that revenue and
-    stock consumption are not replayed. Full disk save/exit/reload remains
-    **blocked** unless a separate owner-approved persistence decision exists.
+    operating, physical-unit, and shelf-placement state. Before applying restored
+    fixture records, confirm every configured fixture presentation is reset;
+    fixtures omitted by the snapshot must remain unplaced and included fixtures
+    must restore normally. Confirm that revenue and stock consumption are not
+    replayed. Full disk save/exit/reload remains **blocked** unless a separate
+    owner-approved persistence decision exists.
 17. [ ] **Produce a Windows x64 development build.** Record the exact output path,
     build report, warnings, size, and whether symbols and development diagnostics
     were included.
@@ -143,7 +149,7 @@ authority after the project owner approves or revises it.
 | Run order | Scenario IDs | Evidence focus |
 |---:|---|---|
 | 1 | `fs-accept-014` | Invalid and duplicate configuration is blocked before mutation |
-| 2 | `fs-accept-001`, `fs-accept-002` | Fixture determinism, bounds, overlap, prior-state preservation |
+| 2 | `fs-accept-001`, `fs-accept-002` | Fixture determinism, bounds, overlap, remove/re-place, omitted restore, prior-state preservation |
 | 3 | `fs-accept-003` | Mixed-product sealed/open delivery, explicit product removal, exhausted rejection |
 | 4 | `fs-accept-004`, `fs-accept-005` | Repeated distinct physical units, product-specific shelves, failed-placement atomicity |
 | 5 | `fs-accept-006`, `fs-accept-007` | Mutation-resistant checkout, two transactions, duplicate-ID rejection, mapped consumption |
@@ -172,6 +178,9 @@ first-store domain state in memory. It deliberately does not replace or silently
 modify `FoundationSaveData` or `PlacementSaveController.CurrentSaveVersion == 1`.
 The source stack does not yet choose a first-store JSON file path, save-slot
 policy, atomic write strategy, or foundation-sidecar coordination.
+
+Future persistence requirement: Completed transaction lines must preserve unit
+cost at sale so later cost changes cannot alter historical COGS.
 
 Step 16 cannot receive a passing end-to-end result until the project owner chooses
 one of these paths:
@@ -241,5 +250,7 @@ Stop and record evidence if any of the following occurs:
 - Any transfer duplicates or loses units.
 - A completed checkout consumes stock more than once.
 - Restore partially mutates accepted state after rejecting a snapshot.
+- Removal leaves a fixture visibly placed after occupancy is released, or restore
+  leaves a fixture visible when it is absent from the accepted snapshot.
 - Physical shelf occupancy disagrees with authoritative inventory after restore.
 - The Windows build fails to launch or `Player.log` contains an unresolved blocker.
