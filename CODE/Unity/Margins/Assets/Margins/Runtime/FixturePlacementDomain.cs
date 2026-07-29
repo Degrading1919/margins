@@ -128,6 +128,7 @@ namespace Margins
         InvalidIdentifier,
         DuplicateIdentifier,
         MissingFixture,
+        OperatingStateRestricted,
         InvalidFootprint,
         OutOfBounds,
         Occupied

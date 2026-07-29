@@ -1,4 +1,3 @@
-// Draft implementation — Unity verification pending
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
@@ -6,7 +5,7 @@ using UnityEngine;
 
 namespace Margins.Tests
 {
-    [Category("Authored_UnityUnverified")]
+    [Category("FirstStoreAdapters")]
     public sealed class FirstStoreAdapterEditModeTests
     {
         private readonly List<Object> createdObjects = new();
@@ -14,180 +13,186 @@ namespace Margins.Tests
         [TearDown]
         public void TearDown()
         {
-            foreach (Object createdObject in createdObjects)
+            for (int index = createdObjects.Count - 1; index >= 0; index--)
             {
-                if (createdObject != null)
+                if (createdObjects[index] != null)
                 {
-                    Object.DestroyImmediate(createdObject);
+                    Object.DestroyImmediate(createdObjects[index]);
                 }
             }
             createdObjects.Clear();
         }
 
         [Test]
-        public void InventoryAndDeliveryAdaptersTransferStateIntoDomain()
+        public void MixedProductDeliveryCreatesRequestedDistinctUnitsAndRejectsExhaustion()
         {
-            ProductDefinition product = CreateProductDefinition("prod-cola");
-            FirstStoreInventoryComponent inventory = CreateInventoryComponent(
-                product,
-                ("loc-box", InventoryLocationKind.DeliveryContainer, 10, false),
-                ("loc-loose", InventoryLocationKind.Loose, 10, false),
-                ("loc-held", InventoryLocationKind.Held, 1, true),
-                ("loc-shelf", InventoryLocationKind.Shelf, 10, true),
-                ("loc-box", 4));
-            DeliveryBoxComponent delivery = CreateDeliveryBox(
-                inventory,
-                product,
-                false);
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 1);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
 
-            Assert.That(delivery.TryOpen(out DeliveryContainerOpenResult opened, out _), Is.True);
-            Assert.That(opened, Is.EqualTo(DeliveryContainerOpenResult.Opened));
             Assert.That(
-                delivery.TryRemoveOneUnit(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Chips,
+                    out ProductItem chips,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out ProductItem firstCola,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out ProductItem secondCola,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+
+            Assert.That(chips, Is.Not.SameAs(firstCola));
+            Assert.That(firstCola, Is.Not.SameAs(secondCola));
+            Assert.That(firstCola.PhysicalUnitId, Is.Not.EqualTo(secondCola.PhysicalUnitId));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(3));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-loose", "prod-cola"), Is.EqualTo(2));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-loose", "prod-chips"), Is.EqualTo(1));
+
+            FirstStoreInventorySnapshot before = rig.Inventory.Inventory.CreateSnapshot();
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Chips,
+                    out _,
                     out DeliveryContainerFailure failure,
-                    out InventoryTransferResult transfer),
-                Is.True);
-
-            Assert.That(failure, Is.EqualTo(DeliveryContainerFailure.None));
-            Assert.That(transfer.IsSuccess, Is.True);
-            Assert.That(inventory.Inventory.GetQuantity("loc-box", "prod-cola"), Is.EqualTo(3));
-            Assert.That(inventory.Inventory.GetQuantity("loc-loose", "prod-cola"), Is.EqualTo(1));
-            Assert.That(inventory.Inventory.GetTotalQuantity("prod-cola"), Is.EqualTo(4));
+                    out _,
+                    out _),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(DeliveryContainerFailure.TransferRejected));
+            Assert.That(rig.Inventory.Inventory.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(3));
         }
 
         [Test]
-        public void InvalidInspectorConfigurationReturnsActionableError()
+        public void ProductSpecificShelvesFeedTwoCompletedTransactions()
         {
-            GameObject gameObject = CreateGameObject("Invalid Inventory");
-            FirstStoreInventoryComponent inventory =
-                gameObject.AddComponent<FirstStoreInventoryComponent>();
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 1);
+            ProductItem cola = StockOne(rig, rig.Cola);
+            ProductItem chips = StockOne(rig, rig.Chips);
 
-            Assert.That(inventory.TryValidateConfiguration(out string error), Is.False);
-            StringAssert.Contains("product definition", error);
+            Assert.That(cola.SnappedFixture, Is.EqualTo(rig.ColaShelf));
+            Assert.That(chips.SnappedFixture, Is.EqualTo(rig.ChipsShelf));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(1));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-chips", "prod-chips"), Is.EqualTo(1));
+
+            CompleteSale(rig, "transaction-002", rig.Cola, 1);
+            CompleteSale(rig, "transaction-001", rig.Chips, 1);
+
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(2));
+            Assert.That(rig.Checkout.GrossSalesCents, Is.EqualTo(448));
+            Assert.That(rig.Checkout.UnitsSold, Is.EqualTo(2));
+            Assert.That(
+                rig.Checkout.CompletedTransactions[0].transactionId,
+                Is.EqualTo("transaction-001"));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.Zero);
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-chips", "prod-chips"), Is.Zero);
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.Zero);
         }
 
         [Test]
-        public void StockingAdapterMovesOnePhysicalAndDomainUnitWithoutDuplication()
+        public void DuplicateTransactionIdCannotConsumeRemainingStockOrPhysicalUnit()
         {
-            ProductDefinition product = CreateProductDefinition("prod-cola");
-            FirstStoreInventoryComponent inventory = CreateInventoryComponent(
-                product,
-                ("loc-box", InventoryLocationKind.DeliveryContainer, 10, false),
-                ("loc-loose", InventoryLocationKind.Loose, 10, false),
-                ("loc-held", InventoryLocationKind.Held, 1, true),
-                ("loc-shelf", InventoryLocationKind.Shelf, 10, true),
-                ("loc-box", 1));
-            DeliveryBoxComponent delivery = CreateDeliveryBox(
-                inventory,
-                product,
-                false);
-            ShelfFixture shelf = CreateShelf("fixture-shelf", "slot-01");
-            ProductItem item = CreateProductItem("Physical Cola", product);
-            Transform holdPoint = CreateGameObject("Hold Point").transform;
-            StockingController stocking = CreateStockingController(
-                inventory,
-                item,
-                shelf,
-                holdPoint);
-            int totalBefore = inventory.Inventory.GetTotalQuantity("prod-cola");
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);
+            StockOne(rig, rig.Cola);
+            StockOne(rig, rig.Cola);
+            CompleteSale(rig, "transaction-duplicate", rig.Cola, 1);
 
-            Assert.That(delivery.TryOpen(out _, out _), Is.True);
-            Assert.That(delivery.TryRemoveOneUnit(out _, out _), Is.True);
-            Assert.That(stocking.TryPickUpLooseUnit(out string error), Is.True, error);
-            Assert.That(stocking.TryStockHeldUnit(1, out error), Is.True, error);
+            Assert.That(
+                rig.Checkout.TryBeginSession("transaction-duplicate", out string error),
+                Is.True,
+                error);
+            Assert.That(rig.Checkout.TryScan(rig.Cola, 1, out _), Is.True);
+            int stockBefore =
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola");
+            int visibleBefore = rig.PhysicalUnits.VisibleUnitCount;
 
-            Assert.That(item.IsSnapped, Is.True);
-            Assert.That(item.QuarterTurns, Is.EqualTo(1));
-            Assert.That(inventory.Inventory.GetQuantity("loc-box", "prod-cola"), Is.Zero);
-            Assert.That(inventory.Inventory.GetQuantity("loc-loose", "prod-cola"), Is.Zero);
-            Assert.That(inventory.Inventory.GetQuantity("loc-held", "prod-cola"), Is.Zero);
-            Assert.That(inventory.Inventory.GetQuantity("loc-shelf", "prod-cola"), Is.EqualTo(1));
-            Assert.That(inventory.Inventory.GetTotalQuantity("prod-cola"), Is.EqualTo(totalBefore));
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    out _,
+                    out CheckoutFailure failure),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.DuplicateTransactionId));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"),
+                Is.EqualTo(stockBefore));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(visibleBefore));
         }
 
         [Test]
-        public void FixturePlacementAdapterRejectsOverlapAndMarksPreviewInvalid()
+        public void RepeatedRemovalAndStockingUsesDistinctPhysicalUnits()
         {
-            PlaceableFixtureComponent first = CreatePlaceableFixture(
-                "fixture-alpha",
-                2,
-                2);
-            PlaceableFixtureComponent second = CreatePlaceableFixture(
-                "fixture-beta",
-                2,
-                1);
-            FixturePlacementController controller =
-                CreateFixtureController(first, second);
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);
+            ProductItem first = StockOne(rig, rig.Cola);
+            ProductItem second = StockOne(rig, rig.Cola);
 
-            Assert.That(
-                controller.TryPlace(first, new GridPosition(1, 1), 0).IsSuccess,
-                Is.True);
-            FixturePlacementResult rejected =
-                controller.TryPlace(second, new GridPosition(2, 2), 0);
-
-            Assert.That(rejected.Failure, Is.EqualTo(FixturePlacementFailure.Occupied));
-            Assert.That(
-                second.PreviewState,
-                Is.EqualTo(FixturePlacementPreviewState.Invalid));
-            Assert.That(controller.PlacedCount, Is.EqualTo(1));
+            Assert.That(first, Is.Not.SameAs(second));
+            Assert.That(first.PhysicalUnitId, Is.Not.EqualTo(second.PhysicalUnitId));
+            Assert.That(first.IsSnapped, Is.True);
+            Assert.That(second.IsSnapped, Is.True);
+            Assert.That(first.SnappedPointId, Is.Not.EqualTo(second.SnappedPointId));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(2));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(2));
+            Assert.That(rig.Inventory.Inventory.GetTotalQuantity("prod-cola"), Is.EqualTo(2));
         }
 
         [Test]
-        public void CheckoutAdapterCompletesOnceAndConsumesOneUnit()
+        public void FailedPhysicalPlacementKeepsOneHeldUnitWithoutDuplication()
         {
-            ProductDefinition product = CreateProductDefinition("prod-cola");
-            FirstStoreInventoryComponent inventory = CreateInventoryComponent(
-                product,
-                ("loc-box", InventoryLocationKind.DeliveryContainer, 10, false),
-                ("loc-loose", InventoryLocationKind.Loose, 10, false),
-                ("loc-held", InventoryLocationKind.Held, 1, true),
-                ("loc-shelf", InventoryLocationKind.Shelf, 10, true),
-                ("loc-shelf", 2));
-            CheckoutStationComponent checkout =
-                CreateCheckout(inventory, product, 149);
-
-            Assert.That(checkout.TryBeginSession("transaction-001", out _), Is.True);
-            Assert.That(checkout.TryScan(product, 1, out _), Is.True);
+            AdapterRig rig = CreateAdapterRig(
+                colaBoxQuantity: 2,
+                chipsBoxQuantity: 0,
+                shelfSnapPointCount: 1);
+            ProductItem shelved = StockOne(rig, rig.Cola);
+            Assert.That(rig.Delivery.TryOpen(out _, out _), Is.True);
             Assert.That(
-                checkout.TryComplete(
-                    out CheckoutTransactionSummary first,
-                    out CheckoutFailure firstFailure),
-                Is.True);
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out ProductItem loose,
+                    out _,
+                    out _,
+                    out string error),
+                Is.True,
+                error);
             Assert.That(
-                checkout.TryComplete(
-                    out CheckoutTransactionSummary second,
-                    out CheckoutFailure secondFailure),
-                Is.True);
+                rig.Stocking.TryPickUpLooseUnit(
+                    rig.Cola,
+                    out ProductItem held,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(held, Is.SameAs(loose));
 
-            Assert.That(firstFailure, Is.EqualTo(CheckoutFailure.None));
-            Assert.That(secondFailure, Is.EqualTo(CheckoutFailure.AlreadyCompleted));
-            Assert.That(first, Is.EqualTo(second));
-            Assert.That(first.subtotalCents, Is.EqualTo(149));
-            Assert.That(inventory.Inventory.GetQuantity("loc-shelf", "prod-cola"), Is.EqualTo(1));
+            Assert.That(rig.Stocking.TryStockHeldUnit(0, out error), Is.False);
+            StringAssert.Contains("snap point", error);
+            Assert.That(held.IsHeld, Is.True);
+            Assert.That(shelved.IsSnapped, Is.True);
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-held", "prod-cola"), Is.EqualTo(1));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(1));
+            Assert.That(rig.Inventory.Inventory.GetTotalQuantity("prod-cola"), Is.EqualTo(2));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(2));
         }
 
         [Test]
-        public void CleaningTaskCompletionIsBoundedAndIdempotent()
+        public void EssentialFixtureMoveAndRemovalAreRejectedWhileOpenAndClosing()
         {
-            CleaningTaskComponent cleaning = CreateCleaningTask();
-
-            Assert.That(
-                cleaning.TryApplyProgress(2),
-                Is.EqualTo(CleaningProgressResult.Progressed));
-            Assert.That(
-                cleaning.TryApplyProgress(10),
-                Is.EqualTo(CleaningProgressResult.Completed));
-            Assert.That(cleaning.CompletedProgressUnits, Is.EqualTo(4));
-            Assert.That(
-                cleaning.TryApplyProgress(1),
-                Is.EqualTo(CleaningProgressResult.AlreadyComplete));
-            Assert.That(cleaning.CompletedProgressUnits, Is.EqualTo(4));
-        }
-
-        [Test]
-        public void StoreOpeningAndClosingAdaptersFollowDomainTransitions()
-        {
-            AdapterRig rig = CreateAdapterRig(shelfQuantity: 2, boxQuantity: 1);
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            StockOne(rig, rig.Cola);
             Assert.That(
                 rig.FixturePlacement.TryPlace(
                     rig.PlaceableFixture,
@@ -195,112 +200,169 @@ namespace Margins.Tests
                     0).IsSuccess,
                 Is.True);
             Assert.That(rig.Cleaning.TryApplyProgress(4), Is.EqualTo(CleaningProgressResult.Completed));
-
             Assert.That(rig.Store.TryBeginPreparation(out string error), Is.True, error);
             Assert.That(rig.Store.TryOpenStore(out error), Is.True, error);
+
+            AssertRestrictedFixtureChanges(rig);
             Assert.That(rig.Store.TryBeginClosing(out error), Is.True, error);
-            Assert.That(
-                rig.Store.TryFinishClosing(
-                    new StoreSessionTotals(298, 2, 1, 90),
-                    out error),
-                Is.True,
-                error);
-            Assert.That(
-                rig.Store.State,
-                Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
-            Assert.That(rig.Store.TryAcknowledgeResult(out error), Is.True, error);
-            Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.Closed));
+            AssertRestrictedFixtureChanges(rig);
         }
 
         [Test]
-        public void PersistenceMapperRoundTripRestoresAllAdapterState()
+        public void ClosingDerivesGrossCogsExpensesContributionAndCounts()
         {
-            AdapterRig rig = CreateAdapterRig(shelfQuantity: 1, boxQuantity: 3);
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 1);
+            StockOne(rig, rig.Cola);
+            StockOne(rig, rig.Cola);
+            StockOne(rig, rig.Chips);
+            Assert.That(
+                rig.FixturePlacement.TryPlace(
+                    rig.PlaceableFixture,
+                    new GridPosition(1, 1),
+                    0).IsSuccess,
+                Is.True);
+            Assert.That(rig.Cleaning.TryApplyProgress(4), Is.EqualTo(CleaningProgressResult.Completed));
+            Assert.That(rig.Store.TryBeginPreparation(out string error), Is.True, error);
+            Assert.That(rig.Store.TryOpenStore(out error), Is.True, error);
+
+            CompleteSale(rig, "transaction-result-001", rig.Cola, 2);
+            CompleteSale(rig, "transaction-result-002", rig.Chips, 1);
+            Assert.That(rig.Store.TryBeginClosing(out error), Is.True, error);
+            Assert.That(rig.Store.TryFinishClosing(out error), Is.True, error);
+
+            StoreSessionTotals totals = rig.Store.ResultTotals;
+            Assert.That(totals.grossSalesCents, Is.EqualTo(597));
+            Assert.That(totals.costOfGoodsSoldCents, Is.EqualTo(220));
+            Assert.That(totals.includedOperatingExpensesCents, Is.EqualTo(90));
+            Assert.That(totals.contributionAfterCostOfGoodsCents, Is.EqualTo(287));
+            Assert.That(totals.unitsSold, Is.EqualTo(3));
+            Assert.That(totals.transactionCount, Is.EqualTo(2));
+            Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+        }
+
+        [Test]
+        public void DuplicateOrNonShelfCheckoutMappingsBlockInitialization()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 1);
+            CheckoutStationComponent duplicate = CreateCheckout(
+                rig.Inventory,
+                rig.PhysicalUnits,
+                (rig.Cola, "loc-shelf-cola", 149, 60),
+                (rig.Cola, "loc-shelf-cola", 149, 60));
+            Assert.That(duplicate.TryValidateConfiguration(out string duplicateError), Is.False);
+            StringAssert.Contains("duplicate", duplicateError.ToLowerInvariant());
+
+            CheckoutStationComponent nonShelf = CreateCheckout(
+                rig.Inventory,
+                rig.PhysicalUnits,
+                (rig.Cola, "loc-loose", 149, 60));
+            Assert.That(nonShelf.TryValidateConfiguration(out string mappingError), Is.False);
+            StringAssert.Contains("shelf mapping", mappingError);
+        }
+
+        [Test]
+        public void PersistenceRestoreReconcilesPhysicalUnitsAndLedgerWithoutReplay()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 1);
+            StockOne(rig, rig.Cola);
+            StockOne(rig, rig.Chips);
+            CompleteSale(rig, "transaction-restore-001", rig.Cola, 1);
             Assert.That(
                 rig.FixturePlacement.TryPlace(
                     rig.PlaceableFixture,
                     new GridPosition(1, 1),
                     1).IsSuccess,
                 Is.True);
-            Assert.That(rig.Delivery.TryOpen(out _, out _), Is.True);
-            Assert.That(rig.Checkout.TryBeginSession("transaction-restore-001", out _), Is.True);
-            Assert.That(rig.Checkout.TryScan(rig.Product, 1, out _), Is.True);
-            Assert.That(rig.Checkout.TryComplete(out _, out _), Is.True);
-            Assert.That(
-                rig.Cleaning.TryApplyProgress(2),
-                Is.EqualTo(CleaningProgressResult.Progressed));
-            FirstStorePersistenceMapperComponent mapper =
-                CreatePersistenceMapper(rig);
+            Assert.That(rig.Cleaning.TryApplyProgress(2), Is.EqualTo(CleaningProgressResult.Progressed));
+            FirstStorePersistenceMapperComponent mapper = CreatePersistenceMapper(rig);
+
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot before, out string error), Is.True, error);
+            Assert.That(before.physicalProductUnits.Count, Is.EqualTo(1));
+            Assert.That(before.transactionLedger.transactions.Count, Is.EqualTo(1));
 
             Assert.That(
-                mapper.TryCapture(
-                    out FirstStoreSnapshot before,
-                    out string error),
+                rig.Delivery.TryRemoveOneUnit(
+                    rig.Cola,
+                    out _,
+                    out _,
+                    out _,
+                    out error),
                 Is.True,
                 error);
-
-            Assert.That(
-                rig.Inventory.Inventory.TryTransfer(
-                    "prod-cola",
-                    "loc-box",
-                    "loc-loose",
-                    1).IsSuccess,
-                Is.True);
             Assert.That(
                 rig.FixturePlacement.TryMove(
                     rig.PlaceableFixture,
                     new GridPosition(4, 3),
                     2).IsSuccess,
                 Is.True);
-            Assert.That(
-                rig.Cleaning.TryApplyProgress(2),
-                Is.EqualTo(CleaningProgressResult.Completed));
+            Assert.That(rig.Cleaning.TryApplyProgress(2), Is.EqualTo(CleaningProgressResult.Completed));
 
             Assert.That(mapper.TryRestore(before, out error), Is.True, error);
-            Assert.That(
-                mapper.TryCapture(
-                    out FirstStoreSnapshot after,
-                    out error),
-                Is.True,
-                error);
+            Assert.That(mapper.TryRestore(before, out error), Is.True, error);
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot after, out error), Is.True, error);
 
             Assert.That(after, Is.EqualTo(before));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(rig.Checkout.GrossSalesCents, Is.EqualTo(149));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(1));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-chips", "prod-chips"), Is.EqualTo(1));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-loose", "prod-cola"), Is.Zero);
         }
 
-        private AdapterRig CreateAdapterRig(int shelfQuantity, int boxQuantity)
+        private AdapterRig CreateAdapterRig(
+            int colaBoxQuantity,
+            int chipsBoxQuantity,
+            int shelfSnapPointCount = 4)
         {
-            ProductDefinition product = CreateProductDefinition("prod-cola");
+            ProductDefinition cola = CreateProductDefinition("prod-cola", "Cola");
+            ProductDefinition chips = CreateProductDefinition("prod-chips", "Chips");
             FirstStoreInventoryComponent inventory = CreateInventoryComponent(
-                product,
-                ("loc-box", InventoryLocationKind.DeliveryContainer, 10, false),
-                ("loc-loose", InventoryLocationKind.Loose, 10, false),
-                ("loc-held", InventoryLocationKind.Held, 1, true),
-                ("loc-shelf", InventoryLocationKind.Shelf, 10, true),
-                ("loc-box", boxQuantity),
-                ("loc-shelf", shelfQuantity));
-            PlaceableFixtureComponent placeableFixture = CreatePlaceableFixture(
-                "fixture-essential-01",
-                2,
-                1);
-            FixturePlacementController fixturePlacement =
-                CreateFixtureController(placeableFixture);
-            ShelfFixture shelf = CreateShelf("fixture-shelf", "slot-01");
-            ProductItem item = CreateProductItem("Physical Cola", product);
+                new[] { cola, chips },
+                new[]
+                {
+                    ("loc-box", InventoryLocationKind.DeliveryContainer, 20, false),
+                    ("loc-loose", InventoryLocationKind.Loose, 20, false),
+                    ("loc-held", InventoryLocationKind.Held, 1, true),
+                    ("loc-shelf-cola", InventoryLocationKind.Shelf, 10, true),
+                    ("loc-shelf-chips", InventoryLocationKind.Shelf, 10, true)
+                },
+                CreateStartingInventory(
+                    cola,
+                    colaBoxQuantity,
+                    chips,
+                    chipsBoxQuantity));
+            PhysicalProductUnitRegistry physicalUnits =
+                CreatePhysicalUnitRegistry(cola, chips);
+            ShelfFixture colaShelf = CreateShelf(
+                "fixture-shelf-cola",
+                "slot-cola",
+                shelfSnapPointCount);
+            ShelfFixture chipsShelf = CreateShelf(
+                "fixture-shelf-chips",
+                "slot-chips",
+                shelfSnapPointCount);
             Transform holdPoint = CreateGameObject("Hold Point").transform;
             StockingController stocking = CreateStockingController(
                 inventory,
-                item,
-                shelf,
-                holdPoint);
+                physicalUnits,
+                holdPoint,
+                (cola, colaShelf, "loc-shelf-cola", CreateSnapPointIds("slot-cola", shelfSnapPointCount)),
+                (chips, chipsShelf, "loc-shelf-chips", CreateSnapPointIds("slot-chips", shelfSnapPointCount)));
             CheckoutStationComponent checkout = CreateCheckout(
                 inventory,
-                product,
-                149);
+                physicalUnits,
+                (cola, "loc-shelf-cola", 149, 60),
+                (chips, "loc-shelf-chips", 299, 100));
+            PlaceableFixtureComponent placeableFixture =
+                CreatePlaceableFixture("fixture-essential-01", 2, 1);
+            FixturePlacementController fixturePlacement =
+                CreateFixtureController(placeableFixture);
             CleaningTaskComponent cleaning = CreateCleaningTask();
             DeliveryBoxComponent delivery = CreateDeliveryBox(
                 inventory,
-                product,
-                false);
+                physicalUnits,
+                cola,
+                chips);
             StoreOperatingController store = CreateStoreOperating(
                 fixturePlacement,
                 stocking,
@@ -308,8 +370,12 @@ namespace Margins.Tests
                 cleaning);
 
             return new AdapterRig(
-                product,
+                cola,
+                chips,
                 inventory,
+                physicalUnits,
+                colaShelf,
+                chipsShelf,
                 placeableFixture,
                 fixturePlacement,
                 stocking,
@@ -319,38 +385,49 @@ namespace Margins.Tests
                 store);
         }
 
-        private FirstStoreInventoryComponent CreateInventoryComponent(
-            ProductDefinition product,
-            (string id, InventoryLocationKind kind, int capacity, bool single) box,
-            (string id, InventoryLocationKind kind, int capacity, bool single) loose,
-            (string id, InventoryLocationKind kind, int capacity, bool single) held,
-            (string id, InventoryLocationKind kind, int capacity, bool single) shelf,
-            params (string locationId, int quantity)[] starting)
+        private static (ProductDefinition product, string locationId, int quantity)[]
+            CreateStartingInventory(
+                ProductDefinition cola,
+                int colaQuantity,
+                ProductDefinition chips,
+                int chipsQuantity)
         {
-            GameObject gameObject = CreateGameObject("Inventory");
+            List<(ProductDefinition product, string locationId, int quantity)> result = new();
+            if (colaQuantity > 0)
+            {
+                result.Add((cola, "loc-box", colaQuantity));
+            }
+            if (chipsQuantity > 0)
+            {
+                result.Add((chips, "loc-box", chipsQuantity));
+            }
+            return result.ToArray();
+        }
+
+        private FirstStoreInventoryComponent CreateInventoryComponent(
+            ProductDefinition[] products,
+            (string id, InventoryLocationKind kind, int capacity, bool single)[] locations,
+            (ProductDefinition product, string locationId, int quantity)[] starting)
+        {
             FirstStoreInventoryComponent component =
-                gameObject.AddComponent<FirstStoreInventoryComponent>();
+                CreateGameObject("Inventory").AddComponent<FirstStoreInventoryComponent>();
             SerializedObject serialized = new(component);
-            SetObjectArray(
-                serialized.FindProperty("productDefinitions"),
-                product);
+            SetObjectArray(serialized.FindProperty("productDefinitions"), products);
 
-            SerializedProperty locations = serialized.FindProperty("locations");
-            locations.arraySize = 4;
-            SetLocation(locations.GetArrayElementAtIndex(0), box);
-            SetLocation(locations.GetArrayElementAtIndex(1), loose);
-            SetLocation(locations.GetArrayElementAtIndex(2), held);
-            SetLocation(locations.GetArrayElementAtIndex(3), shelf);
+            SerializedProperty locationArray = serialized.FindProperty("locations");
+            locationArray.arraySize = locations.Length;
+            for (int index = 0; index < locations.Length; index++)
+            {
+                SetLocation(locationArray.GetArrayElementAtIndex(index), locations[index]);
+            }
 
-            SerializedProperty startingQuantities =
-                serialized.FindProperty("startingQuantities");
-            startingQuantities.arraySize = starting.Length;
+            SerializedProperty startingArray = serialized.FindProperty("startingQuantities");
+            startingArray.arraySize = starting.Length;
             for (int index = 0; index < starting.Length; index++)
             {
-                SerializedProperty entry =
-                    startingQuantities.GetArrayElementAtIndex(index);
+                SerializedProperty entry = startingArray.GetArrayElementAtIndex(index);
                 entry.FindPropertyRelative("productDefinition").objectReferenceValue =
-                    product;
+                    starting[index].product;
                 entry.FindPropertyRelative("locationId").stringValue =
                     starting[index].locationId;
                 entry.FindPropertyRelative("quantityUnits").intValue =
@@ -362,112 +439,75 @@ namespace Margins.Tests
             return component;
         }
 
-        private ProductDefinition CreateProductDefinition(string stableId)
+        private PhysicalProductUnitRegistry CreatePhysicalUnitRegistry(
+            params ProductDefinition[] products)
         {
-            ProductDefinition definition =
-                ScriptableObject.CreateInstance<ProductDefinition>();
-            definition.name = stableId;
-            createdObjects.Add(definition);
-            SerializedObject serialized = new(definition);
-            serialized.FindProperty("stableProductId").stringValue = stableId;
-            serialized.FindProperty("displayName").stringValue = "Cola";
-            serialized.FindProperty("shelfFootprint").enumValueIndex =
-                (int)ProductFootprint.Small;
-            serialized.FindProperty("snapCompatibilityTag").stringValue =
-                "shelf-small";
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            return definition;
-        }
+            GameObject root = CreateGameObject("Physical Units");
+            PhysicalProductUnitRegistry registry =
+                root.AddComponent<PhysicalProductUnitRegistry>();
+            SerializedObject serialized = new(registry);
+            SerializedProperty configurations = serialized.FindProperty("products");
+            configurations.arraySize = products.Length;
+            for (int index = 0; index < products.Length; index++)
+            {
+                ProductItem prefab = CreateProductItem(
+                    $"{products[index].StableProductId} Unit Prefab",
+                    products[index]);
+                prefab.gameObject.SetActive(false);
+                Transform spawn = CreateGameObject(
+                    $"{products[index].StableProductId} Loose Spawn").transform;
+                spawn.SetParent(root.transform, false);
+                spawn.localPosition = new Vector3(0f, 0f, index * 0.5f);
 
-        private PlaceableFixtureComponent CreatePlaceableFixture(
-            string stableId,
-            int width,
-            int depth)
-        {
-            GameObject gameObject = CreateGameObject(stableId);
-            PlaceableFixtureComponent fixture =
-                gameObject.AddComponent<PlaceableFixtureComponent>();
-            SerializedObject serialized = new(fixture);
-            serialized.FindProperty("stableFixtureInstanceId").stringValue = stableId;
-            serialized.FindProperty("footprintWidthCells").intValue = width;
-            serialized.FindProperty("footprintDepthCells").intValue = depth;
+                SerializedProperty configuration =
+                    configurations.GetArrayElementAtIndex(index);
+                configuration.FindPropertyRelative("productDefinition").objectReferenceValue =
+                    products[index];
+                configuration.FindPropertyRelative("unitPrefab").objectReferenceValue = prefab;
+                configuration.FindPropertyRelative("looseSpawnPoint").objectReferenceValue = spawn;
+                configuration.FindPropertyRelative("looseUnitSpacing").vector3Value =
+                    new Vector3(0.2f, 0f, 0f);
+            }
             serialized.ApplyModifiedPropertiesWithoutUndo();
-            return fixture;
-        }
-
-        private FixturePlacementController CreateFixtureController(
-            params PlaceableFixtureComponent[] fixtures)
-        {
-            GameObject originObject = CreateGameObject("Grid Origin");
-            GameObject controllerObject = CreateGameObject("Fixture Controller");
-            FixturePlacementController controller =
-                controllerObject.AddComponent<FixturePlacementController>();
-            SerializedObject serialized = new(controller);
-            serialized.FindProperty("gridOrigin").objectReferenceValue =
-                originObject.transform;
-            serialized.FindProperty("gridWidthCells").intValue = 8;
-            serialized.FindProperty("gridDepthCells").intValue = 8;
-            serialized.FindProperty("cellSize").floatValue = 0.5f;
-            SetObjectArray(serialized.FindProperty("fixtures"), fixtures);
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(controller.TryInitialize(out string error), Is.True, error);
-            return controller;
-        }
-
-        private ShelfFixture CreateShelf(string fixtureId, string snapPointId)
-        {
-            GameObject gameObject = CreateGameObject("Shelf");
-            ShelfFixture fixture = gameObject.AddComponent<ShelfFixture>();
-            SerializedObject serialized = new(fixture);
-            serialized.FindProperty("stableFixtureId").stringValue = fixtureId;
-            SerializedProperty snapPoints = serialized.FindProperty("snapPoints");
-            snapPoints.arraySize = 1;
-            SerializedProperty snapPoint = snapPoints.GetArrayElementAtIndex(0);
-            snapPoint.FindPropertyRelative("stableSnapPointId").stringValue =
-                snapPointId;
-            snapPoint.FindPropertyRelative("localPosition").vector3Value =
-                Vector3.zero;
-            snapPoint.FindPropertyRelative("localEulerAngles").vector3Value =
-                Vector3.zero;
-            SerializedProperty tags =
-                snapPoint.FindPropertyRelative("acceptedCompatibilityTags");
-            tags.arraySize = 1;
-            tags.GetArrayElementAtIndex(0).stringValue = "shelf-small";
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            return fixture;
-        }
-
-        private ProductItem CreateProductItem(
-            string name,
-            ProductDefinition product)
-        {
-            GameObject gameObject = CreateGameObject(name);
-            ProductItem item = gameObject.AddComponent<ProductItem>();
-            SerializedObject serialized = new(item);
-            serialized.FindProperty("definition").objectReferenceValue = product;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            return item;
+            Assert.That(registry.TryValidateConfiguration(out string error), Is.True, error);
+            return registry;
         }
 
         private StockingController CreateStockingController(
             FirstStoreInventoryComponent inventory,
-            ProductItem item,
-            ShelfFixture shelf,
-            Transform holdPoint)
+            PhysicalProductUnitRegistry physicalUnits,
+            Transform holdPoint,
+            params (ProductDefinition product, ShelfFixture shelf, string shelfLocation, string[] snapPoints)[] products)
         {
-            GameObject gameObject = CreateGameObject("Stocking");
             StockingController stocking =
-                gameObject.AddComponent<StockingController>();
+                CreateGameObject("Stocking").AddComponent<StockingController>();
             SerializedObject serialized = new(stocking);
-            serialized.FindProperty("inventoryComponent").objectReferenceValue =
-                inventory;
-            serialized.FindProperty("productItem").objectReferenceValue = item;
-            serialized.FindProperty("shelfFixture").objectReferenceValue = shelf;
+            serialized.FindProperty("inventoryComponent").objectReferenceValue = inventory;
+            serialized.FindProperty("physicalUnits").objectReferenceValue = physicalUnits;
             serialized.FindProperty("holdPoint").objectReferenceValue = holdPoint;
             serialized.FindProperty("looseLocationId").stringValue = "loc-loose";
             serialized.FindProperty("heldLocationId").stringValue = "loc-held";
-            serialized.FindProperty("shelfLocationId").stringValue = "loc-shelf";
-            serialized.FindProperty("snapPointId").stringValue = "slot-01";
+            SerializedProperty configurations = serialized.FindProperty("products");
+            configurations.arraySize = products.Length;
+            for (int index = 0; index < products.Length; index++)
+            {
+                SerializedProperty configuration =
+                    configurations.GetArrayElementAtIndex(index);
+                configuration.FindPropertyRelative("productDefinition").objectReferenceValue =
+                    products[index].product;
+                configuration.FindPropertyRelative("shelfFixture").objectReferenceValue =
+                    products[index].shelf;
+                configuration.FindPropertyRelative("shelfLocationId").stringValue =
+                    products[index].shelfLocation;
+                SerializedProperty snapPoints =
+                    configuration.FindPropertyRelative("snapPointIds");
+                snapPoints.arraySize = products[index].snapPoints.Length;
+                for (int snapIndex = 0; snapIndex < products[index].snapPoints.Length; snapIndex++)
+                {
+                    snapPoints.GetArrayElementAtIndex(snapIndex).stringValue =
+                        products[index].snapPoints[snapIndex];
+                }
+            }
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(stocking.TryValidateConfiguration(out string error), Is.True, error);
             return stocking;
@@ -475,62 +515,50 @@ namespace Margins.Tests
 
         private CheckoutStationComponent CreateCheckout(
             FirstStoreInventoryComponent inventory,
-            ProductDefinition product,
-            int unitPriceCents)
+            PhysicalProductUnitRegistry physicalUnits,
+            params (ProductDefinition product, string shelfLocation, int price, int cost)[] products)
         {
-            GameObject gameObject = CreateGameObject("Checkout");
             CheckoutStationComponent checkout =
-                gameObject.AddComponent<CheckoutStationComponent>();
+                CreateGameObject("Checkout").AddComponent<CheckoutStationComponent>();
             SerializedObject serialized = new(checkout);
-            serialized.FindProperty("inventoryComponent").objectReferenceValue =
-                inventory;
-            serialized.FindProperty("shelfLocationId").stringValue = "loc-shelf";
+            serialized.FindProperty("inventoryComponent").objectReferenceValue = inventory;
+            serialized.FindProperty("physicalUnits").objectReferenceValue = physicalUnits;
+            serialized.FindProperty("maximumCompletedTransactions").intValue = 32;
             SerializedProperty prices = serialized.FindProperty("prices");
-            prices.arraySize = 1;
-            SerializedProperty price = prices.GetArrayElementAtIndex(0);
-            price.FindPropertyRelative("productDefinition").objectReferenceValue =
-                product;
-            price.FindPropertyRelative("unitPriceCents").intValue =
-                unitPriceCents;
+            prices.arraySize = products.Length;
+            for (int index = 0; index < products.Length; index++)
+            {
+                SerializedProperty price = prices.GetArrayElementAtIndex(index);
+                price.FindPropertyRelative("productDefinition").objectReferenceValue =
+                    products[index].product;
+                price.FindPropertyRelative("shelfLocationId").stringValue =
+                    products[index].shelfLocation;
+                price.FindPropertyRelative("unitPriceCents").intValue =
+                    products[index].price;
+                price.FindPropertyRelative("unitCostCents").intValue =
+                    products[index].cost;
+            }
             serialized.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(checkout.TryValidateConfiguration(out string error), Is.True, error);
             return checkout;
-        }
-
-        private CleaningTaskComponent CreateCleaningTask()
-        {
-            GameObject gameObject = CreateGameObject("Cleaning Task");
-            CleaningTaskComponent cleaning =
-                gameObject.AddComponent<CleaningTaskComponent>();
-            SerializedObject serialized = new(cleaning);
-            serialized.FindProperty("stableTaskId").stringValue =
-                "task-floor-spill-01";
-            serialized.FindProperty("requiredProgressUnits").intValue = 4;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(cleaning.TryValidateConfiguration(out string error), Is.True, error);
-            return cleaning;
         }
 
         private DeliveryBoxComponent CreateDeliveryBox(
             FirstStoreInventoryComponent inventory,
-            ProductDefinition product,
-            bool startsOpen)
+            PhysicalProductUnitRegistry physicalUnits,
+            params ProductDefinition[] products)
         {
-            GameObject gameObject = CreateGameObject("Delivery Box");
             DeliveryBoxComponent delivery =
-                gameObject.AddComponent<DeliveryBoxComponent>();
+                CreateGameObject("Delivery Box").AddComponent<DeliveryBoxComponent>();
             SerializedObject serialized = new(delivery);
             serialized.FindProperty("stableContainerId").stringValue =
                 "container-starter";
-            serialized.FindProperty("inventoryLocationId").stringValue =
-                "loc-box";
+            serialized.FindProperty("inventoryLocationId").stringValue = "loc-box";
             serialized.FindProperty("looseDestinationLocationId").stringValue =
                 "loc-loose";
-            serialized.FindProperty("productDefinition").objectReferenceValue =
-                product;
-            serialized.FindProperty("inventoryComponent").objectReferenceValue =
-                inventory;
-            serialized.FindProperty("startsOpen").boolValue = startsOpen;
+            SetObjectArray(serialized.FindProperty("productDefinitions"), products);
+            serialized.FindProperty("inventoryComponent").objectReferenceValue = inventory;
+            serialized.FindProperty("physicalUnits").objectReferenceValue = physicalUnits;
+            serialized.FindProperty("startsOpen").boolValue = false;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(delivery.TryInitialize(out string error), Is.True, error);
             return delivery;
@@ -542,9 +570,8 @@ namespace Margins.Tests
             CheckoutStationComponent checkout,
             CleaningTaskComponent cleaning)
         {
-            GameObject gameObject = CreateGameObject("Store Operating");
             StoreOperatingController store =
-                gameObject.AddComponent<StoreOperatingController>();
+                CreateGameObject("Store Operating").AddComponent<StoreOperatingController>();
             SerializedObject serialized = new(store);
             serialized.FindProperty("stableSessionId").stringValue =
                 "session-opening-001";
@@ -553,45 +580,208 @@ namespace Margins.Tests
             serialized.FindProperty("stocking").objectReferenceValue = stocking;
             serialized.FindProperty("checkout").objectReferenceValue = checkout;
             serialized.FindProperty("cleaningTask").objectReferenceValue = cleaning;
-            SerializedProperty requiredFixtures =
+            serialized.FindProperty("includedOperatingExpensesCents").intValue = 90;
+            SerializedProperty required =
                 serialized.FindProperty("requiredFixtureInstanceIds");
-            requiredFixtures.arraySize = 1;
-            requiredFixtures.GetArrayElementAtIndex(0).stringValue =
-                "fixture-essential-01";
+            required.arraySize = 1;
+            required.GetArrayElementAtIndex(0).stringValue = "fixture-essential-01";
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(store.TryInitialize(out string error), Is.True, error);
             return store;
         }
 
-        private FirstStorePersistenceMapperComponent CreatePersistenceMapper(
-            AdapterRig rig)
+        private FirstStorePersistenceMapperComponent CreatePersistenceMapper(AdapterRig rig)
         {
-            GameObject gameObject = CreateGameObject("Persistence Mapper");
             FirstStorePersistenceMapperComponent mapper =
-                gameObject.AddComponent<FirstStorePersistenceMapperComponent>();
+                CreateGameObject("Persistence Mapper")
+                    .AddComponent<FirstStorePersistenceMapperComponent>();
             SerializedObject serialized = new(mapper);
             serialized.FindProperty("fixturePlacement").objectReferenceValue =
                 rig.FixturePlacement;
             serialized.FindProperty("inventoryComponent").objectReferenceValue =
                 rig.Inventory;
-            SetObjectArray(
-                serialized.FindProperty("deliveryBoxes"),
-                rig.Delivery);
+            SetObjectArray(serialized.FindProperty("deliveryBoxes"), rig.Delivery);
+            serialized.FindProperty("physicalUnits").objectReferenceValue =
+                rig.PhysicalUnits;
             serialized.FindProperty("checkout").objectReferenceValue = rig.Checkout;
-            serialized.FindProperty("storeOperating").objectReferenceValue =
-                rig.Store;
-            serialized.FindProperty("cleaningTask").objectReferenceValue =
-                rig.Cleaning;
+            serialized.FindProperty("storeOperating").objectReferenceValue = rig.Store;
+            serialized.FindProperty("cleaningTask").objectReferenceValue = rig.Cleaning;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(mapper.TryValidateConfiguration(out string error), Is.True, error);
             return mapper;
         }
 
-        private GameObject CreateGameObject(string name)
+        private FixturePlacementController CreateFixtureController(
+            params PlaceableFixtureComponent[] fixtures)
         {
-            GameObject gameObject = new(name);
+            Transform origin = CreateGameObject("Grid Origin").transform;
+            FixturePlacementController controller =
+                CreateGameObject("Fixture Placement")
+                    .AddComponent<FixturePlacementController>();
+            SerializedObject serialized = new(controller);
+            serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
+            serialized.FindProperty("gridWidthCells").intValue = 8;
+            serialized.FindProperty("gridDepthCells").intValue = 8;
+            serialized.FindProperty("cellSize").floatValue = 0.5f;
+            SetObjectArray(serialized.FindProperty("fixtures"), fixtures);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(controller.TryInitialize(out string error), Is.True, error);
+            return controller;
+        }
+
+        private PlaceableFixtureComponent CreatePlaceableFixture(
+            string stableId,
+            int width,
+            int depth)
+        {
+            PlaceableFixtureComponent fixture =
+                CreateGameObject(stableId).AddComponent<PlaceableFixtureComponent>();
+            SerializedObject serialized = new(fixture);
+            serialized.FindProperty("stableFixtureInstanceId").stringValue = stableId;
+            serialized.FindProperty("footprintWidthCells").intValue = width;
+            serialized.FindProperty("footprintDepthCells").intValue = depth;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return fixture;
+        }
+
+        private ShelfFixture CreateShelf(
+            string fixtureId,
+            string snapPointPrefix,
+            int count)
+        {
+            ShelfFixture shelf =
+                CreateGameObject(fixtureId).AddComponent<ShelfFixture>();
+            SerializedObject serialized = new(shelf);
+            serialized.FindProperty("stableFixtureId").stringValue = fixtureId;
+            SerializedProperty snapPoints = serialized.FindProperty("snapPoints");
+            snapPoints.arraySize = count;
+            for (int index = 0; index < count; index++)
+            {
+                SerializedProperty snapPoint = snapPoints.GetArrayElementAtIndex(index);
+                snapPoint.FindPropertyRelative("stableSnapPointId").stringValue =
+                    $"{snapPointPrefix}-{index + 1:00}";
+                snapPoint.FindPropertyRelative("localPosition").vector3Value =
+                    new Vector3(index * 0.25f, 0f, 0f);
+                SerializedProperty tags =
+                    snapPoint.FindPropertyRelative("acceptedCompatibilityTags");
+                tags.arraySize = 1;
+                tags.GetArrayElementAtIndex(0).stringValue = "shelf-small";
+            }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return shelf;
+        }
+
+        private ProductDefinition CreateProductDefinition(
+            string stableId,
+            string displayName)
+        {
+            ProductDefinition definition =
+                ScriptableObject.CreateInstance<ProductDefinition>();
+            createdObjects.Add(definition);
+            SerializedObject serialized = new(definition);
+            serialized.FindProperty("stableProductId").stringValue = stableId;
+            serialized.FindProperty("displayName").stringValue = displayName;
+            serialized.FindProperty("shelfFootprint").enumValueIndex =
+                (int)ProductFootprint.Small;
+            serialized.FindProperty("snapCompatibilityTag").stringValue =
+                "shelf-small";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return definition;
+        }
+
+        private ProductItem CreateProductItem(
+            string objectName,
+            ProductDefinition product)
+        {
+            ProductItem item =
+                CreateGameObject(objectName).AddComponent<ProductItem>();
+            SerializedObject serialized = new(item);
+            serialized.FindProperty("definition").objectReferenceValue = product;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return item;
+        }
+
+        private CleaningTaskComponent CreateCleaningTask()
+        {
+            CleaningTaskComponent cleaning =
+                CreateGameObject("Cleaning Task").AddComponent<CleaningTaskComponent>();
+            SerializedObject serialized = new(cleaning);
+            serialized.FindProperty("stableTaskId").stringValue =
+                "task-floor-spill-01";
+            serialized.FindProperty("requiredProgressUnits").intValue = 4;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return cleaning;
+        }
+
+        private ProductItem StockOne(AdapterRig rig, ProductDefinition product)
+        {
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(
+                rig.Delivery.TryRemoveOneUnit(
+                    product,
+                    out ProductItem removed,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Stocking.TryPickUpLooseUnit(
+                    product,
+                    out ProductItem selected,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(selected, Is.SameAs(removed));
+            Assert.That(rig.Stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            return removed;
+        }
+
+        private static void CompleteSale(
+            AdapterRig rig,
+            string transactionId,
+            ProductDefinition product,
+            int quantity)
+        {
+            Assert.That(rig.Checkout.TryBeginSession(transactionId, out string error), Is.True, error);
+            Assert.That(rig.Checkout.TryScan(product, quantity, out _), Is.True);
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    out _,
+                    out CheckoutFailure failure),
+                Is.True,
+                failure.ToString());
+        }
+
+        private static void AssertRestrictedFixtureChanges(AdapterRig rig)
+        {
+            Assert.That(
+                rig.FixturePlacement.TryMove(
+                    rig.PlaceableFixture,
+                    new GridPosition(3, 3),
+                    1).Failure,
+                Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
+            Assert.That(
+                rig.FixturePlacement.TryRemove(rig.PlaceableFixture).Failure,
+                Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
+            Assert.That(rig.FixturePlacement.IsPlaced("fixture-essential-01"), Is.True);
+        }
+
+        private GameObject CreateGameObject(string objectName)
+        {
+            GameObject gameObject = new(objectName);
             createdObjects.Add(gameObject);
             return gameObject;
+        }
+
+        private static string[] CreateSnapPointIds(string prefix, int count)
+        {
+            string[] result = new string[count];
+            for (int index = 0; index < count; index++)
+            {
+                result[index] = $"{prefix}-{index + 1:00}";
+            }
+            return result;
         }
 
         private static void SetLocation(
@@ -618,8 +808,12 @@ namespace Margins.Tests
 
         private sealed class AdapterRig
         {
-            public ProductDefinition Product { get; }
+            public ProductDefinition Cola { get; }
+            public ProductDefinition Chips { get; }
             public FirstStoreInventoryComponent Inventory { get; }
+            public PhysicalProductUnitRegistry PhysicalUnits { get; }
+            public ShelfFixture ColaShelf { get; }
+            public ShelfFixture ChipsShelf { get; }
             public PlaceableFixtureComponent PlaceableFixture { get; }
             public FixturePlacementController FixturePlacement { get; }
             public StockingController Stocking { get; }
@@ -629,8 +823,12 @@ namespace Margins.Tests
             public StoreOperatingController Store { get; }
 
             public AdapterRig(
-                ProductDefinition product,
+                ProductDefinition cola,
+                ProductDefinition chips,
                 FirstStoreInventoryComponent inventory,
+                PhysicalProductUnitRegistry physicalUnits,
+                ShelfFixture colaShelf,
+                ShelfFixture chipsShelf,
                 PlaceableFixtureComponent placeableFixture,
                 FixturePlacementController fixturePlacement,
                 StockingController stocking,
@@ -639,8 +837,12 @@ namespace Margins.Tests
                 DeliveryBoxComponent delivery,
                 StoreOperatingController store)
             {
-                Product = product;
+                Cola = cola;
+                Chips = chips;
                 Inventory = inventory;
+                PhysicalUnits = physicalUnits;
+                ColaShelf = colaShelf;
+                ChipsShelf = chipsShelf;
                 PlaceableFixture = placeableFixture;
                 FixturePlacement = fixturePlacement;
                 Stocking = stocking;

@@ -1,4 +1,3 @@
-// Draft implementation — Unity verification pending
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -9,24 +8,77 @@ namespace Margins
     public sealed class CheckoutPriceConfiguration
     {
         [SerializeField] private ProductDefinition productDefinition;
+        [SerializeField] private string shelfLocationId;
         [SerializeField, Min(1)] private int unitPriceCents = 100;
+        [SerializeField, Min(0)] private int unitCostCents;
 
         public ProductDefinition ProductDefinition => productDefinition;
+        public string ShelfLocationId => shelfLocationId;
         public int UnitPriceCents => unitPriceCents;
+        public int UnitCostCents => unitCostCents;
     }
 
     public sealed class CheckoutStationComponent : MonoBehaviour
     {
         [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
-        [SerializeField] private string shelfLocationId;
+        [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
+        [SerializeField, Min(1)] private int maximumCompletedTransactions = 32;
         [SerializeField] private CheckoutPriceConfiguration[] prices;
 
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
-        public CheckoutSession ActiveSession { get; private set; }
+        public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
+        private CheckoutSession ActiveSession { get; set; }
+        internal CompletedTransactionLedger TransactionLedger { get; private set; }
         public bool HasActiveIncompleteSession =>
             ActiveSession != null && !ActiveSession.IsCompleted;
         public CheckoutTransactionSummary CompletedSummary =>
             ActiveSession?.GetCompletedSummary();
+        public long GrossSalesCents => TransactionLedger?.GrossSalesCents ?? 0;
+        public int UnitsSold => TransactionLedger?.UnitsSold ?? 0;
+        public int CompletedTransactionCount =>
+            TransactionLedger?.TransactionCount ?? 0;
+        public IReadOnlyList<CheckoutTransactionSummary> CompletedTransactions =>
+            TransactionLedger?.Transactions ?? Array.Empty<CheckoutTransactionSummary>();
+
+        public IReadOnlyList<string> ConfiguredProductIds
+        {
+            get
+            {
+                List<string> productIds = new();
+                if (prices != null)
+                {
+                    foreach (CheckoutPriceConfiguration price in prices)
+                    {
+                        if (price?.ProductDefinition != null)
+                        {
+                            productIds.Add(price.ProductDefinition.StableProductId);
+                        }
+                    }
+                }
+                productIds.Sort(StringComparer.Ordinal);
+                return productIds;
+            }
+        }
+
+        public IReadOnlyDictionary<string, int> ProductUnitCostsCents
+        {
+            get
+            {
+                SortedDictionary<string, int> costs = new(StringComparer.Ordinal);
+                if (prices != null)
+                {
+                    foreach (CheckoutPriceConfiguration price in prices)
+                    {
+                        if (price?.ProductDefinition != null)
+                        {
+                            costs[price.ProductDefinition.StableProductId] =
+                                price.UnitCostCents;
+                        }
+                    }
+                }
+                return costs;
+            }
+        }
 
         public bool HasSellableStock
         {
@@ -43,7 +95,7 @@ namespace Margins
                 {
                     if (price?.ProductDefinition != null &&
                         inventoryComponent.Inventory.GetQuantity(
-                            shelfLocationId,
+                            price.ShelfLocationId,
                             price.ProductDefinition.StableProductId) > 0)
                     {
                         return true;
@@ -56,19 +108,19 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (inventoryComponent == null || !inventoryComponent.IsInitialized)
+            error = null;
+            if (inventoryComponent == null || !inventoryComponent.IsInitialized ||
+                physicalUnits == null ||
+                !physicalUnits.TryValidateConfiguration(out error))
             {
-                error = "Checkout requires an initialized inventory component.";
+                error ??=
+                    "Checkout requires initialized inventory and physical-unit references.";
                 return false;
             }
 
-            if (!FirstStoreIdentifier.IsValid(shelfLocationId) ||
-                !inventoryComponent.Inventory.TryGetLocationKind(
-                    shelfLocationId,
-                    out InventoryLocationKind kind) ||
-                kind != InventoryLocationKind.Shelf)
+            if (maximumCompletedTransactions <= 0)
             {
-                error = "Checkout requires a valid shelf inventory location.";
+                error = "Checkout transaction-ledger capacity must be positive.";
                 return false;
             }
 
@@ -84,17 +136,29 @@ namespace Margins
                 if (price == null ||
                     price.ProductDefinition == null ||
                     price.UnitPriceCents <= 0 ||
+                    price.UnitCostCents < 0 ||
                     !inventoryComponent.Inventory.IsKnownProduct(
                         price.ProductDefinition.StableProductId))
                 {
-                    error = "Checkout contains an invalid product or integer-cent price.";
+                    error = "Checkout contains an invalid product, price, or product cost.";
                     return false;
                 }
 
-                if (!productIds.Add(price.ProductDefinition.StableProductId))
+                string productId = price.ProductDefinition.StableProductId;
+                if (!productIds.Add(productId))
+                {
+                    error = $"Checkout contains duplicate product mapping '{productId}'.";
+                    return false;
+                }
+
+                if (!FirstStoreIdentifier.IsValid(price.ShelfLocationId) ||
+                    !inventoryComponent.Inventory.TryGetLocationKind(
+                        price.ShelfLocationId,
+                        out InventoryLocationKind kind) ||
+                    kind != InventoryLocationKind.Shelf)
                 {
                     error =
-                        $"Checkout contains duplicate product '{price.ProductDefinition.StableProductId}'.";
+                        $"Checkout product '{productId}' requires exactly one valid shelf mapping.";
                     return false;
                 }
             }
@@ -117,7 +181,14 @@ namespace Margins
                 return false;
             }
 
-            return TryValidateConfiguration(out error);
+            if (!TryValidateConfiguration(out error))
+            {
+                return false;
+            }
+
+            TransactionLedger ??= new CompletedTransactionLedger(
+                maximumCompletedTransactions);
+            return true;
         }
 
         public bool TryBeginSession(string transactionId, out string error)
@@ -135,7 +206,7 @@ namespace Margins
 
             if (!CheckoutSession.TryCreate(
                     inventoryComponent.Inventory,
-                    shelfLocationId,
+                    CreateShelfMappings(),
                     transactionId,
                     out CheckoutSession session,
                     out error))
@@ -193,39 +264,77 @@ namespace Margins
             out CheckoutTransactionSummary summary,
             out CheckoutFailure failure)
         {
-            if (ActiveSession == null)
+            if (ActiveSession == null || TransactionLedger == null)
             {
                 summary = null;
                 failure = CheckoutFailure.InvalidSession;
                 return false;
             }
 
-            return ActiveSession.TryComplete(out summary, out failure);
-        }
-
-        public bool CanApplySummary(
-            CheckoutTransactionSummary summary,
-            out string error)
-        {
-            if (summary == null)
+            if (ActiveSession.IsCompleted)
             {
-                error = null;
-                return true;
+                return ActiveSession.TryComplete(
+                    TransactionLedger,
+                    out summary,
+                    out failure);
             }
 
-            if (!TryValidateConfiguration(out error) ||
-                !CheckoutSession.TryValidateSummary(summary, out error))
+            IReadOnlyList<CheckoutLineSnapshot> lines = ActiveSession.Lines;
+            SortedDictionary<string, string> shelfMappings =
+                CreateShelfMappings();
+            if (!physicalUnits.CanConsumeShelvedUnits(
+                    shelfMappings,
+                    lines,
+                    out _))
+            {
+                summary = null;
+                failure = CheckoutFailure.InventoryChanged;
+                return false;
+            }
+
+            if (!ActiveSession.TryComplete(
+                    TransactionLedger,
+                    out summary,
+                    out failure))
             {
                 return false;
             }
 
-            foreach (CheckoutLineSnapshot line in summary.lines)
+            if (!physicalUnits.TryConsumeShelvedUnits(
+                    shelfMappings,
+                    lines,
+                    out string physicalError))
             {
-                if (!inventoryComponent.Inventory.IsKnownProduct(line.productId))
+                throw new InvalidOperationException(
+                    $"Validated physical checkout reconciliation failed: {physicalError}");
+            }
+
+            return true;
+        }
+
+        internal bool CanApplyLedger(
+            CompletedTransactionLedger restored,
+            out string error)
+        {
+            error = null;
+            if (restored == null ||
+                restored.MaximumTransactionCount != maximumCompletedTransactions ||
+                !TryValidateConfiguration(out error))
+            {
+                error ??= "Restored checkout ledger is missing or has the wrong capacity.";
+                return false;
+            }
+
+            foreach (CheckoutTransactionSummary transaction in restored.Transactions)
+            {
+                foreach (CheckoutLineSnapshot line in transaction.lines)
                 {
-                    error =
-                        $"Checkout summary references unconfigured product '{line.productId}'.";
-                    return false;
+                    if (FindPrice(line.productId) == null)
+                    {
+                        error =
+                            $"Checkout ledger references unconfigured product '{line.productId}'.";
+                        return false;
+                    }
                 }
             }
 
@@ -233,39 +342,52 @@ namespace Margins
             return true;
         }
 
-        public bool TryApplySummary(
-            CheckoutTransactionSummary summary,
+        internal bool TryApplyLedger(
+            CompletedTransactionLedger restored,
             out string error)
         {
-            if (!CanApplySummary(summary, out error))
+            if (!CanApplyLedger(restored, out error))
             {
                 return false;
             }
 
-            if (summary == null)
-            {
-                ActiveSession = null;
-                return true;
-            }
-
-            if (!CheckoutSession.TryRestoreCompleted(
-                    inventoryComponent.Inventory,
-                    shelfLocationId,
-                    summary,
-                    out CheckoutSession session,
-                    out error))
-            {
-                return false;
-            }
-
-            ActiveSession = session;
+            TransactionLedger = restored;
+            ActiveSession = null;
             return true;
+        }
+
+        public bool TryGetShelfLocation(
+            string productId,
+            out string shelfLocationId)
+        {
+            CheckoutPriceConfiguration price = FindPrice(productId);
+            shelfLocationId = price?.ShelfLocationId;
+            return price != null;
+        }
+
+        private SortedDictionary<string, string> CreateShelfMappings()
+        {
+            SortedDictionary<string, string> mappings = new(StringComparer.Ordinal);
+            foreach (CheckoutPriceConfiguration price in prices)
+            {
+                mappings.Add(
+                    price.ProductDefinition.StableProductId,
+                    price.ShelfLocationId);
+            }
+            return mappings;
         }
 
         private CheckoutPriceConfiguration FindPrice(
             ProductDefinition productDefinition)
         {
-            if (productDefinition == null || prices == null)
+            return productDefinition == null
+                ? null
+                : FindPrice(productDefinition.StableProductId);
+        }
+
+        private CheckoutPriceConfiguration FindPrice(string productId)
+        {
+            if (!FirstStoreIdentifier.IsValid(productId) || prices == null)
             {
                 return null;
             }
@@ -275,7 +397,7 @@ namespace Margins
                 if (price?.ProductDefinition != null &&
                     string.Equals(
                         price.ProductDefinition.StableProductId,
-                        productDefinition.StableProductId,
+                        productId,
                         StringComparison.Ordinal))
                 {
                     return price;

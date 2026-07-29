@@ -18,6 +18,7 @@ namespace Margins
         private Coroutine feedbackReset;
 
         public ProductDefinition Definition => definition;
+        public string PhysicalUnitId { get; private set; }
         public bool IsHeld { get; private set; }
         public bool IsSnapped => SnappedFixture != null;
         public ShelfFixture SnappedFixture { get; private set; }
@@ -52,6 +53,49 @@ namespace Margins
             transform.localPosition = Vector3.zero;
             transform.localRotation = Quaternion.Euler(0f, QuarterTurns * 90f, 0f);
             SetPhysicsHeld(true);
+            SetFeedbackMaterial(defaultMaterial);
+        }
+
+        internal void AssignPhysicalUnitId(string physicalUnitId)
+        {
+            if (!FirstStoreIdentifier.IsValid(physicalUnitId))
+            {
+                throw new System.ArgumentException(
+                    "Physical product unit id is invalid.",
+                    nameof(physicalUnitId));
+            }
+
+            if (PhysicalUnitId != null &&
+                !string.Equals(
+                    PhysicalUnitId,
+                    physicalUnitId,
+                    System.StringComparison.Ordinal))
+            {
+                throw new System.InvalidOperationException(
+                    $"Physical product unit '{PhysicalUnitId}' cannot be reassigned.");
+            }
+
+            PhysicalUnitId = physicalUnitId;
+        }
+
+        internal void ApplyLoosePlacement(
+            Transform parent,
+            Vector3 worldPosition,
+            Quaternion worldRotation)
+        {
+            EnsureReferences();
+            if (SnappedFixture != null)
+            {
+                SnappedFixture.ReleaseProduct(this);
+            }
+
+            IsHeld = false;
+            SnappedFixture = null;
+            SnappedPointId = null;
+            QuarterTurns = 0;
+            transform.SetParent(parent, true);
+            transform.SetPositionAndRotation(worldPosition, worldRotation);
+            SetPhysicsHeld(false);
             SetFeedbackMaterial(defaultMaterial);
         }
 

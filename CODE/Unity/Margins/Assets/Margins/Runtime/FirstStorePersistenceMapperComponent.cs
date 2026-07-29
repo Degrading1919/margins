@@ -1,4 +1,3 @@
-// Draft implementation — Unity verification pending
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -10,6 +9,7 @@ namespace Margins
         [SerializeField] private FixturePlacementController fixturePlacement;
         [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
         [SerializeField] private DeliveryBoxComponent[] deliveryBoxes;
+        [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private StoreOperatingController storeOperating;
         [SerializeField] private CleaningTaskComponent cleaningTask;
@@ -18,27 +18,31 @@ namespace Margins
         {
             if (fixturePlacement == null ||
                 inventoryComponent == null ||
+                physicalUnits == null ||
                 checkout == null ||
                 storeOperating == null ||
                 cleaningTask == null)
             {
                 error =
-                    "First-store persistence requires explicit fixture, inventory, checkout, operating, and cleaning references.";
+                    "First-store persistence requires explicit fixture, inventory, physical-unit, checkout, operating, and cleaning references.";
                 return false;
             }
 
             if (!fixturePlacement.IsInitialized ||
                 !inventoryComponent.IsInitialized ||
-                !storeOperating.IsInitialized)
+                !storeOperating.IsInitialized ||
+                checkout.TransactionLedger == null)
             {
                 error = "First-store persistence references are not initialized.";
                 return false;
             }
 
-            if (checkout.InventoryComponent != inventoryComponent)
+            if (checkout.InventoryComponent != inventoryComponent ||
+                checkout.PhysicalUnits != physicalUnits ||
+                storeOperating.Stocking.PhysicalUnits != physicalUnits)
             {
                 error =
-                    "First-store persistence checkout does not use the configured inventory.";
+                    "First-store persistence checkout and physical units do not use the configured inventory path.";
                 return false;
             }
 
@@ -67,10 +71,11 @@ namespace Margins
                     return false;
                 }
 
-                if (deliveryBox.InventoryComponent != inventoryComponent)
+                if (deliveryBox.InventoryComponent != inventoryComponent ||
+                    deliveryBox.PhysicalUnits != physicalUnits)
                 {
                     error =
-                        $"Delivery box '{deliveryBox.StableContainerId}' does not use the configured inventory.";
+                        $"Delivery box '{deliveryBox.StableContainerId}' does not use the configured inventory and physical units.";
                     return false;
                 }
 
@@ -82,7 +87,8 @@ namespace Margins
                 }
             }
 
-            if (!checkout.TryValidateConfiguration(out error) ||
+            if (!physicalUnits.TryValidateConfiguration(out error) ||
+                !checkout.TryValidateConfiguration(out error) ||
                 !cleaningTask.TryValidateConfiguration(out error))
             {
                 return false;
@@ -108,15 +114,27 @@ namespace Margins
                 containers.Add(deliveryBox.Container);
             }
 
+            if (!physicalUnits.TryCapture(
+                    inventoryComponent.Inventory,
+                    out List<PhysicalProductUnitSnapshot> physicalSnapshots,
+                    out int nextPhysicalUnitOrdinal,
+                    out error))
+            {
+                return false;
+            }
+
             try
             {
                 snapshot = FirstStoreSnapshotMapper.Create(
                     fixturePlacement.Layout,
                     inventoryComponent.Inventory,
                     containers,
-                    checkout.CompletedSummary,
+                    checkout.TransactionLedger,
                     storeOperating.Session,
-                    cleaningTask.CreateSnapshot());
+                    cleaningTask.CreateSnapshot(),
+                    checkout.ProductUnitCostsCents);
+                snapshot.physicalProductUnits = physicalSnapshots;
+                snapshot.nextPhysicalUnitOrdinal = nextPhysicalUnitOrdinal;
                 error = null;
                 return true;
             }
@@ -138,6 +156,7 @@ namespace Margins
 
             if (!FirstStoreSnapshotMapper.TryRestore(
                     snapshot,
+                    checkout.ProductUnitCostsCents,
                     out RestoredFirstStoreState restored,
                     out error))
             {
@@ -150,14 +169,21 @@ namespace Margins
                 !fixturePlacement.CanApplyRestoredLayout(
                     restored.FixtureLayout,
                     out error) ||
-                !checkout.CanApplySummary(
-                    restored.CheckoutSummary,
+                !checkout.CanApplyLedger(
+                    restored.TransactionLedger,
                     out error) ||
                 !storeOperating.CanApplySnapshot(
                     restored.StoreOperating.CreateSnapshot(),
+                    restored.TransactionLedger,
                     out error) ||
                 !cleaningTask.CanApplySnapshot(
                     restored.CleaningTask,
+                    out error) ||
+                !physicalUnits.CanApplySnapshot(
+                    restored.Inventory,
+                    snapshot.physicalProductUnits,
+                    snapshot.nextPhysicalUnitOrdinal,
+                    storeOperating.Stocking,
                     out error))
             {
                 return false;
@@ -211,12 +237,19 @@ namespace Margins
                 }
             }
 
-            if (!checkout.TryApplySummary(restored.CheckoutSummary, out error) ||
+            if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
                 !storeOperating.TryApplySnapshot(
                     restored.StoreOperating.CreateSnapshot(),
+                    restored.TransactionLedger,
                     out error) ||
                 !cleaningTask.TryApplySnapshot(
                     restored.CleaningTask,
+                    out error) ||
+                !physicalUnits.TryApplySnapshot(
+                    restored.Inventory,
+                    snapshot.physicalProductUnits,
+                    snapshot.nextPhysicalUnitOrdinal,
+                    storeOperating.Stocking,
                     out error))
             {
                 return false;

@@ -67,6 +67,8 @@ namespace Margins
         public CompletedTransactionLedgerSnapshot transactionLedger;
         public StoreOperatingSnapshot storeOperating;
         public CleaningTaskSnapshot cleaningTask;
+        public int nextPhysicalUnitOrdinal = 1;
+        public List<PhysicalProductUnitSnapshot> physicalProductUnits = new();
 
         public bool Equals(FirstStoreSnapshot other)
         {
@@ -82,8 +84,12 @@ namespace Margins
                 other.fixturePlacements == null ||
                 deliveryContainers == null ||
                 other.deliveryContainers == null ||
+                physicalProductUnits == null ||
+                other.physicalProductUnits == null ||
+                nextPhysicalUnitOrdinal != other.nextPhysicalUnitOrdinal ||
                 fixturePlacements.Count != other.fixturePlacements.Count ||
-                deliveryContainers.Count != other.deliveryContainers.Count)
+                deliveryContainers.Count != other.deliveryContainers.Count ||
+                physicalProductUnits.Count != other.physicalProductUnits.Count)
             {
                 return false;
             }
@@ -99,6 +105,15 @@ namespace Margins
             for (int index = 0; index < deliveryContainers.Count; index++)
             {
                 if (!deliveryContainers[index].Equals(other.deliveryContainers[index]))
+                {
+                    return false;
+                }
+            }
+
+            for (int index = 0; index < physicalProductUnits.Count; index++)
+            {
+                if (!physicalProductUnits[index].Equals(
+                        other.physicalProductUnits[index]))
                 {
                     return false;
                 }
@@ -122,6 +137,7 @@ namespace Margins
             hash.Add(transactionLedger);
             hash.Add(storeOperating);
             hash.Add(cleaningTask);
+            hash.Add(nextPhysicalUnitOrdinal);
             if (fixturePlacements != null)
             {
                 foreach (FixturePlacementSnapshot placement in fixturePlacements)
@@ -135,6 +151,13 @@ namespace Margins
                 foreach (DeliveryContainerSnapshot container in deliveryContainers)
                 {
                     hash.Add(container);
+                }
+            }
+            if (physicalProductUnits != null)
+            {
+                foreach (PhysicalProductUnitSnapshot physicalUnit in physicalProductUnits)
+                {
+                    hash.Add(physicalUnit);
                 }
             }
             return hash.ToHashCode();

@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cc1df3c43db033e4c927fda504973a7f, type: 3}
+  m_Name: ValidationColaProduct
+  m_EditorClassIdentifier: Margins.Runtime::Margins.ProductDefinition
+  stableProductId: prod-cola-can-355ml
+  displayName: Cola Can 355 mL
+  visualPrefab: {fileID: 3487049110954223087, guid: 32c0c25ff4542734d8675e2d419a21c9, type: 3}
+  shelfFootprint: 0
+  snapCompatibilityTag: shelf-small

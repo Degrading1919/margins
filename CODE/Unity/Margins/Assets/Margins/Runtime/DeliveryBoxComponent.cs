@@ -1,4 +1,5 @@
-// Draft implementation — Unity verification pending
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Margins
@@ -8,13 +9,15 @@ namespace Margins
         [SerializeField] private string stableContainerId;
         [SerializeField] private string inventoryLocationId;
         [SerializeField] private string looseDestinationLocationId;
-        [SerializeField] private ProductDefinition productDefinition;
+        [SerializeField] private ProductDefinition[] productDefinitions;
         [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
+        [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
         [SerializeField] private bool startsOpen;
 
-        public DeliveryContainer Container { get; private set; }
+        internal DeliveryContainer Container { get; private set; }
         public string StableContainerId => stableContainerId;
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
+        public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
         public bool IsInitialized => Container != null;
 
         private void Start()
@@ -27,6 +30,7 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
+            error = null;
             if (!FirstStoreIdentifier.IsValid(stableContainerId) ||
                 !FirstStoreIdentifier.IsValid(inventoryLocationId) ||
                 !FirstStoreIdentifier.IsValid(looseDestinationLocationId))
@@ -35,25 +39,12 @@ namespace Margins
                 return false;
             }
 
-            if (productDefinition == null ||
-                !FirstStoreIdentifier.IsValid(productDefinition.StableProductId))
+            if (inventoryComponent == null || !inventoryComponent.IsInitialized ||
+                physicalUnits == null ||
+                !physicalUnits.TryValidateConfiguration(out error))
             {
-                error = $"Delivery box '{stableContainerId}' requires a product definition.";
-                return false;
-            }
-
-            if (inventoryComponent == null || !inventoryComponent.IsInitialized)
-            {
-                error =
-                    $"Delivery box '{stableContainerId}' requires an initialized inventory component.";
-                return false;
-            }
-
-            if (!inventoryComponent.Inventory.IsKnownProduct(
-                    productDefinition.StableProductId))
-            {
-                error =
-                    $"Delivery box product '{productDefinition.StableProductId}' is not registered.";
+                error ??=
+                    $"Delivery box '{stableContainerId}' requires initialized inventory and physical-unit references.";
                 return false;
             }
 
@@ -75,6 +66,27 @@ namespace Margins
                 error =
                     $"Delivery box destination '{looseDestinationLocationId}' is not a loose location.";
                 return false;
+            }
+
+            if (productDefinitions == null || productDefinitions.Length == 0)
+            {
+                error = $"Delivery box '{stableContainerId}' requires configured products.";
+                return false;
+            }
+
+            HashSet<string> productIds = new(StringComparer.Ordinal);
+            foreach (ProductDefinition productDefinition in productDefinitions)
+            {
+                if (productDefinition == null ||
+                    !inventoryComponent.Inventory.IsKnownProduct(
+                        productDefinition.StableProductId) ||
+                    !productIds.Add(productDefinition.StableProductId) ||
+                    !physicalUnits.CanMaterialize(productDefinition, out error))
+                {
+                    error ??=
+                        $"Delivery box '{stableContainerId}' contains an invalid, duplicate, or non-physical product.";
+                    return false;
+                }
             }
 
             error = null;
@@ -140,22 +152,61 @@ namespace Margins
         }
 
         public bool TryRemoveOneUnit(
+            ProductDefinition requestedProduct,
+            out ProductItem physicalUnit,
             out DeliveryContainerFailure failure,
-            out InventoryTransferResult transfer)
+            out InventoryTransferResult transfer,
+            out string error)
         {
-            if (Container == null)
+            physicalUnit = null;
+            transfer = null;
+            error = null;
+            if (Container == null ||
+                requestedProduct == null ||
+                FindConfiguredProduct(requestedProduct.StableProductId) == null ||
+                !physicalUnits.CanMaterialize(requestedProduct, out error))
             {
                 failure = DeliveryContainerFailure.InvalidConfiguration;
-                transfer = null;
+                error ??= "Delivery product request is invalid or unconfigured.";
                 return false;
             }
 
-            return Container.TryRemoveTo(
-                productDefinition.StableProductId,
-                looseDestinationLocationId,
-                1,
-                out failure,
-                out transfer);
+            if (!Container.TryRemoveTo(
+                    requestedProduct.StableProductId,
+                    looseDestinationLocationId,
+                    1,
+                    out failure,
+                    out transfer))
+            {
+                error = $"Delivery removal rejected ({failure}).";
+                return false;
+            }
+
+            if (physicalUnits.TryMaterializeLooseUnit(
+                    requestedProduct,
+                    looseDestinationLocationId,
+                    out physicalUnit,
+                    out error))
+            {
+                return true;
+            }
+
+            InventoryTransferResult rollback =
+                inventoryComponent.Inventory.TryTransfer(
+                    requestedProduct.StableProductId,
+                    looseDestinationLocationId,
+                    inventoryLocationId,
+                    1);
+            if (!rollback.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"Physical-unit creation failed and delivery rollback was rejected ({rollback.Failure}).");
+            }
+
+            failure = DeliveryContainerFailure.TransferRejected;
+            transfer = rollback;
+            physicalUnit = null;
+            return false;
         }
 
         public bool CanApplyRestoredContainer(
@@ -166,11 +217,11 @@ namespace Margins
                 !string.Equals(
                     restored.ContainerId,
                     stableContainerId,
-                    System.StringComparison.Ordinal) ||
+                    StringComparison.Ordinal) ||
                 !string.Equals(
                     restored.InventoryLocationId,
                     inventoryLocationId,
-                    System.StringComparison.Ordinal))
+                    StringComparison.Ordinal))
             {
                 error =
                     $"Restored delivery container does not match '{stableContainerId}'.";
@@ -192,6 +243,27 @@ namespace Margins
 
             Container = restored;
             return true;
+        }
+
+        private ProductDefinition FindConfiguredProduct(string productId)
+        {
+            if (!FirstStoreIdentifier.IsValid(productId) || productDefinitions == null)
+            {
+                return null;
+            }
+
+            foreach (ProductDefinition productDefinition in productDefinitions)
+            {
+                if (productDefinition != null &&
+                    string.Equals(
+                        productDefinition.StableProductId,
+                        productId,
+                        StringComparison.Ordinal))
+                {
+                    return productDefinition;
+                }
+            }
+            return null;
         }
     }
 }

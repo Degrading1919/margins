@@ -1,4 +1,3 @@
-// Draft implementation — Unity verification pending
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -13,14 +12,19 @@ namespace Margins
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private CleaningTaskComponent cleaningTask;
         [SerializeField] private string[] requiredFixtureInstanceIds;
+        [SerializeField, Min(0)] private int includedOperatingExpensesCents;
 
-        public StoreOperatingSession Session { get; private set; }
+        internal StoreOperatingSession Session { get; private set; }
         public StoreOperatingState State =>
             Session?.State ?? StoreOperatingState.Closed;
+        public StoreSessionTotals ResultTotals => Session?.Totals;
         public bool IsInitialized => Session != null;
         public FixturePlacementController FixturePlacement => fixturePlacement;
+        public StockingController Stocking => stocking;
         public CheckoutStationComponent Checkout => checkout;
         public CleaningTaskComponent CleaningTask => cleaningTask;
+        public int IncludedOperatingExpensesCents =>
+            includedOperatingExpensesCents;
 
         private void Start()
         {
@@ -32,9 +36,11 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (!FirstStoreIdentifier.IsValid(stableSessionId))
+            if (!FirstStoreIdentifier.IsValid(stableSessionId) ||
+                includedOperatingExpensesCents < 0)
             {
-                error = "Store operating controller requires a valid session id.";
+                error =
+                    "Store operating controller requires a valid session id and nonnegative expenses.";
                 return false;
             }
 
@@ -54,10 +60,12 @@ namespace Margins
                 return false;
             }
 
-            if (stocking.InventoryComponent != checkout.InventoryComponent)
+            if (stocking.InventoryComponent != checkout.InventoryComponent ||
+                stocking.PhysicalUnits == null ||
+                stocking.PhysicalUnits != checkout.PhysicalUnits)
             {
                 error =
-                    "Stocking and checkout must reference the same inventory component.";
+                    "Stocking and checkout must share inventory and physical-unit configuration.";
                 return false;
             }
 
@@ -89,6 +97,25 @@ namespace Margins
                 return false;
             }
 
+            foreach (string productId in checkout.ConfiguredProductIds)
+            {
+                if (!checkout.TryGetShelfLocation(
+                        productId,
+                        out string checkoutShelf) ||
+                    !stocking.TryGetShelfLocation(
+                        productId,
+                        out string stockingShelf) ||
+                    !string.Equals(
+                        checkoutShelf,
+                        stockingShelf,
+                        StringComparison.Ordinal))
+                {
+                    error =
+                        $"Checkout and stocking shelf mappings disagree for '{productId}'.";
+                    return false;
+                }
+            }
+
             error = null;
             return true;
         }
@@ -110,7 +137,8 @@ namespace Margins
                 return false;
             }
 
-            if (!fixturePlacement.TryInitialize(out error))
+            if (!fixturePlacement.TryBindOperatingController(this, out error) ||
+                !fixturePlacement.TryInitialize(out error))
             {
                 error = $"Store operating could not initialize fixture placement: {error}";
                 return false;
@@ -149,18 +177,12 @@ namespace Margins
 
         public bool TryBeginPreparation(out string error)
         {
-            return TryTransition(
-                StoreOperatingState.Preparing,
-                null,
-                out error);
+            return TryTransition(StoreOperatingState.Preparing, out error);
         }
 
         public bool TryAbortPreparation(out string error)
         {
-            return TryTransition(
-                StoreOperatingState.Closed,
-                null,
-                out error);
+            return TryTransition(StoreOperatingState.Closed, out error);
         }
 
         public bool TryOpenStore(out string error)
@@ -193,20 +215,15 @@ namespace Margins
                 return false;
             }
 
-            return TryTransition(StoreOperatingState.Open, null, out error);
+            return TryTransition(StoreOperatingState.Open, out error);
         }
 
         public bool TryBeginClosing(out string error)
         {
-            return TryTransition(
-                StoreOperatingState.Closing,
-                null,
-                out error);
+            return TryTransition(StoreOperatingState.Closing, out error);
         }
 
-        public bool TryFinishClosing(
-            StoreSessionTotals totals,
-            out string error)
+        public bool TryFinishClosing(out string error)
         {
             if (checkout.HasActiveIncompleteSession)
             {
@@ -226,29 +243,56 @@ namespace Margins
                 return false;
             }
 
-            return TryTransition(
-                StoreOperatingState.ClosedWithResultPending,
-                totals,
-                out error);
+            if (!Session.TryFinalizeClosing(
+                    checkout.TransactionLedger,
+                    checkout.ProductUnitCostsCents,
+                    includedOperatingExpensesCents,
+                    out StoreOperatingFailure failure))
+            {
+                error = $"Store closing totals were rejected ({failure}).";
+                return false;
+            }
+
+            error = null;
+            return true;
         }
 
         public bool TryAcknowledgeResult(out string error)
         {
-            return TryTransition(
-                StoreOperatingState.Closed,
-                null,
-                out error);
+            return TryTransition(StoreOperatingState.Closed, out error);
+        }
+
+        public bool IsFixtureModificationRestricted(string fixtureInstanceId)
+        {
+            if (State != StoreOperatingState.Open &&
+                State != StoreOperatingState.Closing)
+            {
+                return false;
+            }
+
+            foreach (string requiredFixtureId in requiredFixtureInstanceIds)
+            {
+                if (string.Equals(
+                        requiredFixtureId,
+                        fixtureInstanceId,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public bool CanApplySnapshot(
             StoreOperatingSnapshot snapshot,
+            CompletedTransactionLedger transactionLedger,
             out string error)
         {
             if (snapshot == null ||
                 !string.Equals(
                     snapshot.sessionId,
                     stableSessionId,
-                    System.StringComparison.Ordinal))
+                    StringComparison.Ordinal))
             {
                 error =
                     $"Store operating snapshot does not match session '{stableSessionId}'.";
@@ -257,29 +301,33 @@ namespace Margins
 
             return StoreOperatingSession.TryRestore(
                 snapshot,
+                transactionLedger,
+                checkout.ProductUnitCostsCents,
                 out _,
                 out error);
         }
 
         public bool TryApplySnapshot(
             StoreOperatingSnapshot snapshot,
+            CompletedTransactionLedger transactionLedger,
             out string error)
         {
-            if (!CanApplySnapshot(snapshot, out error))
+            if (!CanApplySnapshot(snapshot, transactionLedger, out error))
             {
                 return false;
             }
 
             return StoreOperatingSession.TryRestore(
-                snapshot,
-                out StoreOperatingSession restored,
-                out error) &&
+                       snapshot,
+                       transactionLedger,
+                       checkout.ProductUnitCostsCents,
+                       out StoreOperatingSession restored,
+                       out error) &&
                    AssignRestored(restored);
         }
 
         private bool TryTransition(
             StoreOperatingState next,
-            StoreSessionTotals totals,
             out string error)
         {
             if (Session == null)
@@ -288,7 +336,7 @@ namespace Margins
                 return false;
             }
 
-            if (!Session.TryTransition(next, totals, out StoreOperatingFailure failure))
+            if (!Session.TryTransition(next, out StoreOperatingFailure failure))
             {
                 error =
                     $"Store transition '{Session.State}' to '{next}' rejected ({failure}).";
