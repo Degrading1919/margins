@@ -132,7 +132,7 @@ Expected:
 
 - gross profit $215;
 - session contribution $10;
-- ending cash $4,160;
+- ending cash $3,945;
 - reserve above $2,750;
 - result explains that the store barely covered included session expenses.
 
@@ -145,7 +145,7 @@ Expected:
 Expected:
 
 - session contribution negative $85;
-- ending cash remains positive and above a three-session fixed-expense floor;
+- ending cash $3,745, which remains positive and above a three-session fixed-expense floor;
 - no automatic closure or restart;
 - result identifies low sales relative to fixed expenses.
 
@@ -161,7 +161,7 @@ Expected:
 
 Expected:
 
-- contribution remains $10, but ending liquidity is only $1,255;
+- contribution remains $10, but ending liquidity is only $1,245;
 - reserve warning is shown;
 - additional assortment is blocked by the proposed reserve condition;
 - unsold units remain inventory rather than disappearing.
