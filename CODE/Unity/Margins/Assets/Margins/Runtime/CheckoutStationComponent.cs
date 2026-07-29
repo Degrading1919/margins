@@ -204,6 +204,13 @@ namespace Margins
                 return false;
             }
 
+            if (HasCompletedTransaction(transactionId))
+            {
+                error =
+                    $"Checkout transaction '{transactionId}' is already completed.";
+                return false;
+            }
+
             if (!CheckoutSession.TryCreate(
                     inventoryComponent.Inventory,
                     CreateShelfMappings(),
@@ -216,6 +223,29 @@ namespace Margins
 
             ActiveSession = session;
             return true;
+        }
+
+        private bool HasCompletedTransaction(string transactionId)
+        {
+            if (!FirstStoreIdentifier.IsValid(transactionId) ||
+                TransactionLedger == null)
+            {
+                return false;
+            }
+
+            foreach (CheckoutTransactionSummary transaction in
+                     TransactionLedger.Transactions)
+            {
+                if (string.Equals(
+                        transaction.transactionId,
+                        transactionId,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool TryScan(

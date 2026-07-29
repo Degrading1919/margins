@@ -112,26 +112,28 @@ namespace Margins.Tests
             StockOne(rig, rig.Cola);
             CompleteSale(rig, "transaction-duplicate", rig.Cola, 1);
 
-            Assert.That(
-                rig.Checkout.TryBeginSession("transaction-duplicate", out string error),
-                Is.True,
-                error);
-            Assert.That(rig.Checkout.TryScan(rig.Cola, 1, out _), Is.True);
             int stockBefore =
                 rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola");
             int visibleBefore = rig.PhysicalUnits.VisibleUnitCount;
 
             Assert.That(
-                rig.Checkout.TryComplete(
-                    out _,
-                    out CheckoutFailure failure),
+                rig.Checkout.TryBeginSession("transaction-duplicate", out string error),
                 Is.False);
-            Assert.That(failure, Is.EqualTo(CheckoutFailure.DuplicateTransactionId));
+            StringAssert.Contains("already completed", error);
+            Assert.That(rig.Checkout.HasActiveIncompleteSession, Is.False);
             Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
             Assert.That(
                 rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"),
                 Is.EqualTo(stockBefore));
             Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(visibleBefore));
+
+            Assert.That(
+                rig.Checkout.TryBeginSession("transaction-recovery", out error),
+                Is.True,
+                error);
+            Assert.That(rig.Checkout.TryScan(rig.Cola, 1, out _), Is.True);
+            Assert.That(rig.Checkout.TryComplete(out _, out _), Is.True);
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(2));
         }
 
         [Test]
