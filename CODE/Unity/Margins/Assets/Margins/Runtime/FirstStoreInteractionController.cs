@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -11,10 +13,18 @@ namespace Margins
         [SerializeField, Min(0.1f)] private float pickupDistance = 3f;
         [SerializeField] private LayerMask pickupLayers = ~0;
 
+        private readonly List<FirstStoreWorldInteractionCandidate> candidates = new();
+        private IFirstStoreWorldInteractionTarget focusedTarget;
+        private FirstStoreWorldInteractionPrompt currentPrompt;
+
         public ProductItem HeldProduct => stocking?.HeldPhysicalUnit;
         public bool IsWorldInteractionEnabled =>
             firstPersonController != null &&
             firstPersonController.IsGameplayInputActive;
+        public string FocusedTargetId => focusedTarget?.StableTargetId;
+        public FirstStoreWorldInteractionPrompt CurrentPrompt => currentPrompt;
+        public string CurrentPromptText => currentPrompt?.FormattedText ?? string.Empty;
+        public string LastFeedback { get; private set; }
 
         private void Start()
         {
@@ -24,24 +34,29 @@ namespace Margins
             }
         }
 
+        private void OnDisable()
+        {
+            ClearFocus();
+        }
+
         private void Update()
         {
             if (!IsWorldInteractionEnabled)
             {
+                ClearFocus();
                 return;
             }
+
+            RefreshFocus();
 
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
             {
-                if (HeldProduct == null)
-                {
-                    TryPickUpTargetedUnit(out _, out _);
-                }
-                else
-                {
-                    TryStockHeldUnit(out _);
-                }
+                TryPrimaryInteraction(out _);
+            }
+            if (keyboard != null && keyboard.qKey.wasPressedThisFrame)
+            {
+                TryCancelInteraction(out _);
             }
 
             ProductItem held = HeldProduct;
@@ -72,12 +87,114 @@ namespace Margins
 
             if (pickupDistance <= 0f)
             {
-                error = "First-store interaction pickup distance must be positive.";
+                error = "First-store interaction distance must be positive.";
                 return false;
             }
 
             error = null;
             return true;
+        }
+
+        public bool RefreshFocus()
+        {
+            if (!IsWorldInteractionEnabled || viewCamera == null)
+            {
+                ClearFocus();
+                return false;
+            }
+
+            candidates.Clear();
+            Ray ray = new(viewCamera.transform.position, viewCamera.transform.forward);
+            RaycastHit[] hits = Physics.RaycastAll(
+                ray,
+                pickupDistance,
+                pickupLayers,
+                QueryTriggerInteraction.Ignore);
+
+            for (int hitIndex = 0; hitIndex < hits.Length; hitIndex++)
+            {
+                RaycastHit hit = hits[hitIndex];
+                IFirstStoreWorldInteractionTarget explicitTarget =
+                    FindExplicitTarget(hit.collider);
+                if (explicitTarget != null)
+                {
+                    candidates.Add(new FirstStoreWorldInteractionCandidate(
+                        explicitTarget,
+                        hit.distance));
+                    continue;
+                }
+
+                ProductItem product = hit.collider.GetComponentInParent<ProductItem>();
+                if (product != null)
+                {
+                    candidates.Add(new FirstStoreWorldInteractionCandidate(
+                        new LooseProductTarget(stocking, product),
+                        hit.distance));
+                }
+            }
+
+            IFirstStoreWorldInteractionTarget selected =
+                FirstStoreWorldInteractionTargetResolver.Resolve(candidates);
+            if (!ReferenceEquals(selected, focusedTarget) &&
+                !string.Equals(
+                    selected?.StableTargetId,
+                    focusedTarget?.StableTargetId,
+                    StringComparison.Ordinal))
+            {
+                HeldProduct?.ClearPlacementPreview();
+            }
+
+            focusedTarget = selected;
+            currentPrompt = focusedTarget?.Prompt;
+            if (focusedTarget == null)
+            {
+                LastFeedback = null;
+            }
+            return focusedTarget != null;
+        }
+
+        public bool TryPrimaryInteraction(out string error)
+        {
+            if (!IsWorldInteractionEnabled)
+            {
+                error = "World interaction is disabled while the development HUD owns input.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (focusedTarget == null && !RefreshFocus())
+            {
+                error = "No world interaction target is focused.";
+                LastFeedback = error;
+                return false;
+            }
+
+            bool success = focusedTarget.TryPrimary(out error);
+            LastFeedback = success ? null : error;
+            RefreshFocus();
+            return success;
+        }
+
+        public bool TryCancelInteraction(out string error)
+        {
+            if (!IsWorldInteractionEnabled)
+            {
+                error = "World interaction is disabled while the development HUD owns input.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (focusedTarget == null && !RefreshFocus())
+            {
+                error = "No context action can be cancelled.";
+                LastFeedback = error;
+                return false;
+            }
+
+            bool success = focusedTarget.TryCancel(out error);
+            LastFeedback = success ? null : error;
+            RefreshFocus();
+            return success;
         }
 
         public bool TryPickUpTargetedUnit(
@@ -87,7 +204,7 @@ namespace Margins
             selectedUnit = null;
             if (!IsWorldInteractionEnabled)
             {
-                error = "World interaction is disabled while the validation HUD is active.";
+                error = "World interaction is disabled while the development HUD owns input.";
                 return false;
             }
 
@@ -121,7 +238,7 @@ namespace Margins
         {
             if (!IsWorldInteractionEnabled)
             {
-                error = "World interaction is disabled while the validation HUD is active.";
+                error = "World interaction is disabled while the development HUD owns input.";
                 return false;
             }
 
@@ -143,7 +260,85 @@ namespace Margins
             }
 
             ProductItem held = HeldProduct;
-            return held != null && held.AdjustQuarterTurns(direction > 0 ? 1 : -1);
+            bool changed =
+                held != null && held.AdjustQuarterTurns(direction > 0 ? 1 : -1);
+            if (changed)
+            {
+                RefreshFocus();
+            }
+            return changed;
+        }
+
+        private void ClearFocus()
+        {
+            HeldProduct?.ClearPlacementPreview();
+            candidates.Clear();
+            focusedTarget = null;
+            currentPrompt = null;
+            LastFeedback = null;
+        }
+
+        private static IFirstStoreWorldInteractionTarget FindExplicitTarget(
+            Collider collider)
+        {
+            if (collider == null)
+            {
+                return null;
+            }
+
+            MonoBehaviour[] behaviours =
+                collider.GetComponentsInParent<MonoBehaviour>(true);
+            for (int index = 0; index < behaviours.Length; index++)
+            {
+                if (behaviours[index] is IFirstStoreWorldInteractionTarget target)
+                {
+                    return target;
+                }
+            }
+            return null;
+        }
+
+        private sealed class LooseProductTarget : IFirstStoreWorldInteractionTarget
+        {
+            private readonly StockingController stocking;
+            private readonly ProductItem product;
+
+            public LooseProductTarget(
+                StockingController stocking,
+                ProductItem product)
+            {
+                this.stocking = stocking;
+                this.product = product;
+            }
+
+            public string StableTargetId => product?.PhysicalUnitId;
+            public FirstStoreWorldInteractionPriority Priority =>
+                FirstStoreWorldInteractionPriority.LooseProduct;
+            public bool IsAvailable =>
+                stocking != null &&
+                product != null &&
+                !product.IsHeld &&
+                !product.IsSnapped;
+            public FirstStoreWorldInteractionPrompt Prompt =>
+                new(
+                    "E",
+                    $"Pick up {DisplayName}");
+
+            public bool TryPrimary(out string error)
+            {
+                return stocking.TryPickUpLooseUnit(product, out _, out error);
+            }
+
+            public bool TryCancel(out string error)
+            {
+                error = "Loose-product pickup has no cancel action.";
+                return false;
+            }
+
+            private string DisplayName =>
+                string.IsNullOrWhiteSpace(product?.Definition?.DisplayName)
+                    ? "product"
+                    : product.Definition.DisplayName;
         }
     }
 }

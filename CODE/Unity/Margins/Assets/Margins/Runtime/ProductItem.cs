@@ -125,6 +125,11 @@ namespace Margins
             }
         }
 
+        public void ClearPlacementPreview()
+        {
+            SetFeedbackMaterial(defaultMaterial);
+        }
+
         public void ReleaseLoose()
         {
             IsHeld = false;

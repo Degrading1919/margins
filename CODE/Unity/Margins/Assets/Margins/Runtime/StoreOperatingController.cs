@@ -218,6 +218,39 @@ namespace Margins
             return TryTransition(StoreOperatingState.Open, out error);
         }
 
+        public bool TryGetFirstOpenBlocker(out string blocker)
+        {
+            if (Session == null)
+            {
+                blocker = "Store controls are not ready.";
+                return true;
+            }
+
+            foreach (string fixtureId in requiredFixtureInstanceIds)
+            {
+                if (!fixturePlacement.IsPlaced(fixtureId))
+                {
+                    blocker = "Place the required fixture before opening.";
+                    return true;
+                }
+            }
+
+            if (!checkout.HasSellableStock)
+            {
+                blocker = "Stock a checkout product before opening.";
+                return true;
+            }
+
+            if (stocking.HasHeldUnit)
+            {
+                blocker = "Return or stock the held product before opening.";
+                return true;
+            }
+
+            blocker = null;
+            return false;
+        }
+
         public bool TryBeginClosing(out string error)
         {
             return TryTransition(StoreOperatingState.Closing, out error);
@@ -254,6 +287,57 @@ namespace Margins
             }
 
             error = null;
+            return true;
+        }
+
+        public bool TryGetFirstFinalCloseBlocker(out string blocker)
+        {
+            if (Session == null)
+            {
+                blocker = "Store controls are not ready.";
+                return true;
+            }
+
+            if (State != StoreOperatingState.Closing)
+            {
+                blocker = "Begin closing before finalizing the store.";
+                return true;
+            }
+
+            if (checkout.HasActiveIncompleteSession)
+            {
+                blocker = "Complete or clear the active checkout before closing.";
+                return true;
+            }
+
+            if (stocking.HasHeldUnit)
+            {
+                blocker = "Return or stock the held product before closing.";
+                return true;
+            }
+
+            if (!cleaningTask.IsComplete)
+            {
+                blocker = "Complete the required cleaning task before closing.";
+                return true;
+            }
+
+            blocker = null;
+            return false;
+        }
+
+        public bool TryGetResultCausalNote(out string note)
+        {
+            StoreSessionTotals totals = ResultTotals;
+            if (State != StoreOperatingState.ClosedWithResultPending || totals == null)
+            {
+                note = null;
+                return false;
+            }
+
+            note = totals.transactionCount == 0
+                ? "No completed sales were included in this result."
+                : $"{totals.transactionCount} completed sale(s) and {totals.unitsSold} unit(s) are included.";
             return true;
         }
 

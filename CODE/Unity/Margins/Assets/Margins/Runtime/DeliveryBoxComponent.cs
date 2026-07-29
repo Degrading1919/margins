@@ -19,6 +19,8 @@ namespace Margins
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
         public bool IsInitialized => Container != null;
+        public bool IsOpen => Container != null && Container.IsOpen;
+        public bool IsSealed => Container != null && !Container.IsOpen;
 
         private void Start()
         {
@@ -207,6 +209,32 @@ namespace Margins
             transfer = rollback;
             physicalUnit = null;
             return false;
+        }
+
+        public bool TryGetConfiguredProductRemaining(
+            ProductDefinition requestedProduct,
+            out string productName,
+            out int remainingUnits,
+            out string error)
+        {
+            productName = null;
+            remainingUnits = 0;
+            if (Container == null || requestedProduct == null ||
+                FindConfiguredProduct(requestedProduct.StableProductId) == null ||
+                inventoryComponent == null || !inventoryComponent.IsInitialized)
+            {
+                error = "Delivery product request is invalid or unconfigured.";
+                return false;
+            }
+
+            productName = string.IsNullOrWhiteSpace(requestedProduct.DisplayName)
+                ? requestedProduct.StableProductId
+                : requestedProduct.DisplayName;
+            remainingUnits = inventoryComponent.Inventory.GetQuantity(
+                inventoryLocationId,
+                requestedProduct.StableProductId);
+            error = null;
+            return true;
         }
 
         public bool CanApplyRestoredContainer(

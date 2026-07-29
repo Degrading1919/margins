@@ -31,6 +31,9 @@ namespace Margins
         internal CompletedTransactionLedger TransactionLedger { get; private set; }
         public bool HasActiveIncompleteSession =>
             ActiveSession != null && !ActiveSession.IsCompleted;
+        public IReadOnlyList<CheckoutLineSnapshot> ActiveLines =>
+            ActiveSession?.Lines ?? Array.Empty<CheckoutLineSnapshot>();
+        public long ActiveSubtotalCents => ActiveSession?.SubtotalCents ?? 0;
         public CheckoutTransactionSummary CompletedSummary =>
             ActiveSession?.GetCompletedSummary();
         public long GrossSalesCents => TransactionLedger?.GrossSalesCents ?? 0;

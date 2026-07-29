@@ -254,6 +254,15 @@ namespace Margins.Tests
             yield return null;
             Assert.That(held.QuarterTurns, Is.EqualTo(1));
 
+            ShelfSnapWorldInteractionTarget shelfTarget = Object
+                .FindObjectsByType<ShelfSnapWorldInteractionTarget>(
+                    FindObjectsInactive.Exclude,
+                    FindObjectsSortMode.None)
+                .First(target =>
+                    target.ShelfFixture.StableFixtureId ==
+                    "fixture-shelf-cola-validation");
+            AimAt(Camera.main, shelfTarget.transform);
+
             Press(keyboard.eKey, queueEventOnly: true);
             yield return null;
             Release(keyboard.eKey, queueEventOnly: true);
@@ -357,6 +366,14 @@ namespace Margins.Tests
                     Quaternion.identity);
             }
 
+            Physics.SyncTransforms();
+        }
+
+        private static void AimAt(Camera camera, Transform target)
+        {
+            target.SetPositionAndRotation(
+                camera.transform.position + camera.transform.forward * 1.5f,
+                Quaternion.identity);
             Physics.SyncTransforms();
         }
 

@@ -18,6 +18,9 @@ namespace Margins
         [SerializeField, Min(1)] private int requiredProgressUnits = 4;
 
         public string StableTaskId => stableTaskId;
+        public string DisplayName => string.IsNullOrWhiteSpace(name)
+            ? "Cleaning task"
+            : name;
         public int RequiredProgressUnits => requiredProgressUnits;
         public int CompletedProgressUnits { get; private set; }
         public bool IsComplete =>

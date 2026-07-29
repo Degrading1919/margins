@@ -258,6 +258,113 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void TargetedStockingUsesExactConfiguredSnapPointAndOrientation()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out ProductItem loose, out _, out _, out error), Is.True, error);
+            Assert.That(rig.Stocking.TryPickUpLooseUnit(loose, out ProductItem held, out error), Is.True, error);
+
+            Assert.That(rig.Stocking.TryStockHeldUnit(rig.ColaShelf, "slot-cola-03", 3, out error), Is.True, error);
+            Assert.That(held.IsHeld, Is.False);
+            Assert.That(held.SnappedFixture, Is.SameAs(rig.ColaShelf));
+            Assert.That(held.SnappedPointId, Is.EqualTo("slot-cola-03"));
+            Assert.That(held.QuarterTurns, Is.EqualTo(3));
+            Assert.That(rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TargetedStockingRejectsWrongShelfAndSnapWithoutReplacingHeldUnit()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out ProductItem loose, out _, out _, out error), Is.True, error);
+            Assert.That(rig.Stocking.TryPickUpLooseUnit(loose, out ProductItem held, out error), Is.True, error);
+            FirstStoreInventorySnapshot before = rig.Inventory.Inventory.CreateSnapshot();
+
+            Assert.That(rig.Stocking.TryStockHeldUnit(rig.ChipsShelf, "slot-chips-01", 1, out error), Is.False);
+            StringAssert.Contains("targeted shelf", error);
+            Assert.That(rig.Stocking.TryStockHeldUnit(rig.ColaShelf, "slot-cola-99", 1, out error), Is.False);
+            StringAssert.Contains("targeted shelf", error);
+            Assert.That(rig.Inventory.Inventory.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(rig.Stocking.HeldPhysicalUnit, Is.SameAs(held));
+            Assert.That(held.IsHeld, Is.True);
+            Assert.That(held.QuarterTurns, Is.EqualTo(0));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExactStockPreviewValidationIsNonMutatingAndExplainsInvalidTargets()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out ProductItem firstLoose, out _, out _, out error), Is.True, error);
+            Assert.That(rig.Stocking.TryPickUpLooseUnit(firstLoose, out _, out error), Is.True, error);
+            Assert.That(rig.Stocking.TryStockHeldUnit(rig.ColaShelf, "slot-cola-01", 0, out error), Is.True, error);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out ProductItem secondLoose, out _, out _, out error), Is.True, error);
+            Assert.That(rig.Stocking.TryPickUpLooseUnit(secondLoose, out ProductItem held, out error), Is.True, error);
+
+            FirstStoreInventorySnapshot before = rig.Inventory.Inventory.CreateSnapshot();
+            int visibleCount = rig.PhysicalUnits.VisibleUnitCount;
+            Assert.That(rig.Stocking.CanStockHeldUnit(rig.ColaShelf, "slot-cola-02", out string validReason), Is.True, validReason);
+            Assert.That(validReason, Is.Null);
+            Assert.That(rig.Stocking.CanStockHeldUnit(rig.ChipsShelf, "slot-chips-01", out string invalidReason), Is.False);
+            StringAssert.Contains("does not accept", invalidReason);
+            Assert.That(rig.Stocking.CanStockHeldUnit(rig.ColaShelf, "slot-cola-01", out string occupiedReason), Is.False);
+            StringAssert.Contains("occupied", occupiedReason);
+
+            Assert.That(rig.Inventory.Inventory.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(visibleCount));
+            Assert.That(rig.Stocking.HeldPhysicalUnit, Is.SameAs(held));
+            Assert.That(held.IsHeld, Is.True);
+            Assert.That(held.QuarterTurns, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void DeliveryReadApisExposeSealedAndExactConfiguredProductRemaining()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            Assert.That(rig.Delivery.IsOpen, Is.False);
+            Assert.That(rig.Delivery.IsSealed, Is.True);
+            Assert.That(rig.Delivery.TryGetConfiguredProductRemaining(rig.Cola, out string productName, out int remaining, out string error), Is.True, error);
+            Assert.That(productName, Is.EqualTo("Cola"));
+            Assert.That(remaining, Is.EqualTo(1));
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out _, out DeliveryContainerFailure sealedFailure, out _, out _), Is.False);
+            Assert.That(sealedFailure, Is.EqualTo(DeliveryContainerFailure.Sealed));
+
+            Assert.That(rig.Delivery.TryOpen(out _, out error), Is.True, error);
+            Assert.That(rig.Delivery.IsOpen, Is.True);
+            Assert.That(rig.Delivery.IsSealed, Is.False);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out _, out _, out _, out error), Is.True, error);
+            Assert.That(rig.Delivery.TryGetConfiguredProductRemaining(rig.Cola, out productName, out remaining, out error), Is.True, error);
+            Assert.That(productName, Is.EqualTo("Cola"));
+            Assert.That(remaining, Is.Zero);
+            Assert.That(rig.Delivery.TryRemoveOneUnit(rig.Cola, out _, out DeliveryContainerFailure exhaustedFailure, out _, out _), Is.False);
+            Assert.That(exhaustedFailure, Is.EqualTo(DeliveryContainerFailure.TransferRejected));
+        }
+
+        [Test]
+        public void CleaningDisplayNameSupportsProgressAndCompletionPresentation()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 0, chipsBoxQuantity: 0);
+            Assert.That(rig.Cleaning.DisplayName, Is.EqualTo("Cleaning Task"));
+            Assert.That(rig.Cleaning.TryApplyProgress(1), Is.EqualTo(CleaningProgressResult.Progressed));
+            Assert.That(rig.Cleaning.CompletedProgressUnits, Is.EqualTo(1));
+            Assert.That(rig.Cleaning.TryApplyProgress(3), Is.EqualTo(CleaningProgressResult.Completed));
+            Assert.That(rig.Cleaning.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void OpeningBlockerExplanationIsPlayerFacingAndActionable()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 0, chipsBoxQuantity: 0);
+            Assert.That(rig.Store.TryGetFirstOpenBlocker(out string blocker), Is.True);
+            StringAssert.Contains("Place the required fixture", blocker);
+            StringAssert.DoesNotContain("fixture-essential-01", blocker);
+            StringAssert.DoesNotContain("Preparing", blocker);
+        }
+
+        [Test]
         public void EssentialFixtureMoveAndRemovalAreRejectedWhileOpenAndClosing()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);

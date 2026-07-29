@@ -357,6 +357,115 @@ namespace Margins
                 return false;
             }
 
+            return TryStockHeldUnit(
+                item,
+                configuration,
+                snapPointId,
+                quarterTurns,
+                out error);
+        }
+
+        public bool TryStockHeldUnit(
+            ShelfFixture targetedShelf,
+            string targetedSnapPointId,
+            int quarterTurns,
+            out string error)
+        {
+            if (!TryInitializeDependencies(out error))
+            {
+                return false;
+            }
+
+            if (!physicalUnits.TryGetOldestUnitAtLocation(
+                    heldLocationId,
+                    out ProductItem item) ||
+                !item.IsHeld)
+            {
+                error = "No physical product unit is held.";
+                return false;
+            }
+
+            if (!CanStockHeldUnit(
+                    targetedShelf,
+                    targetedSnapPointId,
+                    out error))
+            {
+                return false;
+            }
+
+            StockingProductConfiguration configuration =
+                FindProduct(item.Definition?.StableProductId);
+            return TryStockHeldUnit(
+                item,
+                configuration,
+                targetedSnapPointId,
+                quarterTurns,
+                out error);
+        }
+
+        public bool CanStockHeldUnit(
+            ShelfFixture targetedShelf,
+            string targetedSnapPointId,
+            out string reason)
+        {
+            if (!TryValidateConfiguration(out reason))
+            {
+                reason = "Stocking is not ready.";
+                return false;
+            }
+
+            if (!physicalUnits.TryGetOldestUnitAtLocation(
+                    heldLocationId,
+                    out ProductItem item) ||
+                !item.IsHeld)
+            {
+                reason = "No product is held.";
+                return false;
+            }
+
+            StockingProductConfiguration configuration =
+                FindProduct(item.Definition?.StableProductId);
+            if (configuration == null ||
+                configuration.ShelfFixture != targetedShelf ||
+                !ContainsSnapPoint(configuration, targetedSnapPointId) ||
+                !targetedShelf.TryGetSnapPoint(
+                    targetedSnapPointId,
+                    out ShelfSnapPointDefinition snapPoint) ||
+                !snapPoint.Accepts(item.Definition.SnapCompatibilityTag))
+            {
+                reason = "The targeted shelf position does not accept the held product.";
+                return false;
+            }
+
+            if (targetedShelf.IsOccupied(targetedSnapPointId))
+            {
+                reason = "That shelf position is occupied.";
+                return false;
+            }
+
+            InventoryTransferResult transfer = inventoryComponent.Inventory.CanTransfer(
+                configuration.ProductDefinition.StableProductId,
+                heldLocationId,
+                configuration.ShelfLocationId,
+                1);
+            if (!transfer.IsSuccess)
+            {
+                reason = "That shelf cannot accept another product.";
+                return false;
+            }
+
+            reason = null;
+            return true;
+        }
+
+        private bool TryStockHeldUnit(
+            ProductItem item,
+            StockingProductConfiguration configuration,
+            string snapPointId,
+            int quarterTurns,
+            out string error)
+        {
+
             string productId = configuration.ProductDefinition.StableProductId;
             InventoryTransferResult preview =
                 inventoryComponent.Inventory.CanTransfer(
