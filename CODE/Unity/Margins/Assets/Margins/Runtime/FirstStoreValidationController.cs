@@ -125,14 +125,14 @@ namespace Margins
             {
                 GUI.Label(
                     new Rect(12f, 12f, 560f, 24f),
-                    "Tab: validation HUD | E: context action | Q: cancel/correct | Mouse wheel: rotate held product");
+                    "Tab: validation HUD | E: context action | Q: cancel/correct | Wheel: rotate | Backspace: remove fixture");
                 return;
             }
 
             GUI.Box(new Rect(12f, 12f, 650f, 286f), "");
             GUILayout.BeginArea(new Rect(24f, 20f, 626f, 270f));
             GUILayout.Label("MARGINS FIRST-STORE LOCAL VALIDATION (development HUD)");
-            GUILayout.Label("Tab returns to gameplay | world E context | Q correct/cancel | wheel rotate");
+            GUILayout.Label("Tab returns to gameplay | world E context | Q correct/cancel | wheel rotate | Backspace remove fixture");
             GUILayout.Label("HUD shortcuts: 1 place fixture | 2 open delivery");
             GUILayout.Label("3/4 remove cola/chips | 5/6 pick cola/chips | 7 stock held");
             GUILayout.Label("8/9 sell cola/chips | D duplicate-ID attempt | C clean | O advance store");

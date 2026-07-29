@@ -81,6 +81,34 @@ namespace Margins
             SetPreviewState(FixturePlacementPreviewState.None);
         }
 
+        public void ApplyPreview(
+            GridPosition gridPosition,
+            int quarterTurns,
+            Transform gridOrigin,
+            float cellSize,
+            bool isValid)
+        {
+            if (gridOrigin == null || cellSize <= 0f)
+            {
+                SetPreviewState(FixturePlacementPreviewState.Invalid);
+                return;
+            }
+
+            gameObject.SetActive(true);
+            int normalizedTurns = GridFootprint.NormalizeQuarterTurns(quarterTurns);
+            GridFootprint rotated = Footprint.Rotate(normalizedTurns);
+            Vector3 localCenter = new(
+                (gridPosition.x + rotated.width * 0.5f) * cellSize,
+                0f,
+                (gridPosition.z + rotated.depth * 0.5f) * cellSize);
+            transform.SetPositionAndRotation(
+                gridOrigin.TransformPoint(localCenter),
+                gridOrigin.rotation * Quaternion.Euler(0f, normalizedTurns * 90f, 0f));
+            SetPreviewState(isValid
+                ? FixturePlacementPreviewState.Valid
+                : FixturePlacementPreviewState.Invalid);
+        }
+
         public void ClearPlacement()
         {
             SetPreviewState(FixturePlacementPreviewState.None);

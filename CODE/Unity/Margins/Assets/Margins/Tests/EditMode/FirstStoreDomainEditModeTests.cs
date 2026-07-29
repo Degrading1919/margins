@@ -7,6 +7,190 @@ namespace Margins.Tests
     public sealed class FirstStoreDomainEditModeTests
     {
         [Test]
+        public void PreviewPlaceRespectsRotatedFootprintAndMatchesCommitValidation()
+        {
+            FixtureLayout layout = new(4, 4);
+            GridPosition position = new(2, 1);
+            GridFootprint footprint = new(3, 1);
+
+            FixturePlacementResult preview = layout.PreviewPlace(
+                "fixture-preview-rotated",
+                position,
+                footprint,
+                1);
+            Assert.That(layout.Count, Is.Zero);
+            Assert.That(layout.TryGetOccupant(position, out _), Is.False);
+            FixturePlacementResult committed = layout.TryPlace(
+                "fixture-preview-rotated",
+                position,
+                footprint,
+                1);
+
+            Assert.That(preview.IsSuccess, Is.True);
+            Assert.That(layout.Count, Is.EqualTo(1));
+            AssertEquivalentPlacementResult(preview, committed);
+            Assert.That(
+                layout.TryGetPlacement(
+                    "fixture-preview-rotated",
+                    out FixturePlacementSnapshot placement),
+                Is.True);
+            Assert.That(placement.RotatedFootprint, Is.EqualTo(new GridFootprint(1, 3)));
+            Assert.That(layout.TryGetOccupant(new GridPosition(2, 3), out _), Is.True);
+            Assert.That(layout.TryGetOccupant(new GridPosition(3, 1), out _), Is.False);
+        }
+
+        [Test]
+        public void PreviewPlaceOutOfBoundsMatchesCommitFirstBlockedCell()
+        {
+            FixtureLayout layout = new(4, 4);
+
+            FixturePlacementResult preview = layout.PreviewPlace(
+                "fixture-preview-edge",
+                new GridPosition(3, 3),
+                new GridFootprint(2, 2),
+                0);
+            FixturePlacementResult committed = layout.TryPlace(
+                "fixture-preview-edge",
+                new GridPosition(3, 3),
+                new GridFootprint(2, 2),
+                0);
+
+            Assert.That(preview.Failure, Is.EqualTo(FixturePlacementFailure.OutOfBounds));
+            Assert.That(preview.BlockedCell, Is.EqualTo(new GridPosition(4, 3)));
+            AssertEquivalentPlacementResult(preview, committed);
+            Assert.That(layout.Count, Is.Zero);
+        }
+
+        [Test]
+        public void PreviewPlaceOverlapMatchesCommitConflictWithoutMutatingLayout()
+        {
+            FixtureLayout layout = new(6, 6);
+            Assert.That(
+                layout.TryPlace(
+                    "fixture-preview-alpha",
+                    new GridPosition(1, 1),
+                    new GridFootprint(2, 2),
+                    0).IsSuccess,
+                Is.True);
+            List<FixturePlacementSnapshot> before = layout.CreateSnapshot();
+
+            FixturePlacementResult preview = layout.PreviewPlace(
+                "fixture-preview-beta",
+                new GridPosition(2, 1),
+                new GridFootprint(1, 1),
+                0);
+
+            Assert.That(preview.Failure, Is.EqualTo(FixturePlacementFailure.Occupied));
+            Assert.That(preview.BlockedCell, Is.EqualTo(new GridPosition(2, 1)));
+            Assert.That(preview.ConflictingFixtureInstanceId, Is.EqualTo("fixture-preview-alpha"));
+            Assert.That(layout.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(layout.TryGetOccupant(new GridPosition(2, 1), out string occupant), Is.True);
+            Assert.That(occupant, Is.EqualTo("fixture-preview-alpha"));
+
+            FixturePlacementResult committed = layout.TryPlace(
+                "fixture-preview-beta",
+                new GridPosition(2, 1),
+                new GridFootprint(1, 1),
+                0);
+            AssertEquivalentPlacementResult(preview, committed);
+        }
+
+        [Test]
+        public void PreviewMoveLeavesExactPriorSnapshotAndOccupancyUnchanged()
+        {
+            FixtureLayout layout = new(6, 6);
+            Assert.That(
+                layout.TryPlace(
+                    "fixture-preview-movable",
+                    new GridPosition(1, 1),
+                    new GridFootprint(2, 1),
+                    0).IsSuccess,
+                Is.True);
+            Assert.That(
+                layout.TryPlace(
+                    "fixture-preview-other",
+                    new GridPosition(4, 1),
+                    new GridFootprint(1, 1),
+                    0).IsSuccess,
+                Is.True);
+            List<FixturePlacementSnapshot> before = layout.CreateSnapshot();
+
+            FixturePlacementResult preview = layout.PreviewMove(
+                "fixture-preview-movable",
+                new GridPosition(1, 3),
+                1);
+
+            Assert.That(preview.IsSuccess, Is.True);
+            Assert.That(layout.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(layout.TryGetOccupant(new GridPosition(1, 1), out string originalOccupant), Is.True);
+            Assert.That(originalOccupant, Is.EqualTo("fixture-preview-movable"));
+            Assert.That(layout.TryGetOccupant(new GridPosition(1, 3), out _), Is.False);
+
+            FixturePlacementResult committed = layout.TryMove(
+                "fixture-preview-movable",
+                new GridPosition(1, 3),
+                1);
+            AssertEquivalentPlacementResult(preview, committed);
+        }
+
+        [Test]
+        public void PreviewInvalidDuplicateAndMissingCasesMatchCommitBehavior()
+        {
+            FixtureLayout layout = new(4, 4);
+
+            AssertEquivalentPlacementResult(
+                layout.PreviewPlace(
+                    "Bad Fixture Id",
+                    new GridPosition(0, 0),
+                    new GridFootprint(1, 1),
+                    0),
+                layout.TryPlace(
+                    "Bad Fixture Id",
+                    new GridPosition(0, 0),
+                    new GridFootprint(1, 1),
+                    0));
+            AssertEquivalentPlacementResult(
+                layout.PreviewPlace(
+                    "fixture-preview-invalid-footprint",
+                    new GridPosition(0, 0),
+                    new GridFootprint(0, 1),
+                    0),
+                layout.TryPlace(
+                    "fixture-preview-invalid-footprint",
+                    new GridPosition(0, 0),
+                    new GridFootprint(0, 1),
+                    0));
+
+            Assert.That(
+                layout.TryPlace(
+                    "fixture-preview-duplicate",
+                    new GridPosition(0, 0),
+                    new GridFootprint(1, 1),
+                    0).IsSuccess,
+                Is.True);
+            AssertEquivalentPlacementResult(
+                layout.PreviewPlace(
+                    "fixture-preview-duplicate",
+                    new GridPosition(1, 0),
+                    new GridFootprint(1, 1),
+                    0),
+                layout.TryPlace(
+                    "fixture-preview-duplicate",
+                    new GridPosition(1, 0),
+                    new GridFootprint(1, 1),
+                    0));
+            AssertEquivalentPlacementResult(
+                layout.PreviewMove(
+                    "fixture-preview-missing",
+                    new GridPosition(1, 0),
+                    0),
+                layout.TryMove(
+                    "fixture-preview-missing",
+                    new GridPosition(1, 0),
+                    0));
+        }
+
+        [Test]
         public void OverlappingFixturePlacementIsRejectedWithoutReplacingOccupant()
         {
             FixtureLayout layout = new(8, 8);
@@ -728,6 +912,18 @@ namespace Margins.Tests
             Assert.That(restoredAgain.TransactionLedger.TransactionCount, Is.EqualTo(2));
             Assert.That(restoredAgain.TransactionLedger.GrossSalesCents, Is.EqualTo(448));
             Assert.That(restoredAgain.TransactionLedger.UnitsSold, Is.EqualTo(2));
+        }
+
+        private static void AssertEquivalentPlacementResult(
+            FixturePlacementResult preview,
+            FixturePlacementResult committed)
+        {
+            Assert.That(committed.Failure, Is.EqualTo(preview.Failure));
+            Assert.That(committed.FixtureInstanceId, Is.EqualTo(preview.FixtureInstanceId));
+            Assert.That(committed.BlockedCell, Is.EqualTo(preview.BlockedCell));
+            Assert.That(
+                committed.ConflictingFixtureInstanceId,
+                Is.EqualTo(preview.ConflictingFixtureInstanceId));
         }
 
         private static GridPosition GridPositionDefault()

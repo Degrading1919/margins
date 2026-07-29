@@ -10,6 +10,7 @@ namespace Margins
         [SerializeField] private FirstPersonController firstPersonController;
         [SerializeField] private Camera viewCamera;
         [SerializeField] private StockingController stocking;
+        [SerializeField] private FirstStoreFixturePlacementModeController fixturePlacementMode;
         [SerializeField, Min(0.1f)] private float pickupDistance = 3f;
         [SerializeField] private LayerMask pickupLayers = ~0;
 
@@ -36,6 +37,7 @@ namespace Margins
 
         private void OnDisable()
         {
+            CancelActiveFixturePlacement();
             ClearFocus();
         }
 
@@ -43,6 +45,7 @@ namespace Margins
         {
             if (!IsWorldInteractionEnabled)
             {
+                CancelActiveFixturePlacement();
                 ClearFocus();
                 return;
             }
@@ -58,9 +61,12 @@ namespace Margins
             {
                 TryCancelInteraction(out _);
             }
+            if (keyboard != null && keyboard.backspaceKey.wasPressedThisFrame)
+            {
+                TryRemoveFocusedFixture(out _);
+            }
 
-            ProductItem held = HeldProduct;
-            if (held == null || Mouse.current == null)
+            if (Mouse.current == null)
             {
                 return;
             }
@@ -68,20 +74,21 @@ namespace Margins
             float scroll = Mouse.current.scroll.ReadValue().y;
             if (scroll > 0f)
             {
-                TryRotateHeldUnit(1);
+                TryRotateContext(1);
             }
             else if (scroll < 0f)
             {
-                TryRotateHeldUnit(-1);
+                TryRotateContext(-1);
             }
         }
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (firstPersonController == null || viewCamera == null || stocking == null)
+            if (firstPersonController == null || viewCamera == null || stocking == null ||
+                fixturePlacementMode == null)
             {
                 error =
-                    "First-store interaction requires explicit player, camera, and stocking references.";
+                    "First-store interaction requires explicit player, camera, stocking, and fixture-placement references.";
                 return false;
             }
 
@@ -105,6 +112,15 @@ namespace Margins
 
             candidates.Clear();
             Ray ray = new(viewCamera.transform.position, viewCamera.transform.forward);
+            if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
+            {
+                HeldProduct?.ClearPlacementPreview();
+                fixturePlacementMode.TryRefreshPreview(ray, out _);
+                focusedTarget = fixturePlacementMode;
+                currentPrompt = fixturePlacementMode.Prompt;
+                return true;
+            }
+
             RaycastHit[] hits = Physics.RaycastAll(
                 ray,
                 pickupDistance,
@@ -267,6 +283,65 @@ namespace Margins
                 RefreshFocus();
             }
             return changed;
+        }
+
+        public bool TryRemoveFocusedFixture(out string error)
+        {
+            if (!IsWorldInteractionEnabled)
+            {
+                error = "World interaction is disabled while the development HUD owns input.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
+            {
+                error = "Confirm or cancel the active fixture placement before removing a fixture.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (focusedTarget == null && !RefreshFocus())
+            {
+                error = "No placed fixture is focused for removal.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (focusedTarget is not IFirstStoreRemovableWorldInteractionTarget removable)
+            {
+                error = "The focused target is not a removable fixture.";
+                LastFeedback = error;
+                return false;
+            }
+
+            bool success = removable.TryRemove(out error);
+            LastFeedback = success ? null : error;
+            RefreshFocus();
+            return success;
+        }
+
+        private bool TryRotateContext(int direction)
+        {
+            if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
+            {
+                bool changed = fixturePlacementMode.AdjustQuarterTurns(
+                    direction,
+                    out string error);
+                LastFeedback = changed ? null : error;
+                RefreshFocus();
+                return changed;
+            }
+
+            return TryRotateHeldUnit(direction);
+        }
+
+        private void CancelActiveFixturePlacement()
+        {
+            if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
+            {
+                fixturePlacementMode.TryCancel(out _);
+            }
         }
 
         private void ClearFocus()

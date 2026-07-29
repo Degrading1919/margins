@@ -23,6 +23,7 @@ namespace Margins.Editor
             GameObject cleaningObject = Require("Cleaning Task");
             GameObject fixtureControllerObject = Require("Fixture Placement");
             GameObject requiredFixtureObject = Require("Essential Checkout Fixture");
+            GameObject placementFloorObject = Require("Validation Floor");
             GameObject colaShelfObject = Require("fixture-shelf-cola-validation");
             GameObject chipsShelfObject = Require("fixture-shelf-chips-validation");
             GameObject stockingObject = Require("Stocking Controller");
@@ -41,6 +42,7 @@ namespace Margins.Editor
             StoreOperatingController store = storeObject.GetComponent<StoreOperatingController>();
             FirstStoreInteractionController interaction =
                 playerObject.GetComponent<FirstStoreInteractionController>();
+            Collider placementFloor = placementFloorObject.GetComponent<Collider>();
 
             ProductDefinition cola = AssetDatabase.LoadAssetAtPath<ProductDefinition>(
                 "Assets/Margins/Content/FirstStoreValidation/ValidationColaProduct.asset");
@@ -66,8 +68,43 @@ namespace Margins.Editor
                 stocking,
                 store,
                 interaction,
+                placementFloor,
                 cola,
                 chips);
+
+            FirstStoreFixturePlacementModeController placementMode =
+                GetOrAdd<FirstStoreFixturePlacementModeController>(fixtureControllerObject);
+            SetObject(placementMode, "stableTargetId", "target-fixture-placement-mode-01");
+            SetObject(placementMode, "fixturePlacement", fixturePlacement);
+            SetObject(placementMode, "placementFloor", placementFloor);
+            SetObject(interaction, "fixturePlacementMode", placementMode);
+
+            FixturePlacementWorldInteractionTarget placedFixtureTarget =
+                GetOrAdd<FixturePlacementWorldInteractionTarget>(requiredFixtureObject);
+            SetObject(
+                placedFixtureTarget,
+                "stableTargetId",
+                "target-fixture-checkout-placed-01");
+            SetObject(placedFixtureTarget, "placementMode", placementMode);
+            SetObject(placedFixtureTarget, "fixture", requiredFixture);
+            SetBoolean(placedFixtureTarget, "allowsUnplacedFixture", false);
+
+            GameObject fixtureHandleObject = CreateWorldShape(
+                "Essential Checkout Fixture Placement Handle",
+                PrimitiveType.Cube,
+                new Vector3(0f, 0.2f, -0.25f),
+                new Vector3(0.8f, 0.4f, 0.8f),
+                validMaterial,
+                "FIXTURE HANDLE");
+            FixturePlacementWorldInteractionTarget fixtureHandleTarget =
+                GetOrAdd<FixturePlacementWorldInteractionTarget>(fixtureHandleObject);
+            SetObject(
+                fixtureHandleTarget,
+                "stableTargetId",
+                "target-fixture-checkout-handle-01");
+            SetObject(fixtureHandleTarget, "placementMode", placementMode);
+            SetObject(fixtureHandleTarget, "fixture", requiredFixture);
+            SetBoolean(fixtureHandleTarget, "allowsUnplacedFixture", true);
 
             ConfigureDelivery(
                 deliveryObject,
@@ -395,6 +432,20 @@ namespace Margins.Editor
             {
                 property.GetArrayElementAtIndex(index).objectReferenceValue = values[index];
             }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetBoolean(
+            UnityEngine.Object target,
+            string propertyName,
+            bool value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.boolValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }

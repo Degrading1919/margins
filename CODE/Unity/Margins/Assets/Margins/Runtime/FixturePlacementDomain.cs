@@ -209,26 +209,11 @@ namespace Margins
             GridFootprint unrotatedFootprint,
             int quarterTurns)
         {
-            if (!FirstStoreIdentifier.IsValid(fixtureInstanceId))
-            {
-                return FixturePlacementResult.Reject(
-                    FixturePlacementFailure.InvalidIdentifier,
-                    fixtureInstanceId);
-            }
-
-            if (placements.ContainsKey(fixtureInstanceId))
-            {
-                return FixturePlacementResult.Reject(
-                    FixturePlacementFailure.DuplicateIdentifier,
-                    fixtureInstanceId);
-            }
-
-            FixturePlacementResult validation = ValidatePlacement(
+            FixturePlacementResult validation = PreviewPlace(
                 fixtureInstanceId,
                 gridPosition,
                 unrotatedFootprint,
-                quarterTurns,
-                null);
+                quarterTurns);
             if (!validation.IsSuccess)
             {
                 return validation;
@@ -244,7 +229,62 @@ namespace Margins
             return FixturePlacementResult.Success(fixtureInstanceId);
         }
 
+        public FixturePlacementResult PreviewPlace(
+            string fixtureInstanceId,
+            GridPosition gridPosition,
+            GridFootprint unrotatedFootprint,
+            int quarterTurns)
+        {
+            if (!FirstStoreIdentifier.IsValid(fixtureInstanceId))
+            {
+                return FixturePlacementResult.Reject(
+                    FixturePlacementFailure.InvalidIdentifier,
+                    fixtureInstanceId);
+            }
+
+            if (placements.ContainsKey(fixtureInstanceId))
+            {
+                return FixturePlacementResult.Reject(
+                    FixturePlacementFailure.DuplicateIdentifier,
+                    fixtureInstanceId);
+            }
+
+            return ValidatePlacement(
+                fixtureInstanceId,
+                gridPosition,
+                unrotatedFootprint,
+                quarterTurns,
+                null);
+        }
+
         public FixturePlacementResult TryMove(
+            string fixtureInstanceId,
+            GridPosition gridPosition,
+            int quarterTurns)
+        {
+            FixturePlacementResult validation = PreviewMove(
+                fixtureInstanceId,
+                gridPosition,
+                quarterTurns);
+            if (!validation.IsSuccess)
+            {
+                return validation;
+            }
+
+            FixturePlacementSnapshot existing = placements[fixtureInstanceId];
+
+            Release(existing);
+            FixturePlacementSnapshot moved = new(
+                fixtureInstanceId,
+                gridPosition,
+                existing.unrotatedFootprint,
+                quarterTurns);
+            placements[fixtureInstanceId] = moved;
+            Occupy(moved);
+            return FixturePlacementResult.Success(fixtureInstanceId);
+        }
+
+        public FixturePlacementResult PreviewMove(
             string fixtureInstanceId,
             GridPosition gridPosition,
             int quarterTurns)
@@ -263,26 +303,12 @@ namespace Margins
                     fixtureInstanceId);
             }
 
-            FixturePlacementResult validation = ValidatePlacement(
+            return ValidatePlacement(
                 fixtureInstanceId,
                 gridPosition,
                 existing.unrotatedFootprint,
                 quarterTurns,
                 fixtureInstanceId);
-            if (!validation.IsSuccess)
-            {
-                return validation;
-            }
-
-            Release(existing);
-            FixturePlacementSnapshot moved = new(
-                fixtureInstanceId,
-                gridPosition,
-                existing.unrotatedFootprint,
-                quarterTurns);
-            placements[fixtureInstanceId] = moved;
-            Occupy(moved);
-            return FixturePlacementResult.Success(fixtureInstanceId);
         }
 
         public FixturePlacementResult TryRemove(string fixtureInstanceId)

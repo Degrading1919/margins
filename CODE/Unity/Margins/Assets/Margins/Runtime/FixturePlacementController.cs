@@ -27,6 +27,10 @@ namespace Margins
         internal FixtureLayout Layout { get; private set; }
         public int PlacedCount => Layout?.Count ?? 0;
         public bool IsInitialized => Layout != null;
+        public Transform GridOrigin => gridOrigin;
+        public int GridWidthCells => gridWidthCells;
+        public int GridDepthCells => gridDepthCells;
+        public float CellSize => cellSize;
 
         public bool HasConfiguredFixture(string fixtureInstanceId)
         {
@@ -34,10 +38,41 @@ namespace Margins
                    fixturesById.ContainsKey(fixtureInstanceId);
         }
 
+        public bool IsConfiguredFixture(PlaceableFixtureComponent fixture)
+        {
+            return fixture != null &&
+                   fixturesById.TryGetValue(
+                       fixture.StableFixtureInstanceId,
+                       out PlaceableFixtureComponent configured) &&
+                   configured == fixture;
+        }
+
+        public bool IsFixtureModificationRestricted(
+            PlaceableFixtureComponent fixture)
+        {
+            return fixture != null &&
+                   operatingController != null &&
+                   operatingController.IsFixtureModificationRestricted(
+                       fixture.StableFixtureInstanceId);
+        }
+
         public bool IsPlaced(string fixtureInstanceId)
         {
             return Layout != null &&
                    Layout.TryGetPlacement(fixtureInstanceId, out _);
+        }
+
+        public bool TryGetPlacement(
+            string fixtureInstanceId,
+            out FixturePlacementSnapshot placement)
+        {
+            if (Layout != null && Layout.TryGetPlacement(fixtureInstanceId, out placement))
+            {
+                return true;
+            }
+
+            placement = null;
+            return false;
         }
 
         private void Start()
@@ -124,6 +159,13 @@ namespace Margins
                 return rejection;
             }
 
+            if (IsFixtureModificationRestricted(fixture))
+            {
+                return FixturePlacementResult.Reject(
+                    FixturePlacementFailure.OperatingStateRestricted,
+                    fixture.StableFixtureInstanceId);
+            }
+
             FixturePlacementResult result = Layout.TryPlace(
                 fixture.StableFixtureInstanceId,
                 gridPosition,
@@ -143,14 +185,9 @@ namespace Margins
                 return rejection;
             }
 
-            if (operatingController != null &&
-                operatingController.IsFixtureModificationRestricted(
-                    fixture.StableFixtureInstanceId))
+            if (IsFixtureModificationRestricted(fixture))
             {
-                fixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
-                return FixturePlacementResult.Reject(
-                    FixturePlacementFailure.OperatingStateRestricted,
-                    fixture.StableFixtureInstanceId);
+                return RejectOperatingState(fixture);
             }
 
             FixturePlacementResult result = Layout.TryMove(
@@ -168,9 +205,7 @@ namespace Margins
                 return rejection;
             }
 
-            if (operatingController != null &&
-                operatingController.IsFixtureModificationRestricted(
-                    fixture.StableFixtureInstanceId))
+            if (IsFixtureModificationRestricted(fixture))
             {
                 return FixturePlacementResult.Reject(
                     FixturePlacementFailure.OperatingStateRestricted,
@@ -184,6 +219,49 @@ namespace Margins
                 fixture.ClearPlacement();
             }
             return result;
+        }
+
+        public FixturePlacementResult PreviewPlace(
+            PlaceableFixtureComponent fixture,
+            GridPosition gridPosition,
+            int quarterTurns)
+        {
+            if (!TryResolveFixture(fixture, out FixturePlacementResult rejection))
+            {
+                return rejection;
+            }
+
+            if (IsFixtureModificationRestricted(fixture))
+            {
+                return RejectOperatingState(fixture);
+            }
+
+            return Layout.PreviewPlace(
+                fixture.StableFixtureInstanceId,
+                gridPosition,
+                fixture.Footprint,
+                quarterTurns);
+        }
+
+        public FixturePlacementResult PreviewMove(
+            PlaceableFixtureComponent fixture,
+            GridPosition gridPosition,
+            int quarterTurns)
+        {
+            if (!TryResolveFixture(fixture, out FixturePlacementResult rejection))
+            {
+                return rejection;
+            }
+
+            if (IsFixtureModificationRestricted(fixture))
+            {
+                return RejectOperatingState(fixture);
+            }
+
+            return Layout.PreviewMove(
+                fixture.StableFixtureInstanceId,
+                gridPosition,
+                quarterTurns);
         }
 
         public bool CanApplyRestoredLayout(FixtureLayout restored, out string error)
@@ -305,6 +383,15 @@ namespace Margins
             {
                 fixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
             }
+        }
+
+        private static FixturePlacementResult RejectOperatingState(
+            PlaceableFixtureComponent fixture)
+        {
+            fixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
+            return FixturePlacementResult.Reject(
+                FixturePlacementFailure.OperatingStateRestricted,
+                fixture.StableFixtureInstanceId);
         }
     }
 }
