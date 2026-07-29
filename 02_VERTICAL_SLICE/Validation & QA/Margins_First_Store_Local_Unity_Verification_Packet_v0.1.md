@@ -69,23 +69,29 @@ branch, refresh descendants, and restart at the earliest affected step.
 11. [ ] **Verify fixture placement.** Exercise place, rotate, reject overlap,
     reject out-of-bounds, move, remove, cancel/recovery, and required-fixture
     opening checks. Confirm accepted state and visible state agree.
-12. [ ] **Verify receiving and stocking.** Exercise sealed-box rejection, open,
-    box-to-loose removal, loose-to-held pickup, valid stock, occupied or
-    incompatible rejection, and conservation after each action.
-13. [ ] **Verify checkout.** Begin one scripted or manually staged transaction,
-    scan, correct, complete, and request completion again. Confirm integer-cent
-    totals and one-time stock consumption.
+12. [ ] **Verify receiving and stocking.** Exercise sealed-box rejection, open a
+    mixed-product container, request each configured product explicitly, reject
+    invalid and exhausted product requests without mutation, remove repeated
+    distinct physical units, and stock each product to its configured shelf.
+    Exercise failed physical placement and confirm domain/visible conservation.
+13. [ ] **Verify checkout and ledger.** Prove exposed checkout-line mutation cannot
+    alter active state. Complete at least two transactions, reject a duplicate
+    transaction ID before stock or physical consumption, consume each product
+    from its configured shelf, and reconcile deterministic gross sales, COGS,
+    included expenses, contribution, units sold, and transaction count.
 14. [ ] **Verify cleaning.** Apply progress, invalid input where practical,
     completion clamping, and repeat completion. Confirm clear world and prompt
     feedback.
 15. [ ] **Verify opening and closing.** Exercise invalid direct open, preparation,
-    missing-prerequisite rejection, open, closing, blocked finalization, completed
-    finalization, result acknowledgement, and retained totals.
-16. [ ] **Verify save, exit, reload, and restoration.** Save accepted first-store
-    state, fully exit the executable or editor play session as defined by the
-    approved save path, reload, and compare fixture, inventory, delivery,
-    checkout, cleaning, operating, and physical product-placement state. Confirm
-    that completed checkout consumption is not replayed.
+    missing-prerequisite rejection, open, and closing. While both open and
+    closing, reject move and removal of every required fixture. Complete cleaning,
+    derive closing totals from the ledger, retain them until acknowledgement, and
+    then acknowledge the result.
+16. [ ] **Verify restoration at the approved boundary.** Repeat the temporary
+    in-memory restore and compare fixture, inventory, delivery, ledger, cleaning,
+    operating, physical-unit, and shelf-placement state. Confirm that revenue and
+    stock consumption are not replayed. Full disk save/exit/reload remains
+    **blocked** unless a separate owner-approved persistence decision exists.
 17. [ ] **Produce a Windows x64 development build.** Record the exact output path,
     build report, warnings, size, and whether symbols and development diagnostics
     were included.
@@ -106,14 +112,20 @@ permission to add runtime object discovery.
 - [ ] `PlaceableFixtureComponent`: unique stable instance ID, positive footprint,
   and optional complete preview-material set.
 - [ ] `DeliveryBoxComponent`: unique container ID, delivery location, loose
-  destination, product definition, and the shared inventory component.
-- [ ] `StockingController`: shared inventory, physical ProductItem, ShelfFixture,
-  hold point, loose/held/shelf locations, and stable snap-point ID.
-- [ ] `CheckoutStationComponent`: shared inventory, shelf location, product
-  definitions, and integer-cent prices.
+  destination, every mixed-delivery product definition, the shared inventory,
+  and the physical-unit registry.
+- [ ] `PhysicalProductUnitRegistry`: one prefab and loose spawn per configured
+  product; every visible loose/held/shelf unit reconciles to one domain unit.
+- [ ] `StockingController`: shared inventory and physical registry, hold point,
+  loose/held locations, and one product-specific shelf/fixture/snap-point set per
+  sellable product.
+- [ ] `CheckoutStationComponent`: shared inventory and physical registry, bounded
+  ledger capacity, and exactly one product/shelf/price/unit-cost mapping per priced
+  product.
 - [ ] `CleaningTaskComponent`: stable task ID and positive required progress.
 - [ ] `StoreOperatingController`: session ID, fixture/stocking/checkout/cleaning
-  references, and the complete required-fixture ID list.
+  references, included operating expenses, and the complete required-fixture ID
+  list.
 - [ ] `FirstStorePersistenceMapperComponent`: the same fixture, inventory,
   delivery, checkout, cleaning, and operating instances used by the scene.
 - [ ] Existing `PlacementSaveController`: unchanged foundation product, fixture,
@@ -129,13 +141,26 @@ authority after the project owner approves or revises it.
 |---:|---|---|
 | 1 | `fs-accept-014` | Invalid and duplicate configuration is blocked before mutation |
 | 2 | `fs-accept-001`, `fs-accept-002` | Fixture determinism, bounds, overlap, prior-state preservation |
-| 3 | `fs-accept-003` | Sealed/open delivery behavior and conserved removal |
-| 4 | `fs-accept-004`, `fs-accept-005` | Physical/domain stocking agreement and rejected-action atomicity |
-| 5 | `fs-accept-006`, `fs-accept-007` | Exact checkout totals and idempotent completion |
+| 3 | `fs-accept-003` | Mixed-product sealed/open delivery, explicit product removal, exhausted rejection |
+| 4 | `fs-accept-004`, `fs-accept-005` | Repeated distinct physical units, product-specific shelves, failed-placement atomicity |
+| 5 | `fs-accept-006`, `fs-accept-007` | Mutation-resistant checkout, two transactions, duplicate-ID rejection, mapped consumption |
 | 6 | `fs-accept-008` | Bounded, idempotent cleaning completion |
-| 7 | `fs-accept-009`, `fs-accept-010` | Valid operating sequence, prerequisite explanations, retained totals |
-| 8 | `fs-accept-011` | Save/restart equality and no replayed sale |
-| 9 | `fs-accept-012`, `fs-accept-013` | Owner-approved tuning fixture and recoverable result explanation |
+| 7 | `fs-accept-009`, `fs-accept-010` | Required-fixture restrictions, valid operating sequence, ledger-derived totals |
+| 8 | `fs-accept-011` | In-memory physical/domain restore equality and no replay; disk restart blocked |
+| 9 | `fs-accept-012`, `fs-accept-013` | Exact E1/E2/E3 arithmetic and recoverable result explanation |
+
+## Exact deterministic economy arithmetic
+
+Record the formula inputs and independently recompute all three corrected
+scenarios. Proposed tuning remains proposed; this arithmetic check does not
+approve final balance.
+
+- E1: `$10,000 - $3,000 - $2,250 - $1,100 - $205 + $500 = $3,945`
+  ending cash; contribution is `$500 - $285 - $205 = $10`.
+- E2: `$10,000 - $3,000 - $2,250 - $1,100 - $205 + $300 = $3,745`
+  ending cash; contribution is `$300 - $180 - $205 = -$85`.
+- E3: `$8,000 - $3,000 - $2,250 - $1,800 - $205 + $500 = $1,245`
+  ending cash; contribution is `$500 - $285 - $205 = $10`.
 
 ## Persistence gate
 

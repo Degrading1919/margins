@@ -49,6 +49,13 @@ pass. Link or attach durable evidence for every pass or failure.
 | First-store adapter EditMode | `Margins.Tests.FirstStoreAdapterEditModeTests` | | | | | |
 | Complete PlayMode | | | | | | |
 
+Focused evidence must identify the exact tests or manual steps proving checkout
+line mutation resistance, two completed transactions, duplicate transaction-ID
+rejection, deterministic ledger totals, COGS, contribution, repeated restore
+without revenue/stock replay, mixed-product delivery, product-specific shelf
+consumption, repeated distinct physical units, failed-placement rollback, and
+required-fixture restrictions.
+
 For every failure, record the full test name, stack trace, reproduction frequency,
 owning branch, defect ID, and rerun result. The source-authored tests remain
 Unity-unverified until this table contains actual local results.
@@ -60,9 +67,10 @@ Unity-unverified until this table contains actual local results.
 | Inventory authority and locations | | Not run | |
 | Product definitions | | Not run | |
 | Fixture grid and required fixtures | | Not run | |
-| Delivery container | | Not run | |
-| Product, shelf, hold point, snap point | | Not run | |
-| Checkout prices | | Not run | |
+| Mixed-product delivery container | | Not run | |
+| Physical-unit prefabs, spawns, and reconciliation | | Not run | |
+| Product-specific shelves, hold point, and snap points | | Not run | |
+| Checkout shelf/price/unit-cost mappings and ledger capacity | | Not run | |
 | Cleaning task | | Not run | |
 | Store session/controller | | Not run | |
 | First-store mapper | | Not run | |
@@ -82,15 +90,27 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 | `fs-accept-002` overlap/move rejection | Prior accepted placement preserved | Not run | |
 | Fixture remove and recovery | Domain and visible state agree; no orphan occupancy | Not run | |
 | `fs-accept-003` receiving | Sealed reject; open then conserved box-to-loose transfer | Not run | |
+| Mixed-product removal | Requested cola/chips unit removed; invalid/exhausted request changes nothing | Not run | |
 | `fs-accept-004` valid stocking | Loose-to-held-to-shelf moves exactly one unit and one visible item | Not run | |
+| Repeated physical units | Repeated removals create distinct visible units and stock distinct snap points | Not run | |
 | `fs-accept-005` invalid stocking | Quantity, held state, and occupancy remain unchanged | Not run | |
-| `fs-accept-006` checkout | Scan/correct/complete subtotal exact in integer cents | Not run | |
-| `fs-accept-007` repeat completion | Same summary; no second stock consumption | Not run | |
+| Physical placement rollback | Failed placement retains exactly one held domain/visible unit | Not run | |
+| Product-specific shelf consumption | Each checkout product consumes only its mapped shelf location | Not run | |
+| Checkout-line mutation resistance | External mutation cannot alter active product, price, or quantity | Not run | |
+| `fs-accept-006` checkout | At least two transactions complete with exact integer-cent subtotals | Not run | |
+| Duplicate transaction ID | Rejected before ledger, stock, or physical-unit mutation | Not run | |
+| Ledger/result reconciliation | Gross, COGS, expenses, contribution, units, and transaction count reconcile | Not run | |
+| `fs-accept-007` repeat completion | Same summary; no second revenue or stock consumption | Not run | |
 | `fs-accept-008` cleaning | Progress clamps and completion is idempotent | Not run | |
 | `fs-accept-009` opening prerequisites | Invalid open rejected with actionable explanation | Not run | |
 | `fs-accept-010` close/result | Valid sequence and totals retained until acknowledgement | Not run | |
-| `fs-accept-011` persistence | Full restart equality; completed sale not replayed | Blocked pending persistence decision | |
-| `fs-accept-012` economy result | Owner-approved test fixture calculates expected contribution/cash | Not run | |
+| Required fixture move/remove while open | Both operations rejected; accepted placement preserved | Not run | |
+| Required fixture move/remove while closing | Both operations rejected; accepted placement preserved | Not run | |
+| In-memory physical/domain restore | Physical counts/placements equal inventory after repeated restore; no replay | Not run | |
+| `fs-accept-011` full disk persistence | Save/exit/reload equality | Blocked pending persistence decision | |
+| `fs-accept-012` E1 arithmetic | `$10,000-$3,000-$2,250-$1,100-$205+$500=$3,945`; contribution `$10` | Not run | |
+| `fs-accept-012` E2 arithmetic | `$10,000-$3,000-$2,250-$1,100-$205+$300=$3,745`; contribution `-$85` | Not run | |
+| `fs-accept-012` E3 arithmetic | `$8,000-$3,000-$2,250-$1,800-$205+$500=$1,245`; contribution `$10` | Not run | |
 | `fs-accept-013` recovery | Weak result explained; continuation remains possible | Not run | |
 
 ## Save-file and restoration evidence
@@ -109,10 +129,10 @@ Record every Unity-created or modified scene, prefab, ScriptableObject asset, an
 | Fixture-placement equality | |
 | Inventory per-location equality | |
 | Delivery-container state equality | |
-| Checkout-summary equality / no replay | |
+| Completed-transaction ledger equality / no replay | |
 | Cleaning-state equality | |
 | Operating-state and totals equality | |
-| Physical ProductItem / shelf occupancy equality | |
+| Distinct physical-unit / shelf-placement reconciliation | |
 | Rejected or repaired records | |
 
 If only the in-memory mapper round trip is available, record that result under
@@ -169,4 +189,3 @@ Select exactly one after all required evidence and reruns are complete.
 **Unresolved blocker/major defects:**
 
 **Project-owner reviewer and date:**
-
