@@ -2,18 +2,21 @@
 
 ## Status and authority
 
-- **Status:** Proposed for project-owner review
-- **Execution status:** Not run
-- **Implementation marker:** Draft implementation — Unity verification pending
+- **Status:** Executed; adjust recommended before merge
+- **Execution status:** Local correction and verification run completed 2026-07-29;
+  see the evidence record for exact results, limitations, and the persistence block
+- **Implementation marker:** Draft implementation — Unity-verified; documentation-only
+  final-head rerun required before handoff
 - **Required editor:** Unity `6000.5.5f1`
 - **Remediation owner:** Technical Architect Assistant
 - **Sequence owner:** Margins Producer and Roadmap Assistant
 - **Evidence owner:** Data, Validation, and QA Engineer Assistant
 
-This packet is the desktop handoff for the complete first-store stack. It does not
-assert compilation, test, scene, NavMesh, build, executable, or playability results.
-Record every result in
-`Margins_First_Store_Local_Unity_Evidence_Record_v0.1.md`.
+This packet is the desktop handoff for the complete first-store stack. The 2026-07-29
+run results are recorded in
+`Margins_First_Store_Local_Unity_Evidence_Record_v0.1.md`. Full disk
+save/exit/reload remains blocked; direct held-key translation and the legacy
+pickup/rotate/release loop remain manual evidence gaps rather than inferred passes.
 
 ## Stack under review
 
