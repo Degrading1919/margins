@@ -27,19 +27,24 @@ The first-store snapshot contains:
 - registered product identifiers;
 - inventory location definitions and integer quantities;
 - delivery-container identifiers, inventory-location references, and open state;
-- one completed checkout summary used for idempotent restoration;
-- store operating state, session identity, and minimal end totals;
+- one bounded completed-transaction ledger with deterministic transaction-ID order;
+- store operating state, session identity, and end totals including gross sales,
+  cost of goods sold, included operating expenses, contribution after COGS, units,
+  and transaction count;
 - one bounded cleaning-task snapshot.
 
 ## Invariants
 
 - Stable identifiers use lowercase ASCII letters, digits, hyphens, underscores, or dots, are 1–64 characters, and begin and end with a letter or digit.
 - Fixture placements restore in stable-identifier order and rebuild occupancy.
-- Duplicate fixture, product, location, container, or checkout-line identifiers reject the snapshot.
+- Duplicate fixture, product, location, container, transaction, or checkout-line identifiers reject the snapshot.
 - Inventory quantities are positive integers in records and cannot exceed location capacity.
 - Inventory restoration registers products and locations before seeding quantities.
-- Checkout restoration validates its subtotal and unit total but never replays stock consumption.
-- `closed_with_result_pending` requires valid totals.
+- Ledger restoration validates every transaction subtotal and unit total but never
+  replays stock consumption.
+- Ledger totals are derived from its completed transactions.
+- `closed_with_result_pending` requires totals that reconcile to the ledger and
+  configured product unit-cost inputs.
 - Unsupported versions reject the snapshot without partial mutation.
 - Presentation state, prompts, target selection, materials, animations, and cached occupancy are excluded.
 
@@ -49,8 +54,10 @@ The first-store snapshot contains:
 2. Restore fixture layout and derived occupancy.
 3. Restore product registry, inventory locations, and quantities.
 4. Restore delivery containers against delivery-type inventory locations.
-5. Validate the completed checkout summary against known products.
-6. Restore store operating state and totals.
+5. Restore the bounded transaction ledger against known products without
+   consuming inventory.
+6. Restore store operating state and validate totals against the ledger and
+   configured product unit costs.
 7. Validate the optional cleaning task.
 8. Reconcile Unity-facing objects only after the complete domain restore succeeds.
 

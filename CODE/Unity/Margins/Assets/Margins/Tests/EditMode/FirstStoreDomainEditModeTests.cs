@@ -283,10 +283,11 @@ namespace Margins.Tests
         public void CheckoutSubtotalAndCorrectionUseIntegerCents()
         {
             FirstStoreInventory inventory = CreateCheckoutInventory();
+            CompletedTransactionLedger ledger = new(8);
             Assert.That(
                 CheckoutSession.TryCreate(
                     inventory,
-                    "loc-shelf",
+                    CreateShelfMappings(),
                     "transaction-001",
                     out CheckoutSession checkout,
                     out string error),
@@ -301,12 +302,15 @@ namespace Margins.Tests
 
             Assert.That(
                 checkout.TryComplete(
+                    ledger,
                     out CheckoutTransactionSummary summary,
                     out CheckoutFailure failure),
                 Is.True);
             Assert.That(failure, Is.EqualTo(CheckoutFailure.None));
             Assert.That(summary.subtotalCents, Is.EqualTo(448));
             Assert.That(summary.unitsSold, Is.EqualTo(2));
+            Assert.That(ledger.GrossSalesCents, Is.EqualTo(448));
+            Assert.That(ledger.TransactionCount, Is.EqualTo(1));
             Assert.That(inventory.GetQuantity("loc-shelf", "prod-cola"), Is.EqualTo(2));
             Assert.That(inventory.GetQuantity("loc-shelf", "prod-chips"), Is.EqualTo(1));
         }
@@ -315,10 +319,11 @@ namespace Margins.Tests
         public void CheckoutCompletionIsIdempotent()
         {
             FirstStoreInventory inventory = CreateCheckoutInventory();
+            CompletedTransactionLedger ledger = new(8);
             Assert.That(
                 CheckoutSession.TryCreate(
                     inventory,
-                    "loc-shelf",
+                    CreateShelfMappings(),
                     "transaction-002",
                     out CheckoutSession checkout,
                     out string error),
@@ -328,6 +333,7 @@ namespace Margins.Tests
 
             Assert.That(
                 checkout.TryComplete(
+                    ledger,
                     out CheckoutTransactionSummary first,
                     out CheckoutFailure firstFailure),
                 Is.True);
@@ -335,6 +341,7 @@ namespace Margins.Tests
                 inventory.GetQuantity("loc-shelf", "prod-cola");
             Assert.That(
                 checkout.TryComplete(
+                    ledger,
                     out CheckoutTransactionSummary second,
                     out CheckoutFailure secondFailure),
                 Is.True);
@@ -343,6 +350,8 @@ namespace Margins.Tests
             Assert.That(secondFailure, Is.EqualTo(CheckoutFailure.AlreadyCompleted));
             Assert.That(second, Is.EqualTo(first));
             Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(ledger.TransactionCount, Is.EqualTo(1));
+            Assert.That(ledger.GrossSalesCents, Is.EqualTo(149));
             Assert.That(
                 inventory.GetQuantity("loc-shelf", "prod-cola"),
                 Is.EqualTo(stockAfterFirstCompletion));
@@ -355,7 +364,7 @@ namespace Margins.Tests
             Assert.That(
                 CheckoutSession.TryCreate(
                     inventory,
-                    "loc-shelf",
+                    CreateShelfMappings(),
                     "transaction-003",
                     out CheckoutSession checkout,
                     out string error),
@@ -383,6 +392,185 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void CheckoutConsumesEachProductFromItsMappedShelf()
+        {
+            FirstStoreInventory inventory = new();
+            Assert.That(inventory.TryRegisterProduct("prod-cola", out _), Is.True);
+            Assert.That(inventory.TryRegisterProduct("prod-chips", out _), Is.True);
+            Assert.That(
+                inventory.TryRegisterLocation(
+                    "loc-shelf-cola",
+                    InventoryLocationKind.Shelf,
+                    4,
+                    true,
+                    out _),
+                Is.True);
+            Assert.That(
+                inventory.TryRegisterLocation(
+                    "loc-shelf-chips",
+                    InventoryLocationKind.Shelf,
+                    4,
+                    true,
+                    out _),
+                Is.True);
+            Assert.That(
+                inventory.TrySeedQuantity("loc-shelf-cola", "prod-cola", 2, out _),
+                Is.True);
+            Assert.That(
+                inventory.TrySeedQuantity("loc-shelf-chips", "prod-chips", 2, out _),
+                Is.True);
+
+            Dictionary<string, string> mappings = new()
+            {
+                ["prod-cola"] = "loc-shelf-cola",
+                ["prod-chips"] = "loc-shelf-chips"
+            };
+            Assert.That(
+                CheckoutSession.TryCreate(
+                    inventory,
+                    mappings,
+                    "transaction-mapped-shelves-001",
+                    out CheckoutSession checkout,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(checkout.TryScan("prod-cola", 149, 1, out _), Is.True);
+            Assert.That(checkout.TryScan("prod-chips", 299, 1, out _), Is.True);
+            Assert.That(
+                checkout.TryComplete(new CompletedTransactionLedger(8), out _, out _),
+                Is.True);
+
+            Assert.That(inventory.GetQuantity("loc-shelf-cola", "prod-cola"), Is.EqualTo(1));
+            Assert.That(inventory.GetQuantity("loc-shelf-chips", "prod-chips"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CheckoutLineExposureCannotMutateActiveState()
+        {
+            FirstStoreInventory inventory = CreateCheckoutInventory();
+            Assert.That(
+                CheckoutSession.TryCreate(
+                    inventory,
+                    CreateShelfMappings(),
+                    "transaction-immutable-001",
+                    out CheckoutSession checkout,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(checkout.TryScan("prod-cola", 149, 2, out _), Is.True);
+
+            CheckoutLineSnapshot exposed = checkout.Lines[0];
+            exposed.productId = "prod-chips";
+            exposed.unitPriceCents = 1;
+            exposed.quantityUnits = 99;
+
+            Assert.That(checkout.Lines[0].productId, Is.EqualTo("prod-cola"));
+            Assert.That(checkout.Lines[0].unitPriceCents, Is.EqualTo(149));
+            Assert.That(checkout.Lines[0].quantityUnits, Is.EqualTo(2));
+            Assert.That(checkout.SubtotalCents, Is.EqualTo(298));
+        }
+
+        [Test]
+        public void CompletedLedgerRetainsTwoTransactionsInDeterministicOrder()
+        {
+            CompletedTransactionLedger ledger = CreateResultLedger();
+
+            Assert.That(ledger.TransactionCount, Is.EqualTo(2));
+            Assert.That(ledger.GrossSalesCents, Is.EqualTo(550));
+            Assert.That(ledger.UnitsSold, Is.EqualTo(3));
+            Assert.That(
+                ledger.Transactions[0].transactionId,
+                Is.EqualTo("transaction-result-001"));
+            Assert.That(
+                ledger.Transactions[1].transactionId,
+                Is.EqualTo("transaction-result-002"));
+
+            CheckoutTransactionSummary exposed = ledger.Transactions[0];
+            exposed.subtotalCents = 0;
+            exposed.lines[0].quantityUnits = 99;
+            Assert.That(ledger.GrossSalesCents, Is.EqualTo(550));
+            Assert.That(ledger.Transactions[0].subtotalCents, Is.EqualTo(250));
+        }
+
+        [Test]
+        public void DuplicateTransactionIdIsRejectedBeforeSecondConsumption()
+        {
+            FirstStoreInventory inventory = CreateCheckoutInventory();
+            CompletedTransactionLedger ledger = new(8);
+            Assert.That(
+                CheckoutSession.TryCreate(
+                    inventory,
+                    CreateShelfMappings(),
+                    "transaction-duplicate-001",
+                    out CheckoutSession first,
+                    out _),
+                Is.True);
+            Assert.That(first.TryScan("prod-cola", 149, 1, out _), Is.True);
+            Assert.That(first.TryComplete(ledger, out _, out _), Is.True);
+
+            Assert.That(
+                CheckoutSession.TryCreate(
+                    inventory,
+                    CreateShelfMappings(),
+                    "transaction-duplicate-001",
+                    out CheckoutSession duplicate,
+                    out _),
+                Is.True);
+            Assert.That(duplicate.TryScan("prod-cola", 149, 1, out _), Is.True);
+            int stockBeforeDuplicate =
+                inventory.GetQuantity("loc-shelf", "prod-cola");
+
+            Assert.That(
+                duplicate.TryComplete(
+                    ledger,
+                    out _,
+                    out CheckoutFailure failure),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.DuplicateTransactionId));
+            Assert.That(ledger.TransactionCount, Is.EqualTo(1));
+            Assert.That(ledger.GrossSalesCents, Is.EqualTo(149));
+            Assert.That(
+                inventory.GetQuantity("loc-shelf", "prod-cola"),
+                Is.EqualTo(stockBeforeDuplicate));
+        }
+
+        [Test]
+        public void ResultCalculationDerivesCostOfGoodsSoldFromProductCosts()
+        {
+            Assert.That(
+                StoreSessionTotals.TryCreateFromLedger(
+                    CreateResultLedger(),
+                    CreateProductCosts(),
+                    205,
+                    out StoreSessionTotals totals,
+                    out string error),
+                Is.True,
+                error);
+
+            Assert.That(totals.grossSalesCents, Is.EqualTo(550));
+            Assert.That(totals.costOfGoodsSoldCents, Is.EqualTo(220));
+            Assert.That(totals.unitsSold, Is.EqualTo(3));
+            Assert.That(totals.transactionCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ResultCalculationDerivesContributionAfterCostOfGoods()
+        {
+            Assert.That(
+                StoreSessionTotals.TryCreateFromLedger(
+                    CreateResultLedger(),
+                    CreateProductCosts(),
+                    205,
+                    out StoreSessionTotals totals,
+                    out string error),
+                Is.True,
+                error);
+
+            Assert.That(totals.includedOperatingExpensesCents, Is.EqualTo(205));
+            Assert.That(totals.contributionAfterCostOfGoodsCents, Is.EqualTo(125));
+        }
+
+        [Test]
         public void InvalidOperatingStateTransitionsDoNotMutateState()
         {
             Assert.That(
@@ -395,7 +583,6 @@ namespace Margins.Tests
             Assert.That(
                 session.TryTransition(
                     StoreOperatingState.Open,
-                    null,
                     out StoreOperatingFailure directOpenFailure),
                 Is.False);
             Assert.That(directOpenFailure, Is.EqualTo(StoreOperatingFailure.InvalidTransition));
@@ -404,19 +591,16 @@ namespace Margins.Tests
             Assert.That(
                 session.TryTransition(
                     StoreOperatingState.Preparing,
-                    null,
                     out _),
                 Is.True);
             Assert.That(
                 session.TryTransition(
                     StoreOperatingState.Open,
-                    null,
                     out _),
                 Is.True);
             Assert.That(
                 session.TryTransition(
                     StoreOperatingState.ClosedWithResultPending,
-                    null,
                     out StoreOperatingFailure skipClosingFailure),
                 Is.False);
             Assert.That(skipClosingFailure, Is.EqualTo(StoreOperatingFailure.InvalidTransition));
@@ -431,6 +615,7 @@ namespace Margins.Tests
             Assert.That(
                 FirstStoreSnapshotMapper.TryRestore(
                     before,
+                    CreateProductCosts(),
                     out RestoredFirstStoreState restored,
                     out string error),
                 Is.True,
@@ -439,11 +624,29 @@ namespace Margins.Tests
                 restored.FixtureLayout,
                 restored.Inventory,
                 restored.DeliveryContainers,
-                restored.CheckoutSummary,
+                restored.TransactionLedger,
                 restored.StoreOperating,
-                restored.CleaningTask);
+                restored.CleaningTask,
+                CreateProductCosts());
 
             Assert.That(after, Is.EqualTo(before));
+        }
+
+        [Test]
+        public void RestoreRejectsTotalsThatContradictCompletedTransactions()
+        {
+            FirstStoreSnapshot snapshot = CreateCompleteSnapshot(out _);
+            snapshot.storeOperating.totals.grossSalesCents += 1;
+            snapshot.storeOperating.totals.contributionAfterCostOfGoodsCents += 1;
+
+            Assert.That(
+                FirstStoreSnapshotMapper.TryRestore(
+                    snapshot,
+                    CreateProductCosts(),
+                    out _,
+                    out string error),
+                Is.False);
+            StringAssert.Contains("contradict", error);
         }
 
         [Test]
@@ -474,7 +677,7 @@ namespace Margins.Tests
         }
 
         [Test]
-        public void SaveRestoreMappingDoesNotDuplicateAnyInventoryUnit()
+        public void RepeatedRestoreDoesNotDuplicateRevenueOrInventoryConsumption()
         {
             FirstStoreSnapshot snapshot = CreateCompleteSnapshot(
                 out Dictionary<string, int> totalsBefore);
@@ -482,6 +685,7 @@ namespace Margins.Tests
             Assert.That(
                 FirstStoreSnapshotMapper.TryRestore(
                     snapshot,
+                    CreateProductCosts(),
                     out RestoredFirstStoreState restored,
                     out string error),
                 Is.True,
@@ -494,17 +698,22 @@ namespace Margins.Tests
                     Is.EqualTo(expected.Value),
                     expected.Key);
             }
+            Assert.That(restored.TransactionLedger.TransactionCount, Is.EqualTo(2));
+            Assert.That(restored.TransactionLedger.GrossSalesCents, Is.EqualTo(448));
+            Assert.That(restored.TransactionLedger.UnitsSold, Is.EqualTo(2));
 
             FirstStoreSnapshot mappedAgain = FirstStoreSnapshotMapper.Create(
                 restored.FixtureLayout,
                 restored.Inventory,
                 restored.DeliveryContainers,
-                restored.CheckoutSummary,
+                restored.TransactionLedger,
                 restored.StoreOperating,
-                restored.CleaningTask);
+                restored.CleaningTask,
+                CreateProductCosts());
             Assert.That(
                 FirstStoreSnapshotMapper.TryRestore(
                     mappedAgain,
+                    CreateProductCosts(),
                     out RestoredFirstStoreState restoredAgain,
                     out error),
                 Is.True,
@@ -516,6 +725,9 @@ namespace Margins.Tests
                     Is.EqualTo(expected.Value),
                     expected.Key);
             }
+            Assert.That(restoredAgain.TransactionLedger.TransactionCount, Is.EqualTo(2));
+            Assert.That(restoredAgain.TransactionLedger.GrossSalesCents, Is.EqualTo(448));
+            Assert.That(restoredAgain.TransactionLedger.UnitsSold, Is.EqualTo(2));
         }
 
         private static GridPosition GridPositionDefault()
@@ -582,6 +794,69 @@ namespace Margins.Tests
             return inventory;
         }
 
+        private static Dictionary<string, string> CreateShelfMappings()
+        {
+            return new Dictionary<string, string>
+            {
+                ["prod-cola"] = "loc-shelf",
+                ["prod-chips"] = "loc-shelf"
+            };
+        }
+
+        private static CompletedTransactionLedger CreateResultLedger()
+        {
+            CompletedTransactionLedger ledger = new(8);
+            Assert.That(
+                ledger.TryAdd(
+                    CreateCompletedSummary(
+                        "transaction-result-002",
+                        ("prod-cola", 150, 2)),
+                    out CompletedTransactionLedgerFailure secondFailure),
+                Is.True,
+                secondFailure.ToString());
+            Assert.That(
+                ledger.TryAdd(
+                    CreateCompletedSummary(
+                        "transaction-result-001",
+                        ("prod-chips", 250, 1)),
+                    out CompletedTransactionLedgerFailure firstFailure),
+                Is.True,
+                firstFailure.ToString());
+            return ledger;
+        }
+
+        private static CheckoutTransactionSummary CreateCompletedSummary(
+            string transactionId,
+            params (string productId, int unitPriceCents, int quantityUnits)[] lines)
+        {
+            CheckoutTransactionSummary summary = new(transactionId)
+            {
+                isCompleted = true
+            };
+            foreach ((string productId, int unitPriceCents, int quantityUnits) line in lines)
+            {
+                CheckoutLineSnapshot snapshot = new(
+                    line.productId,
+                    line.unitPriceCents,
+                    line.quantityUnits);
+                summary.lines.Add(snapshot);
+                summary.subtotalCents += snapshot.LineTotalCents;
+                summary.unitsSold += snapshot.quantityUnits;
+            }
+            summary.lines.Sort(
+                (left, right) => string.CompareOrdinal(left.productId, right.productId));
+            return summary;
+        }
+
+        private static Dictionary<string, int> CreateProductCosts()
+        {
+            return new Dictionary<string, int>
+            {
+                ["prod-cola"] = 60,
+                ["prod-chips"] = 100
+            };
+        }
+
         private static FirstStoreSnapshot CreateCompleteSnapshot(
             out Dictionary<string, int> totalsBefore)
         {
@@ -639,6 +914,7 @@ namespace Margins.Tests
             Assert.That(inventory.TrySeedQuantity("loc-box", "prod-cola", 6, out _), Is.True);
             Assert.That(inventory.TrySeedQuantity("loc-loose", "prod-chips", 3, out _), Is.True);
             Assert.That(inventory.TrySeedQuantity("loc-shelf", "prod-cola", 2, out _), Is.True);
+            Assert.That(inventory.TrySeedQuantity("loc-shelf", "prod-chips", 2, out _), Is.True);
 
             Assert.That(
                 DeliveryContainer.TryCreate(
@@ -651,10 +927,11 @@ namespace Margins.Tests
                 Is.True,
                 containerError);
 
+            CompletedTransactionLedger ledger = new(8);
             Assert.That(
                 CheckoutSession.TryCreate(
                     inventory,
-                    "loc-shelf",
+                    CreateShelfMappings(),
                     "transaction-complete-001",
                     out CheckoutSession checkout,
                     out string checkoutError),
@@ -663,9 +940,21 @@ namespace Margins.Tests
             Assert.That(checkout.TryScan("prod-cola", 149, 1, out _), Is.True);
             Assert.That(
                 checkout.TryComplete(
-                    out CheckoutTransactionSummary summary,
+                    ledger,
+                    out _,
                     out _),
                 Is.True);
+            Assert.That(
+                CheckoutSession.TryCreate(
+                    inventory,
+                    CreateShelfMappings(),
+                    "transaction-complete-002",
+                    out CheckoutSession secondCheckout,
+                    out checkoutError),
+                Is.True,
+                checkoutError);
+            Assert.That(secondCheckout.TryScan("prod-chips", 299, 1, out _), Is.True);
+            Assert.That(secondCheckout.TryComplete(ledger, out _, out _), Is.True);
 
             Assert.That(
                 StoreOperatingSession.TryCreate(
@@ -673,13 +962,14 @@ namespace Margins.Tests
                     out StoreOperatingSession store,
                     out _),
                 Is.True);
-            Assert.That(store.TryTransition(StoreOperatingState.Preparing, null, out _), Is.True);
-            Assert.That(store.TryTransition(StoreOperatingState.Open, null, out _), Is.True);
-            Assert.That(store.TryTransition(StoreOperatingState.Closing, null, out _), Is.True);
+            Assert.That(store.TryTransition(StoreOperatingState.Preparing, out _), Is.True);
+            Assert.That(store.TryTransition(StoreOperatingState.Open, out _), Is.True);
+            Assert.That(store.TryTransition(StoreOperatingState.Closing, out _), Is.True);
             Assert.That(
-                store.TryTransition(
-                    StoreOperatingState.ClosedWithResultPending,
-                    new StoreSessionTotals(149, 1, 1, 90),
+                store.TryFinalizeClosing(
+                    ledger,
+                    CreateProductCosts(),
+                    90,
                     out _),
                 Is.True);
 
@@ -693,9 +983,10 @@ namespace Margins.Tests
                 layout,
                 inventory,
                 new[] { container },
-                summary,
+                ledger,
                 store,
-                new CleaningTaskSnapshot("task-floor-spill-01", 4, 4));
+                new CleaningTaskSnapshot("task-floor-spill-01", 4, 4),
+                CreateProductCosts());
         }
     }
 }

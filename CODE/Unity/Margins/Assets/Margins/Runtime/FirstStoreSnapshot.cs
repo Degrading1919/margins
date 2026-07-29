@@ -64,7 +64,7 @@ namespace Margins
         public List<FixturePlacementSnapshot> fixturePlacements = new();
         public FirstStoreInventorySnapshot inventory;
         public List<DeliveryContainerSnapshot> deliveryContainers = new();
-        public CheckoutTransactionSummary checkoutSummary;
+        public CompletedTransactionLedgerSnapshot transactionLedger;
         public StoreOperatingSnapshot storeOperating;
         public CleaningTaskSnapshot cleaningTask;
 
@@ -75,7 +75,7 @@ namespace Margins
                 fixtureGridWidth != other.fixtureGridWidth ||
                 fixtureGridDepth != other.fixtureGridDepth ||
                 !FirstStoreEquality.AreEqual(inventory, other.inventory) ||
-                !FirstStoreEquality.AreEqual(checkoutSummary, other.checkoutSummary) ||
+                !FirstStoreEquality.AreEqual(transactionLedger, other.transactionLedger) ||
                 !FirstStoreEquality.AreEqual(storeOperating, other.storeOperating) ||
                 !FirstStoreEquality.AreEqual(cleaningTask, other.cleaningTask) ||
                 fixturePlacements == null ||
@@ -119,7 +119,7 @@ namespace Margins
             hash.Add(fixtureGridWidth);
             hash.Add(fixtureGridDepth);
             hash.Add(inventory);
-            hash.Add(checkoutSummary);
+            hash.Add(transactionLedger);
             hash.Add(storeOperating);
             hash.Add(cleaningTask);
             if (fixturePlacements != null)
@@ -146,7 +146,7 @@ namespace Margins
         public FixtureLayout FixtureLayout { get; }
         public FirstStoreInventory Inventory { get; }
         public IReadOnlyList<DeliveryContainer> DeliveryContainers { get; }
-        public CheckoutTransactionSummary CheckoutSummary { get; }
+        public CompletedTransactionLedger TransactionLedger { get; }
         public StoreOperatingSession StoreOperating { get; }
         public CleaningTaskSnapshot CleaningTask { get; }
 
@@ -154,14 +154,14 @@ namespace Margins
             FixtureLayout fixtureLayout,
             FirstStoreInventory inventory,
             IReadOnlyList<DeliveryContainer> deliveryContainers,
-            CheckoutTransactionSummary checkoutSummary,
+            CompletedTransactionLedger transactionLedger,
             StoreOperatingSession storeOperating,
             CleaningTaskSnapshot cleaningTask)
         {
             FixtureLayout = fixtureLayout;
             Inventory = inventory;
             DeliveryContainers = deliveryContainers;
-            CheckoutSummary = checkoutSummary;
+            TransactionLedger = transactionLedger;
             StoreOperating = storeOperating;
             CleaningTask = cleaningTask;
         }
@@ -173,9 +173,10 @@ namespace Margins
             FixtureLayout fixtureLayout,
             FirstStoreInventory inventory,
             IReadOnlyList<DeliveryContainer> deliveryContainers,
-            CheckoutTransactionSummary checkoutSummary,
+            CompletedTransactionLedger transactionLedger,
             StoreOperatingSession storeOperating,
-            CleaningTaskSnapshot cleaningTask)
+            CleaningTaskSnapshot cleaningTask,
+            IReadOnlyDictionary<string, int> productUnitCostsCents)
         {
             if (fixtureLayout == null)
             {
@@ -197,22 +198,39 @@ namespace Margins
                 throw new ArgumentNullException(nameof(storeOperating));
             }
 
-            if (checkoutSummary != null)
+            if (transactionLedger == null)
             {
-                if (!CheckoutSession.TryValidateSummary(checkoutSummary, out string checkoutError))
-                {
-                    throw new ArgumentException(checkoutError, nameof(checkoutSummary));
-                }
+                throw new ArgumentNullException(nameof(transactionLedger));
+            }
 
-                foreach (CheckoutLineSnapshot line in checkoutSummary.lines)
+            if (productUnitCostsCents == null)
+            {
+                throw new ArgumentNullException(nameof(productUnitCostsCents));
+            }
+
+            foreach (CheckoutTransactionSummary transaction in transactionLedger.Transactions)
+            {
+                foreach (CheckoutLineSnapshot line in transaction.lines)
                 {
                     if (!inventory.IsKnownProduct(line.productId))
                     {
                         throw new ArgumentException(
-                            $"Checkout summary references unknown product '{line.productId}'.",
-                            nameof(checkoutSummary));
+                            $"Transaction ledger references unknown product '{line.productId}'.",
+                            nameof(transactionLedger));
                     }
                 }
+            }
+
+            if (!StoreOperatingSession.TryRestore(
+                    storeOperating.CreateSnapshot(),
+                    transactionLedger,
+                    productUnitCostsCents,
+                    out _,
+                    out string operatingError))
+            {
+                throw new ArgumentException(
+                    operatingError,
+                    nameof(storeOperating));
             }
 
             if (cleaningTask != null && !cleaningTask.IsValid)
@@ -228,7 +246,7 @@ namespace Margins
                 fixtureGridDepth = fixtureLayout.Depth,
                 fixturePlacements = fixtureLayout.CreateSnapshot(),
                 inventory = inventory.CreateSnapshot(),
-                checkoutSummary = CloneCheckoutSummary(checkoutSummary),
+                transactionLedger = transactionLedger.CreateSnapshot(),
                 storeOperating = storeOperating.CreateSnapshot(),
                 cleaningTask = CloneCleaningTask(cleaningTask)
             };
@@ -259,6 +277,7 @@ namespace Margins
 
         public static bool TryRestore(
             FirstStoreSnapshot snapshot,
+            IReadOnlyDictionary<string, int> productUnitCostsCents,
             out RestoredFirstStoreState state,
             out string error)
         {
@@ -292,6 +311,27 @@ namespace Margins
                     out error))
             {
                 return false;
+            }
+
+            if (!CompletedTransactionLedger.TryRestore(
+                    snapshot.transactionLedger,
+                    out CompletedTransactionLedger transactionLedger,
+                    out error))
+            {
+                return false;
+            }
+
+            foreach (CheckoutTransactionSummary transaction in transactionLedger.Transactions)
+            {
+                foreach (CheckoutLineSnapshot line in transaction.lines)
+                {
+                    if (!inventory.IsKnownProduct(line.productId))
+                    {
+                        error =
+                            $"Transaction ledger references unknown product '{line.productId}'.";
+                        return false;
+                    }
+                }
             }
 
             if (snapshot.deliveryContainers == null)
@@ -340,28 +380,10 @@ namespace Margins
                 deliveryContainers.Add(container);
             }
 
-            if (snapshot.checkoutSummary != null)
-            {
-                if (!CheckoutSession.TryValidateSummary(
-                        snapshot.checkoutSummary,
-                        out error))
-                {
-                    return false;
-                }
-
-                foreach (CheckoutLineSnapshot line in snapshot.checkoutSummary.lines)
-                {
-                    if (!inventory.IsKnownProduct(line.productId))
-                    {
-                        error =
-                            $"Checkout summary references unknown product '{line.productId}'.";
-                        return false;
-                    }
-                }
-            }
-
             if (!StoreOperatingSession.TryRestore(
                     snapshot.storeOperating,
+                    transactionLedger,
+                    productUnitCostsCents,
                     out StoreOperatingSession storeOperating,
                     out error))
             {
@@ -378,37 +400,11 @@ namespace Margins
                 fixtureLayout,
                 inventory,
                 deliveryContainers,
-                CloneCheckoutSummary(snapshot.checkoutSummary),
+                transactionLedger,
                 storeOperating,
                 CloneCleaningTask(snapshot.cleaningTask));
             error = null;
             return true;
-        }
-
-        private static CheckoutTransactionSummary CloneCheckoutSummary(
-            CheckoutTransactionSummary source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            CheckoutTransactionSummary clone = new(source.transactionId)
-            {
-                subtotalCents = source.subtotalCents,
-                unitsSold = source.unitsSold,
-                isCompleted = source.isCompleted
-            };
-
-            foreach (CheckoutLineSnapshot line in source.lines)
-            {
-                clone.lines.Add(
-                    new CheckoutLineSnapshot(
-                        line.productId,
-                        line.unitPriceCents,
-                        line.quantityUnits));
-            }
-            return clone;
         }
 
         private static CleaningTaskSnapshot CloneCleaningTask(

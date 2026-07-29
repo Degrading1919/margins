@@ -1,5 +1,6 @@
 // Draft implementation — Unity verification pending
 using System;
+using System.Collections.Generic;
 
 namespace Margins
 {
@@ -25,39 +26,68 @@ namespace Margins
     public sealed class StoreSessionTotals : IEquatable<StoreSessionTotals>
     {
         public long grossSalesCents;
+        public long costOfGoodsSoldCents;
+        public long includedOperatingExpensesCents;
+        public long contributionAfterCostOfGoodsCents;
         public int unitsSold;
         public int transactionCount;
-        public long includedOperatingExpensesCents;
 
         public StoreSessionTotals(
             long grossSalesCents,
+            long costOfGoodsSoldCents,
+            long includedOperatingExpensesCents,
+            long contributionAfterCostOfGoodsCents,
             int unitsSold,
-            int transactionCount,
-            long includedOperatingExpensesCents)
+            int transactionCount)
         {
             this.grossSalesCents = grossSalesCents;
+            this.costOfGoodsSoldCents = costOfGoodsSoldCents;
+            this.includedOperatingExpensesCents = includedOperatingExpensesCents;
+            this.contributionAfterCostOfGoodsCents =
+                contributionAfterCostOfGoodsCents;
             this.unitsSold = unitsSold;
             this.transactionCount = transactionCount;
-            this.includedOperatingExpensesCents = includedOperatingExpensesCents;
         }
 
-        public long ContributionBeforeCostOfGoodsCents =>
-            grossSalesCents - includedOperatingExpensesCents;
+        public bool IsValid
+        {
+            get
+            {
+                if (grossSalesCents < 0 ||
+                    costOfGoodsSoldCents < 0 ||
+                    includedOperatingExpensesCents < 0 ||
+                    unitsSold < 0 ||
+                    transactionCount < 0)
+                {
+                    return false;
+                }
 
-        public bool IsValid =>
-            grossSalesCents >= 0 &&
-            unitsSold >= 0 &&
-            transactionCount >= 0 &&
-            includedOperatingExpensesCents >= 0;
+                try
+                {
+                    return contributionAfterCostOfGoodsCents ==
+                           checked(
+                               grossSalesCents -
+                               costOfGoodsSoldCents -
+                               includedOperatingExpensesCents);
+                }
+                catch (OverflowException)
+                {
+                    return false;
+                }
+            }
+        }
 
         public bool Equals(StoreSessionTotals other)
         {
             return other != null &&
                    grossSalesCents == other.grossSalesCents &&
-                   unitsSold == other.unitsSold &&
-                   transactionCount == other.transactionCount &&
+                   costOfGoodsSoldCents == other.costOfGoodsSoldCents &&
                    includedOperatingExpensesCents ==
-                   other.includedOperatingExpensesCents;
+                   other.includedOperatingExpensesCents &&
+                   contributionAfterCostOfGoodsCents ==
+                   other.contributionAfterCostOfGoodsCents &&
+                   unitsSold == other.unitsSold &&
+                   transactionCount == other.transactionCount;
         }
 
         public override bool Equals(object obj)
@@ -67,11 +97,130 @@ namespace Margins
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(
-                grossSalesCents,
-                unitsSold,
-                transactionCount,
-                includedOperatingExpensesCents);
+            HashCode hash = new();
+            hash.Add(grossSalesCents);
+            hash.Add(costOfGoodsSoldCents);
+            hash.Add(includedOperatingExpensesCents);
+            hash.Add(contributionAfterCostOfGoodsCents);
+            hash.Add(unitsSold);
+            hash.Add(transactionCount);
+            return hash.ToHashCode();
+        }
+
+        public static bool TryCreateFromLedger(
+            CompletedTransactionLedger ledger,
+            IReadOnlyDictionary<string, int> productUnitCostsCents,
+            long includedOperatingExpensesCents,
+            out StoreSessionTotals totals,
+            out string error)
+        {
+            totals = null;
+            if (ledger == null)
+            {
+                error = "Completed transaction ledger is required for result totals.";
+                return false;
+            }
+
+            if (productUnitCostsCents == null)
+            {
+                error = "Product unit-cost inputs are required for result totals.";
+                return false;
+            }
+
+            if (includedOperatingExpensesCents < 0)
+            {
+                error = "Included operating expenses cannot be negative.";
+                return false;
+            }
+
+            long costOfGoodsSoldCents = 0;
+            try
+            {
+                foreach (CheckoutTransactionSummary transaction in ledger.Transactions)
+                {
+                    foreach (CheckoutLineSnapshot line in transaction.lines)
+                    {
+                        if (!productUnitCostsCents.TryGetValue(
+                                line.productId,
+                                out int unitCostCents) ||
+                            unitCostCents < 0)
+                        {
+                            error =
+                                $"Missing or invalid unit cost for product '{line.productId}'.";
+                            return false;
+                        }
+
+                        costOfGoodsSoldCents = checked(
+                            costOfGoodsSoldCents +
+                            (long)unitCostCents * line.quantityUnits);
+                    }
+                }
+
+                long contributionAfterCostOfGoodsCents = checked(
+                    ledger.GrossSalesCents -
+                    costOfGoodsSoldCents -
+                    includedOperatingExpensesCents);
+                totals = new StoreSessionTotals(
+                    ledger.GrossSalesCents,
+                    costOfGoodsSoldCents,
+                    includedOperatingExpensesCents,
+                    contributionAfterCostOfGoodsCents,
+                    ledger.UnitsSold,
+                    ledger.TransactionCount);
+                error = null;
+                return true;
+            }
+            catch (OverflowException)
+            {
+                error = "Result totals overflow integer-cent storage.";
+                return false;
+            }
+        }
+
+        public static bool TryValidateAgainstLedger(
+            StoreSessionTotals totals,
+            CompletedTransactionLedger ledger,
+            IReadOnlyDictionary<string, int> productUnitCostsCents,
+            out string error)
+        {
+            if (totals == null || !totals.IsValid)
+            {
+                error = "Store result totals are invalid.";
+                return false;
+            }
+
+            if (!TryCreateFromLedger(
+                    ledger,
+                    productUnitCostsCents,
+                    totals.includedOperatingExpensesCents,
+                    out StoreSessionTotals expected,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!totals.Equals(expected))
+            {
+                error =
+                    "Store result totals contradict the completed transaction ledger or product costs.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        internal static StoreSessionTotals Clone(StoreSessionTotals source)
+        {
+            return source == null
+                ? null
+                : new StoreSessionTotals(
+                    source.grossSalesCents,
+                    source.costOfGoodsSoldCents,
+                    source.includedOperatingExpensesCents,
+                    source.contributionAfterCostOfGoodsCents,
+                    source.unitsSold,
+                    source.transactionCount);
         }
     }
 
@@ -117,10 +266,12 @@ namespace Margins
 
     public sealed class StoreOperatingSession
     {
+        private StoreSessionTotals totals;
+
         public string SessionId { get; }
         public StoreOperatingState State { get; private set; }
-        public StoreSessionTotals Totals { get; private set; }
-        public bool HasResult => Totals != null;
+        public StoreSessionTotals Totals => StoreSessionTotals.Clone(totals);
+        public bool HasResult => totals != null;
 
         private StoreOperatingSession(
             string sessionId,
@@ -129,7 +280,7 @@ namespace Margins
         {
             SessionId = sessionId;
             State = state;
-            Totals = totals;
+            this.totals = StoreSessionTotals.Clone(totals);
         }
 
         public static bool TryCreate(
@@ -154,40 +305,25 @@ namespace Margins
 
         public bool TryTransition(
             StoreOperatingState nextState,
-            StoreSessionTotals closingTotals,
             out StoreOperatingFailure failure)
         {
+            if (State == StoreOperatingState.Closing &&
+                nextState == StoreOperatingState.ClosedWithResultPending)
+            {
+                failure = StoreOperatingFailure.MissingTotals;
+                return false;
+            }
+
             if (!IsValidTransition(State, nextState))
             {
                 failure = StoreOperatingFailure.InvalidTransition;
                 return false;
             }
 
-            if (State == StoreOperatingState.Closing &&
-                nextState == StoreOperatingState.ClosedWithResultPending)
+            if (State == StoreOperatingState.Closed &&
+                nextState == StoreOperatingState.Preparing)
             {
-                if (closingTotals == null)
-                {
-                    failure = StoreOperatingFailure.MissingTotals;
-                    return false;
-                }
-
-                if (!closingTotals.IsValid)
-                {
-                    failure = StoreOperatingFailure.InvalidTotals;
-                    return false;
-                }
-
-                Totals = new StoreSessionTotals(
-                    closingTotals.grossSalesCents,
-                    closingTotals.unitsSold,
-                    closingTotals.transactionCount,
-                    closingTotals.includedOperatingExpensesCents);
-            }
-            else if (State == StoreOperatingState.Closed &&
-                     nextState == StoreOperatingState.Preparing)
-            {
-                Totals = null;
+                totals = null;
             }
 
             State = nextState;
@@ -195,15 +331,38 @@ namespace Margins
             return true;
         }
 
+        public bool TryFinalizeClosing(
+            CompletedTransactionLedger ledger,
+            IReadOnlyDictionary<string, int> productUnitCostsCents,
+            long includedOperatingExpensesCents,
+            out StoreOperatingFailure failure)
+        {
+            if (State != StoreOperatingState.Closing)
+            {
+                failure = StoreOperatingFailure.InvalidTransition;
+                return false;
+            }
+
+            if (!StoreSessionTotals.TryCreateFromLedger(
+                    ledger,
+                    productUnitCostsCents,
+                    includedOperatingExpensesCents,
+                    out StoreSessionTotals derivedTotals,
+                    out _))
+            {
+                failure = StoreOperatingFailure.InvalidTotals;
+                return false;
+            }
+
+            totals = derivedTotals;
+            State = StoreOperatingState.ClosedWithResultPending;
+            failure = StoreOperatingFailure.None;
+            return true;
+        }
+
         public StoreOperatingSnapshot CreateSnapshot()
         {
-            StoreSessionTotals totalsCopy = Totals == null
-                ? null
-                : new StoreSessionTotals(
-                    Totals.grossSalesCents,
-                    Totals.unitsSold,
-                    Totals.transactionCount,
-                    Totals.includedOperatingExpensesCents);
+            StoreSessionTotals totalsCopy = StoreSessionTotals.Clone(totals);
             return new StoreOperatingSnapshot(
                 SessionId,
                 State,
@@ -213,6 +372,8 @@ namespace Margins
 
         public static bool TryRestore(
             StoreOperatingSnapshot snapshot,
+            CompletedTransactionLedger ledger,
+            IReadOnlyDictionary<string, int> productUnitCostsCents,
             out StoreOperatingSession session,
             out string error)
         {
@@ -231,9 +392,13 @@ namespace Margins
                 return false;
             }
 
-            if (snapshot.totals != null && !snapshot.totals.IsValid)
+            if (snapshot.totals != null &&
+                !StoreSessionTotals.TryValidateAgainstLedger(
+                    snapshot.totals,
+                    ledger,
+                    productUnitCostsCents,
+                    out error))
             {
-                error = "Store operating totals are invalid.";
                 return false;
             }
 
@@ -253,17 +418,10 @@ namespace Margins
                 return false;
             }
 
-            StoreSessionTotals totalsCopy = snapshot.totals == null
-                ? null
-                : new StoreSessionTotals(
-                    snapshot.totals.grossSalesCents,
-                    snapshot.totals.unitsSold,
-                    snapshot.totals.transactionCount,
-                    snapshot.totals.includedOperatingExpensesCents);
             session = new StoreOperatingSession(
                 snapshot.sessionId,
                 snapshot.state,
-                totalsCopy);
+                snapshot.totals);
             error = null;
             return true;
         }

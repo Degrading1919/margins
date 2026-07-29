@@ -520,6 +520,81 @@ namespace Margins
             return true;
         }
 
+        public bool TryConsumeMappedSale(
+            IReadOnlyDictionary<string, string> sourceLocationIdsByProduct,
+            IReadOnlyDictionary<string, int> requestedQuantities,
+            out InventorySaleFailure failure)
+        {
+            if (requestedQuantities == null || requestedQuantities.Count == 0)
+            {
+                failure = InventorySaleFailure.EmptyRequest;
+                return false;
+            }
+
+            if (sourceLocationIdsByProduct == null)
+            {
+                failure = InventorySaleFailure.InvalidSourceLocation;
+                return false;
+            }
+
+            List<string> orderedProductIds = new(requestedQuantities.Keys);
+            orderedProductIds.Sort(StringComparer.Ordinal);
+            foreach (string productId in orderedProductIds)
+            {
+                if (!IsKnownProduct(productId))
+                {
+                    failure = InventorySaleFailure.InvalidProduct;
+                    return false;
+                }
+
+                if (!sourceLocationIdsByProduct.TryGetValue(
+                        productId,
+                        out string sourceLocationId) ||
+                    !locations.TryGetValue(sourceLocationId, out LocationState source))
+                {
+                    failure = InventorySaleFailure.InvalidSourceLocation;
+                    return false;
+                }
+
+                if (source.Kind != InventoryLocationKind.Shelf)
+                {
+                    failure = InventorySaleFailure.SourceIsNotShelf;
+                    return false;
+                }
+
+                int requested = requestedQuantities[productId];
+                if (requested <= 0)
+                {
+                    failure = InventorySaleFailure.InvalidQuantity;
+                    return false;
+                }
+
+                if (GetQuantity(sourceLocationId, productId) < requested)
+                {
+                    failure = InventorySaleFailure.InsufficientQuantity;
+                    return false;
+                }
+            }
+
+            foreach (string productId in orderedProductIds)
+            {
+                string sourceLocationId = sourceLocationIdsByProduct[productId];
+                LocationState source = locations[sourceLocationId];
+                int remaining = source.Quantities[productId] - requestedQuantities[productId];
+                if (remaining == 0)
+                {
+                    source.Quantities.Remove(productId);
+                }
+                else
+                {
+                    source.Quantities[productId] = remaining;
+                }
+            }
+
+            failure = InventorySaleFailure.None;
+            return true;
+        }
+
         public FirstStoreInventorySnapshot CreateSnapshot()
         {
             FirstStoreInventorySnapshot snapshot = new();

@@ -104,12 +104,307 @@ namespace Margins
         }
     }
 
+    internal static class CheckoutSnapshotCopies
+    {
+        public static List<CheckoutLineSnapshot> CloneLines(
+            IReadOnlyList<CheckoutLineSnapshot> source)
+        {
+            List<CheckoutLineSnapshot> clones = new();
+            if (source == null)
+            {
+                return clones;
+            }
+
+            foreach (CheckoutLineSnapshot line in source)
+            {
+                clones.Add(
+                    new CheckoutLineSnapshot(
+                        line.productId,
+                        line.unitPriceCents,
+                        line.quantityUnits));
+            }
+
+            return clones;
+        }
+
+        public static CheckoutTransactionSummary CloneSummary(
+            CheckoutTransactionSummary source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new CheckoutTransactionSummary(source.transactionId)
+            {
+                subtotalCents = source.subtotalCents,
+                unitsSold = source.unitsSold,
+                isCompleted = source.isCompleted,
+                lines = CloneLines(source.lines)
+            };
+        }
+    }
+
+    public enum CompletedTransactionLedgerFailure
+    {
+        None,
+        InvalidSummary,
+        DuplicateTransactionId,
+        CapacityExceeded,
+        ArithmeticOverflow
+    }
+
+    [Serializable]
+    public sealed class CompletedTransactionLedgerSnapshot :
+        IEquatable<CompletedTransactionLedgerSnapshot>
+    {
+        public int maximumTransactionCount;
+        public List<CheckoutTransactionSummary> transactions = new();
+
+        public CompletedTransactionLedgerSnapshot(int maximumTransactionCount)
+        {
+            this.maximumTransactionCount = maximumTransactionCount;
+        }
+
+        public bool Equals(CompletedTransactionLedgerSnapshot other)
+        {
+            if (other == null ||
+                maximumTransactionCount != other.maximumTransactionCount ||
+                transactions == null ||
+                other.transactions == null ||
+                transactions.Count != other.transactions.Count)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < transactions.Count; index++)
+            {
+                if (!transactions[index].Equals(other.transactions[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as CompletedTransactionLedgerSnapshot);
+        }
+
+        public override int GetHashCode()
+        {
+            HashCode hash = new();
+            hash.Add(maximumTransactionCount);
+            if (transactions != null)
+            {
+                foreach (CheckoutTransactionSummary transaction in transactions)
+                {
+                    hash.Add(transaction);
+                }
+            }
+            return hash.ToHashCode();
+        }
+    }
+
+    public sealed class CompletedTransactionLedger
+    {
+        private readonly SortedDictionary<string, CheckoutTransactionSummary> transactions =
+            new(StringComparer.Ordinal);
+        private long grossSalesCents;
+        private int unitsSold;
+
+        public int MaximumTransactionCount { get; }
+        public int TransactionCount => transactions.Count;
+        public long GrossSalesCents => grossSalesCents;
+        public int UnitsSold => unitsSold;
+
+        public IReadOnlyList<CheckoutTransactionSummary> Transactions
+        {
+            get
+            {
+                List<CheckoutTransactionSummary> copies = new();
+                foreach (CheckoutTransactionSummary transaction in transactions.Values)
+                {
+                    copies.Add(CheckoutSnapshotCopies.CloneSummary(transaction));
+                }
+                return copies;
+            }
+        }
+
+        public CompletedTransactionLedger(int maximumTransactionCount)
+        {
+            if (maximumTransactionCount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumTransactionCount));
+            }
+
+            MaximumTransactionCount = maximumTransactionCount;
+        }
+
+        public bool ContainsTransaction(string transactionId)
+        {
+            return FirstStoreIdentifier.IsValid(transactionId) &&
+                   transactions.ContainsKey(transactionId);
+        }
+
+        public bool TryGetTransaction(
+            string transactionId,
+            out CheckoutTransactionSummary summary)
+        {
+            if (transactions.TryGetValue(
+                    transactionId,
+                    out CheckoutTransactionSummary stored))
+            {
+                summary = CheckoutSnapshotCopies.CloneSummary(stored);
+                return true;
+            }
+
+            summary = null;
+            return false;
+        }
+
+        public bool CanAdd(
+            CheckoutTransactionSummary summary,
+            out CompletedTransactionLedgerFailure failure)
+        {
+            return TryValidateAdd(summary, out _, out _, out failure);
+        }
+
+        public bool TryAdd(
+            CheckoutTransactionSummary summary,
+            out CompletedTransactionLedgerFailure failure)
+        {
+            if (!TryValidateAdd(
+                    summary,
+                    out long nextGrossSales,
+                    out int nextUnitsSold,
+                    out failure))
+            {
+                return false;
+            }
+
+            transactions.Add(
+                summary.transactionId,
+                CheckoutSnapshotCopies.CloneSummary(summary));
+            grossSalesCents = nextGrossSales;
+            unitsSold = nextUnitsSold;
+            return true;
+        }
+
+        public CompletedTransactionLedgerSnapshot CreateSnapshot()
+        {
+            CompletedTransactionLedgerSnapshot snapshot = new(MaximumTransactionCount);
+            foreach (CheckoutTransactionSummary transaction in transactions.Values)
+            {
+                snapshot.transactions.Add(
+                    CheckoutSnapshotCopies.CloneSummary(transaction));
+            }
+            return snapshot;
+        }
+
+        public static bool TryRestore(
+            CompletedTransactionLedgerSnapshot snapshot,
+            out CompletedTransactionLedger ledger,
+            out string error)
+        {
+            ledger = null;
+            if (snapshot == null ||
+                snapshot.maximumTransactionCount <= 0 ||
+                snapshot.transactions == null)
+            {
+                error = "Completed transaction ledger snapshot is invalid.";
+                return false;
+            }
+
+            CompletedTransactionLedger candidate =
+                new(snapshot.maximumTransactionCount);
+            string previousTransactionId = null;
+            foreach (CheckoutTransactionSummary transaction in snapshot.transactions)
+            {
+                if (transaction == null)
+                {
+                    error = "Completed transaction ledger contains a null transaction.";
+                    return false;
+                }
+
+                if (previousTransactionId != null &&
+                    string.CompareOrdinal(
+                        previousTransactionId,
+                        transaction.transactionId) >= 0)
+                {
+                    error =
+                        "Completed transaction ledger is not in deterministic transaction-id order.";
+                    return false;
+                }
+
+                if (!candidate.TryAdd(
+                        transaction,
+                        out CompletedTransactionLedgerFailure failure))
+                {
+                    error =
+                        $"Completed transaction '{transaction.transactionId}' restore failed ({failure}).";
+                    return false;
+                }
+
+                previousTransactionId = transaction.transactionId;
+            }
+
+            ledger = candidate;
+            error = null;
+            return true;
+        }
+
+        private bool TryValidateAdd(
+            CheckoutTransactionSummary summary,
+            out long nextGrossSales,
+            out int nextUnitsSold,
+            out CompletedTransactionLedgerFailure failure)
+        {
+            nextGrossSales = grossSalesCents;
+            nextUnitsSold = unitsSold;
+            if (!CheckoutSession.TryValidateSummary(summary, out _))
+            {
+                failure = CompletedTransactionLedgerFailure.InvalidSummary;
+                return false;
+            }
+
+            if (transactions.ContainsKey(summary.transactionId))
+            {
+                failure = CompletedTransactionLedgerFailure.DuplicateTransactionId;
+                return false;
+            }
+
+            if (transactions.Count >= MaximumTransactionCount)
+            {
+                failure = CompletedTransactionLedgerFailure.CapacityExceeded;
+                return false;
+            }
+
+            try
+            {
+                nextGrossSales = checked(grossSalesCents + summary.subtotalCents);
+                nextUnitsSold = checked(unitsSold + summary.unitsSold);
+            }
+            catch (OverflowException)
+            {
+                failure = CompletedTransactionLedgerFailure.ArithmeticOverflow;
+                return false;
+            }
+
+            failure = CompletedTransactionLedgerFailure.None;
+            return true;
+        }
+    }
+
     public enum CheckoutFailure
     {
         None,
         AlreadyCompleted,
         InvalidSession,
         InvalidProduct,
+        MissingShelfMapping,
         InvalidPrice,
         InvalidQuantity,
         PriceMismatch,
@@ -118,19 +413,23 @@ namespace Margins
         CorrectionExceedsScanned,
         EmptySession,
         ArithmeticOverflow,
-        InventoryChanged
+        InventoryChanged,
+        DuplicateTransactionId,
+        LedgerCapacityExceeded,
+        LedgerRejected
     }
 
     public sealed class CheckoutSession
     {
         private readonly FirstStoreInventory inventory;
-        private readonly string shelfLocationId;
+        private readonly SortedDictionary<string, string> shelfLocationIdsByProduct;
         private readonly List<CheckoutLineSnapshot> lines = new();
         private CheckoutTransactionSummary completedSummary;
 
         public string TransactionId { get; }
         public bool IsCompleted => completedSummary != null;
-        public IReadOnlyList<CheckoutLineSnapshot> Lines => lines;
+        public IReadOnlyList<CheckoutLineSnapshot> Lines =>
+            CheckoutSnapshotCopies.CloneLines(lines);
 
         public long SubtotalCents
         {
@@ -147,35 +446,55 @@ namespace Margins
 
         private CheckoutSession(
             FirstStoreInventory inventory,
-            string shelfLocationId,
+            IReadOnlyDictionary<string, string> shelfLocationIdsByProduct,
             string transactionId)
         {
             this.inventory = inventory;
-            this.shelfLocationId = shelfLocationId;
+            this.shelfLocationIdsByProduct = new SortedDictionary<string, string>(
+                StringComparer.Ordinal);
+            foreach (KeyValuePair<string, string> mapping in shelfLocationIdsByProduct)
+            {
+                this.shelfLocationIdsByProduct.Add(mapping.Key, mapping.Value);
+            }
             TransactionId = transactionId;
         }
 
         public static bool TryCreate(
             FirstStoreInventory inventory,
-            string shelfLocationId,
+            IReadOnlyDictionary<string, string> shelfLocationIdsByProduct,
             string transactionId,
             out CheckoutSession session,
             out string error)
         {
             session = null;
             if (inventory == null ||
-                !FirstStoreIdentifier.IsValid(shelfLocationId) ||
                 !FirstStoreIdentifier.IsValid(transactionId) ||
-                !inventory.TryGetLocationKind(
-                    shelfLocationId,
-                    out InventoryLocationKind kind) ||
-                kind != InventoryLocationKind.Shelf)
+                shelfLocationIdsByProduct == null ||
+                shelfLocationIdsByProduct.Count == 0)
             {
                 error = "Checkout session configuration is invalid.";
                 return false;
             }
 
-            session = new CheckoutSession(inventory, shelfLocationId, transactionId);
+            foreach (KeyValuePair<string, string> mapping in shelfLocationIdsByProduct)
+            {
+                if (!FirstStoreIdentifier.IsValid(mapping.Key) ||
+                    !inventory.IsKnownProduct(mapping.Key) ||
+                    !FirstStoreIdentifier.IsValid(mapping.Value) ||
+                    !inventory.TryGetLocationKind(
+                        mapping.Value,
+                        out InventoryLocationKind kind) ||
+                    kind != InventoryLocationKind.Shelf)
+                {
+                    error = "Checkout shelf mapping is invalid.";
+                    return false;
+                }
+            }
+
+            session = new CheckoutSession(
+                inventory,
+                shelfLocationIdsByProduct,
+                transactionId);
             error = null;
             return true;
         }
@@ -196,6 +515,14 @@ namespace Margins
                 !inventory.IsKnownProduct(productId))
             {
                 failure = CheckoutFailure.InvalidProduct;
+                return false;
+            }
+
+            if (!shelfLocationIdsByProduct.TryGetValue(
+                    productId,
+                    out string shelfLocationId))
+            {
+                failure = CheckoutFailure.MissingShelfMapping;
                 return false;
             }
 
@@ -317,12 +644,13 @@ namespace Margins
         }
 
         public bool TryComplete(
+            CompletedTransactionLedger ledger,
             out CheckoutTransactionSummary summary,
             out CheckoutFailure failure)
         {
             if (completedSummary != null)
             {
-                summary = CloneSummary(completedSummary);
+                summary = CheckoutSnapshotCopies.CloneSummary(completedSummary);
                 failure = CheckoutFailure.AlreadyCompleted;
                 return true;
             }
@@ -331,6 +659,13 @@ namespace Margins
             {
                 summary = null;
                 failure = CheckoutFailure.EmptySession;
+                return false;
+            }
+
+            if (ledger == null)
+            {
+                summary = null;
+                failure = CheckoutFailure.LedgerRejected;
                 return false;
             }
 
@@ -352,8 +687,26 @@ namespace Margins
                 return false;
             }
 
-            if (!inventory.TryConsumeForSale(
-                    shelfLocationId,
+            if (!ledger.CanAdd(
+                    candidateSummary,
+                    out CompletedTransactionLedgerFailure ledgerFailure))
+            {
+                summary = null;
+                failure = ledgerFailure switch
+                {
+                    CompletedTransactionLedgerFailure.DuplicateTransactionId =>
+                        CheckoutFailure.DuplicateTransactionId,
+                    CompletedTransactionLedgerFailure.CapacityExceeded =>
+                        CheckoutFailure.LedgerCapacityExceeded,
+                    CompletedTransactionLedgerFailure.ArithmeticOverflow =>
+                        CheckoutFailure.ArithmeticOverflow,
+                    _ => CheckoutFailure.LedgerRejected
+                };
+                return false;
+            }
+
+            if (!inventory.TryConsumeMappedSale(
+                    shelfLocationIdsByProduct,
                     requested,
                     out InventorySaleFailure inventoryFailure))
             {
@@ -364,20 +717,26 @@ namespace Margins
                 return false;
             }
 
+            if (!ledger.TryAdd(candidateSummary, out ledgerFailure))
+            {
+                throw new InvalidOperationException(
+                    $"Validated transaction ledger add failed after inventory consumption ({ledgerFailure}).");
+            }
+
             completedSummary = candidateSummary;
-            summary = CloneSummary(completedSummary);
+            summary = CheckoutSnapshotCopies.CloneSummary(completedSummary);
             failure = CheckoutFailure.None;
             return true;
         }
 
         public CheckoutTransactionSummary GetCompletedSummary()
         {
-            return CloneSummary(completedSummary);
+            return CheckoutSnapshotCopies.CloneSummary(completedSummary);
         }
 
         public static bool TryRestoreCompleted(
             FirstStoreInventory inventory,
-            string shelfLocationId,
+            IReadOnlyDictionary<string, string> shelfLocationIdsByProduct,
             CheckoutTransactionSummary summary,
             out CheckoutSession session,
             out string error)
@@ -395,7 +754,7 @@ namespace Margins
 
             if (!TryCreate(
                     inventory,
-                    shelfLocationId,
+                    shelfLocationIdsByProduct,
                     summary.transactionId,
                     out session,
                     out error))
@@ -405,11 +764,12 @@ namespace Margins
 
             foreach (CheckoutLineSnapshot line in summary.lines)
             {
-                if (!inventory.IsKnownProduct(line.productId))
+                if (!inventory.IsKnownProduct(line.productId) ||
+                    !shelfLocationIdsByProduct.ContainsKey(line.productId))
                 {
                     session = null;
                     error =
-                        $"Completed checkout summary references unknown product '{line.productId}'.";
+                        $"Completed checkout summary references an unmapped product '{line.productId}'.";
                     return false;
                 }
 
@@ -419,7 +779,7 @@ namespace Margins
                         line.unitPriceCents,
                         line.quantityUnits));
             }
-            session.completedSummary = CloneSummary(summary);
+            session.completedSummary = CheckoutSnapshotCopies.CloneSummary(summary);
             return true;
         }
 
@@ -521,30 +881,5 @@ namespace Margins
             return summary;
         }
 
-        private static CheckoutTransactionSummary CloneSummary(
-            CheckoutTransactionSummary source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            CheckoutTransactionSummary clone = new(source.transactionId)
-            {
-                subtotalCents = source.subtotalCents,
-                unitsSold = source.unitsSold,
-                isCompleted = source.isCompleted
-            };
-
-            foreach (CheckoutLineSnapshot line in source.lines)
-            {
-                clone.lines.Add(
-                    new CheckoutLineSnapshot(
-                        line.productId,
-                        line.unitPriceCents,
-                        line.quantityUnits));
-            }
-            return clone;
-        }
     }
 }
