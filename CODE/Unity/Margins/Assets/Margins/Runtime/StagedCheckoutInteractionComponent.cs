@@ -215,6 +215,98 @@ namespace Margins
             return true;
         }
 
+        public bool TryBeginCustomer(out string error)
+        {
+            if (!TryPrepare(out error) || AllBasketsComplete)
+            {
+                error ??= "No customer is waiting at checkout.";
+                return false;
+            }
+
+            if (NextAction != StagedCheckoutPrimaryAction.Begin)
+            {
+                error = "The current customer has already started checkout.";
+                return false;
+            }
+
+            if (!checkout.TryBeginSession(CurrentBasket.StableTransactionId, out error))
+            {
+                firstBlocker = error;
+                return false;
+            }
+
+            sessionStarted = true;
+            firstBlocker = null;
+            error = null;
+            return true;
+        }
+
+        public bool TryScanVisibleProduct(
+            ProductDefinition productDefinition,
+            out CheckoutFailure failure,
+            out string error)
+        {
+            failure = CheckoutFailure.None;
+            if (!TryPrepare(out error) ||
+                NextAction != StagedCheckoutPrimaryAction.Scan ||
+                !TryGetActiveLine(
+                    out StagedCheckoutProductConfiguration line,
+                    out int lineIndex))
+            {
+                failure = CheckoutFailure.InvalidSession;
+                error ??= "No visible customer item is ready to scan.";
+                return false;
+            }
+
+            if (productDefinition == null ||
+                line.ProductDefinition != productDefinition)
+            {
+                failure = CheckoutFailure.InvalidProduct;
+                error = "Scan the visible item currently beside the scanner.";
+                return false;
+            }
+
+            if (!checkout.TryScan(line.ProductDefinition, 1, out failure))
+            {
+                firstBlocker = FormatCheckoutFailure(failure);
+                error = firstBlocker;
+                return false;
+            }
+
+            scannedQuantities[lineIndex]++;
+            scanHistory.Add(lineIndex);
+            firstBlocker = null;
+            error = null;
+            return true;
+        }
+
+        public bool TryTakePayment(
+            out CheckoutTransactionSummary summary,
+            out CheckoutFailure failure,
+            out string error)
+        {
+            summary = null;
+            failure = CheckoutFailure.None;
+            if (!TryPrepare(out error) ||
+                NextAction != StagedCheckoutPrimaryAction.Complete)
+            {
+                failure = CheckoutFailure.InvalidSession;
+                error ??= "Every visible item must be scanned before payment.";
+                return false;
+            }
+
+            if (!checkout.TryComplete(out summary, out failure))
+            {
+                firstBlocker = FormatCheckoutFailure(failure);
+                error = firstBlocker;
+                return false;
+            }
+
+            firstBlocker = null;
+            error = null;
+            return true;
+        }
+
         public bool TryCorrect(out CheckoutFailure failure, out string error)
         {
             failure = CheckoutFailure.None;

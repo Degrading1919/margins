@@ -5,6 +5,18 @@ using UnityEngine;
 
 namespace Margins
 {
+    [Serializable]
+    public sealed class InitialFixturePlacementConfiguration
+    {
+        [SerializeField] private PlaceableFixtureComponent fixture;
+        [SerializeField] private GridPosition gridPosition;
+        [SerializeField] private int quarterTurns;
+
+        public PlaceableFixtureComponent Fixture => fixture;
+        public GridPosition GridPosition => gridPosition;
+        public int QuarterTurns => quarterTurns;
+    }
+
     public enum FixturePlacementPreviewState
     {
         None,
@@ -19,6 +31,7 @@ namespace Margins
         [SerializeField, Min(1)] private int gridDepthCells = 10;
         [SerializeField, Min(0.01f)] private float cellSize = 0.5f;
         [SerializeField] private PlaceableFixtureComponent[] fixtures;
+        [SerializeField] private InitialFixturePlacementConfiguration[] initialPlacements;
 
         private readonly Dictionary<string, PlaceableFixtureComponent> fixturesById =
             new(StringComparer.Ordinal);
@@ -121,6 +134,21 @@ namespace Margins
                 }
             }
 
+            if (initialPlacements != null)
+            {
+                HashSet<string> initialIds = new(StringComparer.Ordinal);
+                foreach (InitialFixturePlacementConfiguration placement in initialPlacements)
+                {
+                    if (placement?.Fixture == null ||
+                        !identifiers.Contains(placement.Fixture.StableFixtureInstanceId) ||
+                        !initialIds.Add(placement.Fixture.StableFixtureInstanceId))
+                    {
+                        error = "Initial fixture placements contain a missing, unconfigured, or duplicate fixture.";
+                        return false;
+                    }
+                }
+            }
+
             error = null;
             return true;
         }
@@ -145,6 +173,26 @@ namespace Margins
             }
 
             Layout = new FixtureLayout(gridWidthCells, gridDepthCells);
+            if (initialPlacements != null)
+            {
+                foreach (InitialFixturePlacementConfiguration placement in initialPlacements)
+                {
+                    FixturePlacementResult result = Layout.TryPlace(
+                        placement.Fixture.StableFixtureInstanceId,
+                        placement.GridPosition,
+                        placement.Fixture.Footprint,
+                        placement.QuarterTurns);
+                    if (!result.IsSuccess)
+                    {
+                        Layout = null;
+                        error =
+                            $"Initial fixture '{placement.Fixture.StableFixtureInstanceId}' placement failed ({result.Failure}).";
+                        return false;
+                    }
+
+                    ApplyResult(placement.Fixture, result);
+                }
+            }
             error = null;
             return true;
         }

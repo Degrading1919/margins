@@ -67,22 +67,18 @@ namespace Margins
                             blocker ?? basket);
 
                     case StagedCheckoutPrimaryAction.Scan:
-                        string productName =
-                            string.IsNullOrWhiteSpace(stagedCheckout.ActiveProductDisplayName)
-                                ? "product"
-                                : stagedCheckout.ActiveProductDisplayName;
                         string line =
                             $"{stagedCheckout.ActiveLineScannedQuantity}/{stagedCheckout.ActiveLineQuantity}; " +
                             $"subtotal {subtotal}; Q corrects recent scan";
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            $"Scan {productName}",
-                            blocker ?? line);
+                            "Use customer items",
+                            blocker ?? $"aim at the visible product; {line}");
 
                     case StagedCheckoutPrimaryAction.Complete:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Finish sale",
+                            "Take payment",
                             blocker ?? $"subtotal {subtotal}");
 
                     case StagedCheckoutPrimaryAction.Replay when !replayAcknowledged:
@@ -120,6 +116,26 @@ namespace Margins
             }
 
             StagedCheckoutPrimaryAction actionBefore = stagedCheckout.NextAction;
+            if (actionBefore == StagedCheckoutPrimaryAction.Begin)
+            {
+                return stagedCheckout.TryBeginCustomer(out error);
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Scan)
+            {
+                error = "Aim at the customer's visible product to scan it.";
+                return false;
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Complete)
+            {
+                bool paid = stagedCheckout.TryTakePayment(
+                    out _,
+                    out _,
+                    out error);
+                return paid && stagedCheckout.TryContinue(out error);
+            }
+
             if (actionBefore == StagedCheckoutPrimaryAction.Replay)
             {
                 bool replayed = stagedCheckout.TryPrimary(
@@ -137,15 +153,8 @@ namespace Margins
                 return continued;
             }
 
-            bool success = stagedCheckout.TryPrimary(
-                out _,
-                out _,
-                out error);
-            if (success && actionBefore == StagedCheckoutPrimaryAction.Complete)
-            {
-                success = stagedCheckout.TryContinue(out error);
-            }
-            return success;
+            error = "No checkout action is available.";
+            return false;
         }
 
         public bool TryCancel(out string error)

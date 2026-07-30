@@ -49,6 +49,47 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void VisibleProductsAreRequiredBeforePaymentCanComplete()
+        {
+            CheckoutRig rig = CreateRig();
+
+            Assert.That(
+                rig.Staged.TryBeginCustomer(out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryTakePayment(out _, out CheckoutFailure failure, out error),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.InvalidSession));
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Chips, out failure, out error),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.InvalidProduct));
+
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Cola, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Cola, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Chips, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryTakePayment(
+                    out CheckoutTransactionSummary summary,
+                    out failure,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(summary.subtotalCents, Is.EqualTo(497));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+        }
+
+        [Test]
         public void CorrectionRemovesOneMostRecentCorrectableScanWithoutUnderflow()
         {
             CheckoutRig rig = CreateRig();

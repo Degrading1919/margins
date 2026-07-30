@@ -34,6 +34,7 @@ namespace Margins
         [SerializeField, Min(0.01f)] private float acceleration = 17f;
         [SerializeField, Min(0.01f)] private float deceleration = 23f;
         [SerializeField, Min(0f)] private float mouseSensitivity = 0.1f;
+        [SerializeField] private bool invertY;
         [SerializeField] private float gravity = -24f;
         [SerializeField, Range(0f, 0.08f)] private float cameraBobAmplitude = 0.026f;
         [SerializeField, Range(0f, 3f)] private float cameraBobFrequency = 1.75f;
@@ -59,6 +60,8 @@ namespace Margins
             (Application.isBatchMode ||
              Cursor.lockState == CursorLockMode.Locked);
         public bool CameraMotionEnabled { get; private set; } = true;
+        public float MouseSensitivity => mouseSensitivity;
+        public bool InvertY => invertY;
         public bool IsBriskWalking { get; private set; }
         public float CurrentPlanarSpeed => planarVelocity.magnitude;
 
@@ -248,12 +251,18 @@ namespace Margins
 
             Vector2 lookDelta = Mouse.current.delta.ReadValue() * mouseSensitivity;
             transform.Rotate(0f, lookDelta.x, 0f);
-            pitch = Mathf.Clamp(pitch - lookDelta.y, MinimumPitchDegrees, MaximumPitchDegrees);
+            float verticalLook = invertY ? -lookDelta.y : lookDelta.y;
+            pitch = Mathf.Clamp(pitch - verticalLook, MinimumPitchDegrees, MaximumPitchDegrees);
             ApplyCameraRotation();
         }
 
         private void HandleModeToggle()
         {
+            if (GamePauseMenuController.IsAnyMenuOpen)
+            {
+                return;
+            }
+
             if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
             {
                 SetGameplayMode(!IsGameplayMode);
@@ -266,6 +275,20 @@ namespace Margins
                 {
                     ResetCameraMotion(false);
                 }
+            }
+        }
+
+        public void ApplyPlayerSettings(
+            float sensitivity,
+            bool shouldInvertY,
+            bool cameraMotionEnabled)
+        {
+            mouseSensitivity = Mathf.Clamp(sensitivity, 0.01f, 0.5f);
+            invertY = shouldInvertY;
+            CameraMotionEnabled = cameraMotionEnabled;
+            if (!CameraMotionEnabled)
+            {
+                ResetCameraMotion(true);
             }
         }
 

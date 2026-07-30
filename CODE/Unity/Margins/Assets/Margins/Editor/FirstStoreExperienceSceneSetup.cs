@@ -257,6 +257,7 @@ namespace Margins.Editor
                 "firstStoreInventory",
                 Require("First-Store Inventory")
                     .GetComponent<FirstStoreInventoryComponent>());
+            SetObject(presenter, "portfolio", portfolio);
 
             FirstStoreDiskPersistenceController diskPersistence =
                 UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
@@ -526,7 +527,7 @@ namespace Margins.Editor
             Collider rootCollider = shelfObject.GetComponent<Collider>();
             if (rootCollider != null)
             {
-                rootCollider.enabled = false;
+                rootCollider.enabled = true;
             }
 
             foreach (ShelfSnapWorldInteractionTarget target in
@@ -541,7 +542,7 @@ namespace Margins.Editor
                 Collider targetCollider = target.GetComponent<Collider>();
                 if (targetCollider != null)
                 {
-                    targetCollider.enabled = true;
+                    targetCollider.enabled = false;
                 }
             }
 
@@ -595,7 +596,7 @@ namespace Margins.Editor
             deliveryObject.transform.SetPositionAndRotation(
                 new Vector3(-3.45f, 0.48f, 4.62f),
                 Quaternion.identity);
-            deliveryObject.transform.localScale = new Vector3(1.5f, 0.9f, 1.12f);
+            deliveryObject.transform.localScale = Vector3.one;
             SetRendererEnabled(deliveryObject, false);
             DestroyExperienceChildren(deliveryObject.transform);
 
@@ -619,16 +620,16 @@ namespace Margins.Editor
             Vector3 center = deliveryObject.transform.position;
             CreateShape(presentationRoot, "Delivery Pallet", PrimitiveType.Cube,
                 new Vector3(center.x, 0.08f, center.z), new Vector3(1.8f, 0.16f, 1.35f), charcoal, true);
-            CreateShape(presentationRoot, "Delivery Box Base", PrimitiveType.Cube,
-                new Vector3(center.x, 0.52f, center.z), new Vector3(1.48f, 0.82f, 1.08f), cardboard, false);
-            CreateShape(presentationRoot, "Delivery Box Front Band", PrimitiveType.Cube,
-                new Vector3(center.x, 0.57f, center.z - 0.56f), new Vector3(1.25f, 0.28f, 0.04f), cream, false);
-            CreateText(presentationRoot, "Delivery Case Name", "MILE 7 STARTER CASE",
-                new Vector3(center.x, 0.57f, center.z - 0.6f), 0.07f, charcoal.color, TextAnchor.MiddleCenter);
+            CreateShape(deliveryObject.transform, "Experience Delivery Box Base", PrimitiveType.Cube,
+                new Vector3(0f, 0.04f, 0f), new Vector3(1.48f, 0.82f, 1.08f), cardboard, false);
+            CreateShape(deliveryObject.transform, "Experience Delivery Box Front Band", PrimitiveType.Cube,
+                new Vector3(0f, 0.09f, -0.56f), new Vector3(1.25f, 0.28f, 0.04f), cream, false);
+            CreateText(deliveryObject.transform, "Experience Delivery Case Name", "MILE 7 STARTER CASE",
+                new Vector3(0f, 0.09f, -0.6f), 0.07f, charcoal.color, TextAnchor.MiddleCenter);
 
             GameObject lidPivot = new("Experience Delivery Lid Pivot");
-            lidPivot.transform.SetParent(presentationRoot, false);
-            lidPivot.transform.position = new Vector3(center.x, 0.95f, center.z + 0.5f);
+            lidPivot.transform.SetParent(deliveryObject.transform, false);
+            lidPivot.transform.localPosition = new Vector3(0f, 0.47f, 0.5f);
             GameObject lid = CreateShape(lidPivot.transform, "Experience Delivery Lid", PrimitiveType.Cube,
                 new Vector3(0f, 0f, -0.5f), new Vector3(1.5f, 0.08f, 1.05f), cardboard, false);
             lid.transform.localPosition = new Vector3(0f, 0f, -0.5f);
@@ -705,9 +706,9 @@ namespace Margins.Editor
                 new Vector3(0f, 0.04f, -0.58f), 0.13f, cream.color, TextAnchor.MiddleCenter);
 
             GameObject colaProp = CreateShape(requiredFixture.transform, "Experience Checkout Cola Prop", PrimitiveType.Cylinder,
-                new Vector3(-0.45f, 1.2f, -0.18f), new Vector3(0.14f, 0.18f, 0.14f), cola, false);
+                new Vector3(-0.45f, 1.2f, -0.18f), new Vector3(0.14f, 0.18f, 0.14f), cola, true);
             GameObject chipsProp = CreateShape(requiredFixture.transform, "Experience Checkout Chips Prop", PrimitiveType.Cube,
-                new Vector3(-0.65f, 1.2f, -0.18f), new Vector3(0.28f, 0.34f, 0.09f), chips, false);
+                new Vector3(-0.65f, 1.2f, -0.18f), new Vector3(0.28f, 0.34f, 0.09f), chips, true);
             colaProp.SetActive(false);
             chipsProp.SetActive(false);
 

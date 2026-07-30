@@ -1,4 +1,3 @@
-// Draft implementation — Unity verification pending
 using UnityEngine;
 
 namespace Margins
@@ -16,6 +15,10 @@ namespace Margins
     {
         [SerializeField] private string stableTaskId;
         [SerializeField, Min(1)] private int requiredProgressUnits = 4;
+        [SerializeField] private bool startsDirty = true;
+
+        private bool isActive;
+        private bool hasInitializedState;
 
         public string StableTaskId => stableTaskId;
         public string DisplayName => string.IsNullOrWhiteSpace(name)
@@ -23,9 +26,29 @@ namespace Margins
             : name;
         public int RequiredProgressUnits => requiredProgressUnits;
         public int CompletedProgressUnits { get; private set; }
+        public bool IsActive
+        {
+            get
+            {
+                EnsureRuntimeState();
+                return isActive;
+            }
+        }
+        public bool NeedsCleaning
+        {
+            get
+            {
+                EnsureRuntimeState();
+                return isActive && !IsComplete;
+            }
+        }
         public bool IsComplete =>
-            requiredProgressUnits > 0 &&
-            CompletedProgressUnits >= requiredProgressUnits;
+            GetIsComplete();
+
+        private void Awake()
+        {
+            EnsureRuntimeState();
+        }
 
         public bool TryValidateConfiguration(out string error)
         {
@@ -43,6 +66,7 @@ namespace Margins
 
         public CleaningProgressResult TryApplyProgress(int progressUnits)
         {
+            EnsureRuntimeState();
             if (!TryValidateConfiguration(out _))
             {
                 return CleaningProgressResult.InvalidConfiguration;
@@ -65,12 +89,27 @@ namespace Margins
                 : CleaningProgressResult.Progressed;
         }
 
+        public bool TryCreateMess()
+        {
+            EnsureRuntimeState();
+            if (!TryValidateConfiguration(out _) || NeedsCleaning)
+            {
+                return false;
+            }
+
+            isActive = true;
+            CompletedProgressUnits = 0;
+            return true;
+        }
+
         public CleaningTaskSnapshot CreateSnapshot()
         {
+            EnsureRuntimeState();
             return new CleaningTaskSnapshot(
                 stableTaskId,
                 requiredProgressUnits,
-                CompletedProgressUnits);
+                CompletedProgressUnits,
+                isActive);
         }
 
         public bool CanApplySnapshot(
@@ -104,7 +143,29 @@ namespace Margins
             }
 
             CompletedProgressUnits = snapshot.completedProgressUnits;
+            isActive = snapshot.isActive;
+            hasInitializedState = true;
             return true;
+        }
+
+        private bool GetIsComplete()
+        {
+            EnsureRuntimeState();
+            return !isActive ||
+                   (requiredProgressUnits > 0 &&
+                    CompletedProgressUnits >= requiredProgressUnits);
+        }
+
+        private void EnsureRuntimeState()
+        {
+            if (hasInitializedState)
+            {
+                return;
+            }
+
+            isActive = startsDirty;
+            CompletedProgressUnits = 0;
+            hasInitializedState = true;
         }
     }
 }

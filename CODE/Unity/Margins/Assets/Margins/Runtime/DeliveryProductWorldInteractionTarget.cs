@@ -14,7 +14,7 @@ namespace Margins
         public ProductDefinition ProductDefinition => productDefinition;
         public bool AutoHoldOnTake => autoHoldOnTake;
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Delivery;
-        public bool IsAvailable => HasValidReference();
+        public bool IsAvailable => HasValidReference() && !deliveryBox.IsCarried;
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get
@@ -54,6 +54,12 @@ namespace Margins
             if (!deliveryBox.IsOpen)
             {
                 error = $"Open the delivery before taking {productName}.";
+                return false;
+            }
+
+            if (deliveryBox.IsCarried)
+            {
+                error = "Set the delivery box down before removing its contents.";
                 return false;
             }
 

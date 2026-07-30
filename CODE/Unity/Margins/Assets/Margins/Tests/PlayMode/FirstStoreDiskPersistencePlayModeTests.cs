@@ -115,19 +115,12 @@ namespace Margins.Tests
             CompleteOneColaSale();
             StockOneColaUnit();
             MutateFixtureLayout();
-            CleaningTaskComponent cleaning =
-                Object.FindAnyObjectByType<CleaningTaskComponent>();
-            cleaning.TryApplyProgress(cleaning.RequiredProgressUnits);
-            Assert.That(cleaning.IsComplete, Is.True);
             StoreOperatingController store =
                 Object.FindAnyObjectByType<StoreOperatingController>();
-            Assert.That(store.TryBeginPreparation(out string error), Is.True, error);
-            Assert.That(store.TryOpenStore(out error), Is.True, error);
-            Assert.That(store.TryBeginClosing(out error), Is.True, error);
-            Assert.That(store.TryFinishClosing(out error), Is.True, error);
-            long historicalCost = store.ResultTotals.costOfGoodsSoldCents;
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            long historicalCost = store.CurrentTotals.costOfGoodsSoldCents;
             long historicalContribution =
-                store.ResultTotals.contributionAfterCostOfGoodsCents;
+                store.CurrentTotals.contributionAfterCostOfGoodsCents;
             Assert.That(historicalCost, Is.GreaterThan(0));
             Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
 
@@ -139,9 +132,9 @@ namespace Margins.Tests
                 checked((int)historicalCost + 900));
 
             Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.True, diskPersistence.LastDiagnostic);
-            Assert.That(store.ResultTotals.costOfGoodsSoldCents, Is.EqualTo(historicalCost));
+            Assert.That(store.CurrentTotals.costOfGoodsSoldCents, Is.EqualTo(historicalCost));
             Assert.That(
-                store.ResultTotals.contributionAfterCostOfGoodsCents,
+                store.CurrentTotals.contributionAfterCostOfGoodsCents,
                 Is.EqualTo(historicalContribution));
             Assert.That(
                 checkout.CompletedTransactions[0].lines[0].unitCostCents,

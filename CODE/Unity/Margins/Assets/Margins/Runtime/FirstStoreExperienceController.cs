@@ -459,6 +459,7 @@ namespace Margins
             if (checkout.CompletedTransactionCount != priorCompletedTransactions)
             {
                 priorCompletedTransactions = checkout.CompletedTransactionCount;
+                cleaning.TryCreateMess();
                 Play(saleClip, 1f);
             }
         }

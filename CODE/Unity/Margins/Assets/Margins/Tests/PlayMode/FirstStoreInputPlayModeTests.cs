@@ -25,13 +25,46 @@ namespace Margins.Tests
 
         public override void TearDown()
         {
+            Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             base.TearDown();
         }
 
         [UnityTest]
-        public IEnumerator GameplayStartsLockedAndTabTogglesHudMode()
+        public IEnumerator EscapeMenuPausesAndReliablyResumesGameplay()
+        {
+            yield return LoadValidationScene();
+
+            GamePauseMenuController menu =
+                Object.FindAnyObjectByType<GamePauseMenuController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.IsOpen, Is.False);
+            Assert.That(player.IsGameplayMode, Is.True);
+
+            Press(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(menu.IsOpen, Is.True);
+            Assert.That(GamePauseMenuController.IsAnyMenuOpen, Is.True);
+            Assert.That(Time.timeScale, Is.Zero);
+            Assert.That(player.IsGameplayMode, Is.False);
+
+            Press(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(menu.IsOpen, Is.False);
+            Assert.That(GamePauseMenuController.IsAnyMenuOpen, Is.False);
+            Assert.That(Time.timeScale, Is.EqualTo(1f));
+            Assert.That(player.IsGameplayMode, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator GameplayStartsLockedAndTabTogglesManagementMode()
         {
             yield return LoadValidationScene();
 
@@ -39,9 +72,12 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<FirstPersonController>();
             FirstStoreValidationController validation =
                 Object.FindAnyObjectByType<FirstStoreValidationController>();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
 
             Assert.That(player.IsGameplayMode, Is.True);
             Assert.That(validation.IsHudModeActive, Is.False);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
             Assert.That(
                 player.RequestedCursorLockState,
                 Is.EqualTo(CursorLockMode.Locked));
@@ -53,7 +89,8 @@ namespace Margins.Tests
             yield return null;
 
             Assert.That(player.IsGameplayMode, Is.False);
-            Assert.That(validation.IsHudModeActive, Is.True);
+            Assert.That(validation.IsHudModeActive, Is.False);
+            Assert.That(portfolio.OwnsManagementDesk, Is.True);
             Assert.That(
                 player.RequestedCursorLockState,
                 Is.EqualTo(CursorLockMode.None));
@@ -66,6 +103,7 @@ namespace Margins.Tests
 
             Assert.That(player.IsGameplayMode, Is.True);
             Assert.That(validation.IsHudModeActive, Is.False);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
             Assert.That(
                 player.RequestedCursorLockState,
                 Is.EqualTo(CursorLockMode.Locked));
@@ -254,13 +292,12 @@ namespace Margins.Tests
             yield return null;
             Assert.That(held.QuarterTurns, Is.EqualTo(1));
 
-            ShelfSnapWorldInteractionTarget shelfTarget = Object
-                .FindObjectsByType<ShelfSnapWorldInteractionTarget>(
+            ShelfFixtureWorldInteractionTarget shelfTarget = Object
+                .FindObjectsByType<ShelfFixtureWorldInteractionTarget>(
                     FindObjectsInactive.Exclude,
                     FindObjectsSortMode.None)
-                .First(target =>
-                    target.ShelfFixture.StableFixtureId ==
-                    "fixture-shelf-cola-validation");
+                .First(target => target.gameObject.name ==
+                                 "fixture-shelf-cola-validation");
             AimAt(Camera.main, shelfTarget.transform);
 
             Press(keyboard.eKey, queueEventOnly: true);
@@ -292,7 +329,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator FirstShiftWorldPathReachesResultWithPresentationConfigured()
+        public IEnumerator ContinuousWorldPathStocksVisibleFixturesProcessesItemsAndKeepsOperating()
         {
             yield return LoadValidationScene();
 
@@ -303,82 +340,90 @@ namespace Margins.Tests
             Assert.That(GameObject.Find("First Store Presentation"), Is.Not.Null);
             Assert.That(Object.FindObjectsByType<Light>(FindObjectsInactive.Include).Length, Is.GreaterThanOrEqualTo(9));
 
-            StoreOperatingWorldInteractionTarget storeTarget =
-                GameObject.Find("World Store Operating Control")
-                    .GetComponent<StoreOperatingWorldInteractionTarget>();
-            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
-
             FixturePlacementController placement =
                 GameObject.Find("Fixture Placement").GetComponent<FixturePlacementController>();
             PlaceableFixtureComponent fixture =
                 GameObject.Find("Essential Checkout Fixture").GetComponent<PlaceableFixtureComponent>();
-            Assert.That(
-                placement.TryPlace(fixture, new GridPosition(1, 1), 0).IsSuccess,
-                Is.True);
+            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.True);
 
             DeliveryBoxComponent delivery =
                 GameObject.Find("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
-            Assert.That(
-                delivery.GetComponent<DeliveryOpenWorldInteractionTarget>()
-                    .TryPrimary(out error),
-                Is.True,
-                error);
+            DeliveryBoxWorldInteractionTarget boxTarget =
+                delivery.GetComponent<DeliveryBoxWorldInteractionTarget>();
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(delivery.IsCarried, Is.True);
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(delivery.IsOpen, Is.True);
+            Assert.That(boxTarget.TryCancel(out error), Is.True, error);
 
-            ShelfSnapWorldInteractionTarget[] shelfTargets =
-                Object.FindObjectsByType<ShelfSnapWorldInteractionTarget>(
+            ShelfFixtureWorldInteractionTarget[] shelfTargets =
+                Object.FindObjectsByType<ShelfFixtureWorldInteractionTarget>(
                     FindObjectsInactive.Exclude);
             StockingController stocking = Object.FindAnyObjectByType<StockingController>();
-            foreach (DeliveryProductWorldInteractionTarget productTarget in
-                     delivery.GetComponentsInChildren<DeliveryProductWorldInteractionTarget>())
+            DeliveryProductWorldInteractionTarget[] productTargets =
+                delivery.GetComponentsInChildren<DeliveryProductWorldInteractionTarget>();
+            for (int round = 0; round < 2; round++)
             {
-                Assert.That(productTarget.TryPrimary(out error), Is.True, error);
-                Assert.That(stocking.HeldPhysicalUnit, Is.Not.Null);
-                Assert.That(
-                    stocking.HeldPhysicalUnit.Definition,
-                    Is.SameAs(productTarget.ProductDefinition));
-                ShelfSnapWorldInteractionTarget matchingShelf = shelfTargets
-                    .OrderBy(target => target.SnapPointId)
-                    .First(target => stocking.CanStockHeldUnit(
-                        target.ShelfFixture,
-                        target.SnapPointId,
-                        out _));
-                Assert.That(matchingShelf.TryPrimary(out error), Is.True, error);
+                foreach (DeliveryProductWorldInteractionTarget productTarget in productTargets)
+                {
+                    Assert.That(productTarget.TryPrimary(out error), Is.True, error);
+                    Assert.That(stocking.HeldPhysicalUnit, Is.Not.Null);
+                    Assert.That(
+                        stocking.HeldPhysicalUnit.Definition,
+                        Is.SameAs(productTarget.ProductDefinition));
+                    ShelfFixtureWorldInteractionTarget matchingShelf = shelfTargets
+                        .Single(target => target.gameObject.name.Contains(
+                            productTarget.ProductDefinition.StableProductId.Contains("cola")
+                                ? "cola"
+                                : "chips"));
+                    Assert.That(matchingShelf.TryPrimary(out error), Is.True, error);
+                }
             }
-
-            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
 
             StagedCheckoutWorldInteractionTarget checkoutTarget =
                 GameObject.Find("World Checkout Interaction")
                     .GetComponent<StagedCheckoutWorldInteractionTarget>();
             StagedCheckoutInteractionComponent stagedCheckout =
                 Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>();
-            int checkoutActions = 0;
-            while (!stagedCheckout.AllBasketsComplete && checkoutActions < 10)
+            CheckoutProductWorldInteractionTarget[] checkoutProducts =
+                Object.FindObjectsByType<CheckoutProductWorldInteractionTarget>(
+                    FindObjectsInactive.Exclude);
+            int customerCount = 0;
+            while (!stagedCheckout.AllBasketsComplete && customerCount < 3)
             {
                 Assert.That(checkoutTarget.TryPrimary(out error), Is.True, error);
-                checkoutActions++;
+                while (stagedCheckout.NextAction == StagedCheckoutPrimaryAction.Scan)
+                {
+                    CheckoutProductWorldInteractionTarget visible =
+                        checkoutProducts.Single(target => target.IsAvailable);
+                    Assert.That(visible.TryPrimary(out error), Is.True, error);
+                }
+                Assert.That(checkoutTarget.TryPrimary(out error), Is.True, error);
+                customerCount++;
             }
             Assert.That(stagedCheckout.AllBasketsComplete, Is.True);
-            Assert.That(checkoutActions, Is.InRange(3, 6));
+            Assert.That(customerCount, Is.EqualTo(3));
+            yield return null;
 
             CleaningWorldInteractionTarget cleaningTarget =
                 GameObject.Find("World Cleaning Interaction")
                     .GetComponent<CleaningWorldInteractionTarget>();
             CleaningTaskComponent cleaning =
                 GameObject.Find("Cleaning Task").GetComponent<CleaningTaskComponent>();
-            while (!cleaning.IsComplete)
+            Assert.That(cleaning.NeedsCleaning, Is.True);
+            while (cleaning.NeedsCleaning)
             {
                 Assert.That(cleaningTarget.TryPrimary(out error), Is.True, error);
             }
 
-            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
-            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
             StoreOperatingController store =
                 GameObject.Find("Store Operating Controller")
                     .GetComponent<StoreOperatingController>();
-            Assert.That(store.State, Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
-            Assert.That(store.ResultTotals.transactionCount, Is.EqualTo(1));
-            Assert.That(store.ResultTotals.unitsSold, Is.EqualTo(2));
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            Assert.That(store.ResultTotals, Is.Null);
+            Assert.That(store.CurrentTotals.transactionCount, Is.EqualTo(3));
+            Assert.That(store.CurrentTotals.unitsSold, Is.EqualTo(4));
+            Assert.That(store.CurrentTotals.grossSalesCents, Is.EqualTo(696));
         }
 
         private static IEnumerator LoadValidationScene()

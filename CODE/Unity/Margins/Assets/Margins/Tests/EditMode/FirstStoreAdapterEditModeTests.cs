@@ -586,7 +586,7 @@ namespace Margins.Tests
 
         [Test]
         [Category("FirstStoreDiskPersistence")]
-        public void DiskSaveRejectsHeldPhysicalUnitWithoutCreatingAcceptedFile()
+        public void DiskSavePersistsHeldPhysicalUnitWithoutInventoryLoss()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
             Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
@@ -608,9 +608,15 @@ namespace Margins.Tests
                 CreateDiskPersistenceController(rig);
             string acceptedPath = Path.Combine(CreateTemporaryDirectory(), "held.json");
 
-            Assert.That(disk.TrySaveToPath(acceptedPath), Is.False);
-            StringAssert.Contains("held product", disk.LastDiagnostic);
-            Assert.That(File.Exists(acceptedPath), Is.False);
+            FirstStoreInventorySnapshot before =
+                rig.Inventory.Inventory.CreateSnapshot();
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.True, disk.LastDiagnostic);
+            Assert.That(File.Exists(acceptedPath), Is.True);
+            Assert.That(rig.Stocking.HeldPhysicalUnit, Is.Not.Null);
+            Assert.That(
+                rig.Inventory.Inventory.CreateSnapshot(),
+                Is.EqualTo(before),
+                "Saving a carried product must not move or duplicate inventory.");
         }
 
         [Test]

@@ -69,6 +69,7 @@ namespace Margins
         public long operatingProfitCents;
         public long cashChangeCents;
         public string primaryCause;
+        public bool isDetailedOperation;
     }
 
     [Serializable]
@@ -78,6 +79,8 @@ namespace Margins
         public string displayName;
         public string districtName;
         public string marketSummary;
+        public string businessTypeId;
+        public string operatingModel;
         public int baseDemandUnits;
         public int competitionIndex;
         public int reputation;
@@ -89,7 +92,14 @@ namespace Margins
         public PortfolioPricingPolicy pricingPolicy;
         public PortfolioReorderPolicy reorderPolicy;
         public int daysOperating;
+        public int delegatedDaysOperating;
         public long lifetimeGrossSalesCents;
+        public long lifetimeCostOfGoodsSoldCents;
+        public long lifetimePayrollCents;
+        public long lifetimeRentCents;
+        public long lifetimeInventoryPurchaseCents;
+        public long lifetimeLeaseAndSetupCents;
+        public long lifetimeCashChangeCents;
         public long lifetimeOperatingProfitCents;
         public bool hasLastReport;
         public PortfolioLocationReportSnapshot lastReport;
@@ -105,7 +115,17 @@ namespace Margins
         public long cashCents;
         public int companyReputation;
         public bool firstShiftCompleted;
+        public bool detailedOperationInitialized;
         public string processedDetailedSessionId;
+        public long reconciledDetailedGrossSalesCents;
+        public long reconciledDetailedCostOfGoodsSoldCents;
+        public long reconciledDetailedOperatingExpensesCents;
+        public long reconciledDetailedPayrollCents;
+        public long reconciledDetailedRentCents;
+        public long reconciledDetailedInventoryAcquiredCostCents;
+        public int reconciledDetailedUnitsSold;
+        public int reconciledDetailedTransactionCount;
+        public long lifetimeCorporateCostsCents;
         public List<PortfolioEmployeeSnapshot> employees = new();
         public List<PortfolioLocationSnapshot> locations = new();
     }
@@ -159,7 +179,9 @@ namespace Margins
             int inventoryCapacityUnits,
             long dailyRentCents,
             long leaseCostCents,
-            long openingInventoryCostCents)
+            long openingInventoryCostCents,
+            string businessTypeId = "business-convenience-retail",
+            string operatingModel = "Retail goods: receive containers, stock fixtures, scan items, and delegate service.")
         {
             LocationId = locationId;
             DisplayName = displayName;
@@ -173,6 +195,8 @@ namespace Margins
             DailyRentCents = dailyRentCents;
             LeaseCostCents = leaseCostCents;
             OpeningInventoryCostCents = openingInventoryCostCents;
+            BusinessTypeId = businessTypeId;
+            OperatingModel = operatingModel;
         }
 
         public string LocationId { get; }
@@ -187,6 +211,8 @@ namespace Margins
         public long DailyRentCents { get; }
         public long LeaseCostCents { get; }
         public long OpeningInventoryCostCents { get; }
+        public string BusinessTypeId { get; }
+        public string OperatingModel { get; }
     }
 
     public static class PortfolioProgressionRules
@@ -425,12 +451,37 @@ namespace Margins
                 return false;
             }
 
-            if (snapshot.firstShiftCompleted !=
-                !string.IsNullOrWhiteSpace(snapshot.processedDetailedSessionId) ||
-                (snapshot.firstShiftCompleted &&
-                 !FirstStoreIdentifier.IsValid(snapshot.processedDetailedSessionId)))
+            bool legacyDetailedPosting =
+                snapshot.firstShiftCompleted &&
+                !snapshot.detailedOperationInitialized &&
+                FirstStoreIdentifier.IsValid(snapshot.processedDetailedSessionId) &&
+                snapshot.reconciledDetailedGrossSalesCents == 0 &&
+                snapshot.reconciledDetailedCostOfGoodsSoldCents == 0 &&
+                snapshot.reconciledDetailedOperatingExpensesCents == 0 &&
+                snapshot.reconciledDetailedPayrollCents == 0 &&
+                snapshot.reconciledDetailedRentCents == 0 &&
+                snapshot.reconciledDetailedInventoryAcquiredCostCents == 0 &&
+                snapshot.reconciledDetailedUnitsSold == 0 &&
+                snapshot.reconciledDetailedTransactionCount == 0;
+            if ((!legacyDetailedPosting &&
+                 snapshot.detailedOperationInitialized !=
+                 !string.IsNullOrWhiteSpace(snapshot.processedDetailedSessionId)) ||
+                (snapshot.detailedOperationInitialized &&
+                 !FirstStoreIdentifier.IsValid(snapshot.processedDetailedSessionId)) ||
+                snapshot.reconciledDetailedGrossSalesCents < 0 ||
+                snapshot.reconciledDetailedCostOfGoodsSoldCents < 0 ||
+                snapshot.reconciledDetailedOperatingExpensesCents < 0 ||
+                snapshot.reconciledDetailedPayrollCents < 0 ||
+                snapshot.reconciledDetailedRentCents < 0 ||
+                snapshot.reconciledDetailedInventoryAcquiredCostCents < 0 ||
+                snapshot.reconciledDetailedUnitsSold < 0 ||
+                snapshot.reconciledDetailedTransactionCount < 0 ||
+                snapshot.lifetimeCorporateCostsCents < 0 ||
+                (!legacyDetailedPosting &&
+                 snapshot.firstShiftCompleted !=
+                 (snapshot.reconciledDetailedTransactionCount > 0)))
             {
-                error = "Portfolio first-shift completion and processed session disagree.";
+                error = "Portfolio detailed-operation reconciliation fields disagree.";
                 return false;
             }
 
@@ -451,7 +502,8 @@ namespace Margins
                 return false;
             }
 
-            if (!snapshot.firstShiftCompleted &&
+            if (!snapshot.detailedOperationInitialized &&
+                !legacyDetailedPosting &&
                 (snapshot.currentDay != 1 ||
                  snapshot.cashCents != PortfolioProgressionRules.StartingCashCents ||
                  snapshot.companyReputation != 50 ||
@@ -471,7 +523,8 @@ namespace Margins
 
             foreach (PortfolioLocationSnapshot location in snapshot.locations)
             {
-                if (location.daysOperating > snapshot.currentDay - 1 ||
+                if (location.daysOperating > snapshot.currentDay ||
+                    location.delegatedDaysOperating > location.daysOperating ||
                     (location.daysOperating == 0 && location.hasLastReport) ||
                     (location.daysOperating > 0 &&
                      (!location.hasLastReport ||
@@ -518,12 +571,44 @@ namespace Margins
             out bool alreadyPosted,
             out string error)
         {
-            alreadyPosted = false;
+            long inventoryAssetValueCents;
+            try
+            {
+                inventoryAssetValueCents = checked(
+                    (long)remainingInventoryUnits *
+                    PortfolioProgressionRules.AggregateUnitCostCents);
+            }
+            catch (OverflowException)
+            {
+                alreadyPosted = false;
+                error = "Detailed inventory value overflowed integer-cent storage.";
+                return false;
+            }
+
+            return TryReconcileDetailedOperation(
+                sessionId,
+                totals,
+                remainingInventoryUnits,
+                inventoryAssetValueCents,
+                out alreadyPosted,
+                out error);
+        }
+
+        public bool TryReconcileDetailedOperation(
+            string sessionId,
+            StoreSessionTotals totals,
+            int remainingInventoryUnits,
+            long inventoryAssetValueCents,
+            out bool unchanged,
+            out string error)
+        {
+            unchanged = false;
             if (!FirstStoreIdentifier.IsValid(sessionId) ||
                 totals == null ||
-                !totals.IsValid)
+                !totals.IsValid ||
+                inventoryAssetValueCents < 0)
             {
-                error = "A valid detailed session and reconciled result are required.";
+                error = "A valid detailed operation, inventory value, and reconciled totals are required.";
                 return false;
             }
 
@@ -531,52 +616,213 @@ namespace Margins
                 remainingInventoryUnits >
                 PortfolioProgressionRules.FirstLocation.InventoryCapacityUnits)
             {
-                error = "Detailed first-store inventory cannot be reconciled to the aggregate location.";
+                error = "Detailed first-store inventory cannot be reconciled to the company location.";
                 return false;
             }
 
-            if (state.firstShiftCompleted)
+            if (state.detailedOperationInitialized &&
+                !string.Equals(
+                    state.processedDetailedSessionId,
+                    sessionId,
+                    StringComparison.Ordinal))
             {
-                if (string.Equals(
-                        state.processedDetailedSessionId,
-                        sessionId,
-                        StringComparison.Ordinal))
-                {
-                    alreadyPosted = true;
-                    error = null;
-                    return true;
-                }
-
-                error = "A different detailed first-shift result was already posted.";
+                error = "A different detailed operating session is already authoritative.";
                 return false;
             }
 
-            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot currentLocation = state.locations.First(location =>
+                string.Equals(
+                    location.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            long assignedPayrollCents;
             try
             {
-                candidate.cashCents = checked(
-                    candidate.cashCents + totals.contributionAfterCostOfGoodsCents);
+                assignedPayrollCents = state.employees
+                    .Where(employee => string.Equals(
+                        employee.assignedLocationId,
+                        currentLocation.locationId,
+                        StringComparison.Ordinal))
+                    .Sum(employee => employee.dailyWageCents);
             }
             catch (OverflowException)
             {
-                error = "Posting the detailed shift would overflow company cash.";
+                error = "Detailed assigned payroll overflowed integer-cent storage.";
+                return false;
+            }
+            long detailedPayrollCents = Math.Min(
+                assignedPayrollCents,
+                totals.includedOperatingExpensesCents);
+            long detailedRentCents = checked(
+                totals.includedOperatingExpensesCents - detailedPayrollCents);
+
+            long acquiredInventoryCost;
+            long grossSalesDelta;
+            long costOfGoodsDelta;
+            long expenseDelta;
+            long payrollDelta;
+            long rentDelta;
+            long purchaseDelta;
+            long cashDelta;
+            long profitDelta;
+            try
+            {
+                acquiredInventoryCost = checked(
+                    inventoryAssetValueCents + totals.costOfGoodsSoldCents);
+                grossSalesDelta = checked(
+                    totals.grossSalesCents - state.reconciledDetailedGrossSalesCents);
+                costOfGoodsDelta = checked(
+                    totals.costOfGoodsSoldCents -
+                    state.reconciledDetailedCostOfGoodsSoldCents);
+                expenseDelta = checked(
+                    totals.includedOperatingExpensesCents -
+                    state.reconciledDetailedOperatingExpensesCents);
+                payrollDelta = checked(
+                    detailedPayrollCents - state.reconciledDetailedPayrollCents);
+                rentDelta = checked(
+                    detailedRentCents - state.reconciledDetailedRentCents);
+                purchaseDelta = checked(
+                    acquiredInventoryCost -
+                    state.reconciledDetailedInventoryAcquiredCostCents);
+                cashDelta = checked(grossSalesDelta - expenseDelta - purchaseDelta);
+                profitDelta = checked(grossSalesDelta - costOfGoodsDelta - expenseDelta);
+            }
+            catch (OverflowException)
+            {
+                error = "Detailed operation reconciliation overflowed integer-cent storage.";
+                return false;
+            }
+
+            if (grossSalesDelta < 0 ||
+                costOfGoodsDelta < 0 ||
+                expenseDelta < 0 ||
+                payrollDelta < 0 ||
+                rentDelta < 0 ||
+                purchaseDelta < 0 ||
+                totals.unitsSold < state.reconciledDetailedUnitsSold ||
+                totals.transactionCount < state.reconciledDetailedTransactionCount)
+            {
+                error = "Detailed operation totals moved backward and cannot be reconciled without a new session.";
+                return false;
+            }
+
+            bool noFinancialChange =
+                state.detailedOperationInitialized &&
+                grossSalesDelta == 0 &&
+                costOfGoodsDelta == 0 &&
+                expenseDelta == 0 &&
+                payrollDelta == 0 &&
+                rentDelta == 0 &&
+                purchaseDelta == 0 &&
+                totals.unitsSold == state.reconciledDetailedUnitsSold &&
+                totals.transactionCount == state.reconciledDetailedTransactionCount;
+            if (noFinancialChange && currentLocation.inventoryUnits == remainingInventoryUnits)
+            {
+                unchanged = true;
+                error = null;
+                return true;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot location = candidate.locations.First(value =>
+                string.Equals(
+                    value.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            bool firstCompletedSale = !candidate.firstShiftCompleted &&
+                                      totals.transactionCount > 0;
+            bool migratingLegacyPosting =
+                candidate.firstShiftCompleted &&
+                !candidate.detailedOperationInitialized;
+            if (migratingLegacyPosting)
+            {
+                // The prior implementation posted accounting contribution to cash.
+                // Convert it once to cash basis: received inventory is a purchase
+                // outflow, while COGS is profit recognition rather than a second
+                // cash deduction.
+                cashDelta = checked(
+                    totals.costOfGoodsSoldCents - acquiredInventoryCost);
+            }
+            try
+            {
+                candidate.cashCents = checked(candidate.cashCents + cashDelta);
+                location.lifetimeGrossSalesCents = checked(
+                    location.lifetimeGrossSalesCents + grossSalesDelta);
+                location.lifetimeCostOfGoodsSoldCents = checked(
+                    location.lifetimeCostOfGoodsSoldCents + costOfGoodsDelta);
+                location.lifetimePayrollCents = checked(
+                    location.lifetimePayrollCents + payrollDelta);
+                location.lifetimeRentCents = checked(
+                    location.lifetimeRentCents + rentDelta);
+                location.lifetimeInventoryPurchaseCents = checked(
+                    location.lifetimeInventoryPurchaseCents + purchaseDelta);
+                location.lifetimeOperatingProfitCents = checked(
+                    location.lifetimeOperatingProfitCents + profitDelta);
+                location.lifetimeCashChangeCents = checked(
+                    location.lifetimeCashChangeCents + cashDelta);
+            }
+            catch (OverflowException)
+            {
+                error = "Detailed operation would overflow company or location totals.";
                 return false;
             }
 
             if (candidate.cashCents < 0)
             {
-                error = "The first-shift result would create unsupported negative cash.";
+                error = "Detailed operation would create unsupported negative cash.";
                 return false;
             }
 
-            candidate.firstShiftCompleted = true;
+            candidate.detailedOperationInitialized = true;
             candidate.processedDetailedSessionId = sessionId;
-            candidate.companyReputation = Clamp(candidate.companyReputation + 2, 0, 100);
-            candidate.locations.First(location => string.Equals(
-                    location.locationId,
-                    PortfolioProgressionRules.FirstLocationId,
-                    StringComparison.Ordinal))
-                .inventoryUnits = remainingInventoryUnits;
+            candidate.reconciledDetailedGrossSalesCents = totals.grossSalesCents;
+            candidate.reconciledDetailedCostOfGoodsSoldCents =
+                totals.costOfGoodsSoldCents;
+            candidate.reconciledDetailedOperatingExpensesCents =
+                totals.includedOperatingExpensesCents;
+            candidate.reconciledDetailedPayrollCents = detailedPayrollCents;
+            candidate.reconciledDetailedRentCents = detailedRentCents;
+            candidate.reconciledDetailedInventoryAcquiredCostCents =
+                acquiredInventoryCost;
+            candidate.reconciledDetailedUnitsSold = totals.unitsSold;
+            candidate.reconciledDetailedTransactionCount = totals.transactionCount;
+            candidate.firstShiftCompleted = totals.transactionCount > 0;
+            if (firstCompletedSale)
+            {
+                candidate.companyReputation = Clamp(
+                    candidate.companyReputation + 2,
+                    0,
+                    100);
+            }
+
+            location.inventoryUnits = remainingInventoryUnits;
+            location.daysOperating = Math.Max(location.daysOperating, 1);
+            location.lastReport = new PortfolioLocationReportSnapshot
+            {
+                day = candidate.currentDay,
+                locationId = location.locationId,
+                demandUnits = totals.unitsSold,
+                unitsSold = totals.unitsSold,
+                lostDemandUnits = 0,
+                endingInventoryUnits = remainingInventoryUnits,
+                reorderedUnits = 0,
+                unitPriceCents = 0,
+                grossSalesCents = totals.grossSalesCents,
+                costOfGoodsSoldCents = totals.costOfGoodsSoldCents,
+                payrollCents = detailedPayrollCents,
+                rentCents = detailedRentCents,
+                inventoryPurchaseCents = acquiredInventoryCost,
+                operatingProfitCents = totals.contributionAfterCostOfGoodsCents,
+                cashChangeCents = checked(
+                    totals.grossSalesCents -
+                    totals.includedOperatingExpensesCents -
+                    acquiredInventoryCost),
+                primaryCause = totals.transactionCount == 0
+                    ? "The store is operating; received inventory and occupancy costs are live."
+                    : "Hands-on sales, historical COGS, cash, and remaining physical inventory reconcile live.",
+                isDetailedOperation = true
+            };
+            location.hasLastReport = true;
             return TryCommit(candidate, out error);
         }
 
@@ -629,6 +875,8 @@ namespace Margins
 
             PortfolioProgressionSnapshot candidate = Clone(state);
             candidate.cashCents -= definition.HiringCostCents;
+            candidate.lifetimeCorporateCostsCents = checked(
+                candidate.lifetimeCorporateCostsCents + definition.HiringCostCents);
             candidate.employees.Add(new PortfolioEmployeeSnapshot
             {
                 employeeId = definition.EmployeeId,
@@ -679,6 +927,9 @@ namespace Margins
             PortfolioEmployeeSnapshot candidateEmployee = candidate.employees.First(value =>
                 string.Equals(value.employeeId, employeeId, StringComparison.Ordinal));
             candidate.cashCents -= PortfolioProgressionRules.TrainingCostCents;
+            candidate.lifetimeCorporateCostsCents = checked(
+                candidate.lifetimeCorporateCostsCents +
+                PortfolioProgressionRules.TrainingCostCents);
             candidateEmployee.skill = Clamp(candidateEmployee.skill + 6, 0, 100);
             candidateEmployee.satisfaction = Clamp(
                 candidateEmployee.satisfaction + 4,
@@ -728,6 +979,9 @@ namespace Margins
             PortfolioEmployeeSnapshot promoted = candidate.employees.First(value =>
                 string.Equals(value.employeeId, employeeId, StringComparison.Ordinal));
             candidate.cashCents -= PortfolioProgressionRules.PromotionCostCents;
+            candidate.lifetimeCorporateCostsCents = checked(
+                candidate.lifetimeCorporateCostsCents +
+                PortfolioProgressionRules.PromotionCostCents);
             promoted.role = PortfolioEmployeeRole.Manager;
             promoted.taskFocus = PortfolioTaskFocus.Balanced;
             promoted.dailyWageCents = Math.Max(promoted.dailyWageCents, 17_500);
@@ -882,7 +1136,7 @@ namespace Margins
                 return false;
             }
 
-            if (firstLocation.daysOperating < 1)
+            if (firstLocation.delegatedDaysOperating < 1)
             {
                 error = "Prove one delegated operating day before signing a second lease.";
                 return false;
@@ -912,7 +1166,13 @@ namespace Margins
             PortfolioProgressionSnapshot candidate = Clone(state);
             candidate.cashCents -=
                 definition.LeaseCostCents + definition.OpeningInventoryCostCents;
-            candidate.locations.Add(CreateLocation(definition));
+            PortfolioLocationSnapshot newLocation = CreateLocation(definition);
+            newLocation.lifetimeInventoryPurchaseCents =
+                definition.OpeningInventoryCostCents;
+            newLocation.lifetimeLeaseAndSetupCents = definition.LeaseCostCents;
+            newLocation.lifetimeCashChangeCents = checked(
+                -definition.LeaseCostCents - definition.OpeningInventoryCostCents);
+            candidate.locations.Add(newLocation);
             SortCollections(candidate);
             return TryCommit(candidate, out error);
         }
@@ -1164,10 +1424,22 @@ namespace Margins
                 0,
                 100);
             location.daysOperating++;
+            location.delegatedDaysOperating++;
             location.lifetimeGrossSalesCents = checked(
                 location.lifetimeGrossSalesCents + grossSales);
+            location.lifetimeCostOfGoodsSoldCents = checked(
+                location.lifetimeCostOfGoodsSoldCents + costOfGoodsSold);
+            location.lifetimePayrollCents = checked(
+                location.lifetimePayrollCents + payroll);
+            location.lifetimeRentCents = checked(
+                location.lifetimeRentCents + location.dailyRentCents);
+            location.lifetimeInventoryPurchaseCents = checked(
+                location.lifetimeInventoryPurchaseCents + inventoryPurchase);
             location.lifetimeOperatingProfitCents = checked(
                 location.lifetimeOperatingProfitCents + operatingProfit);
+            location.lifetimeCashChangeCents = checked(
+                location.lifetimeCashChangeCents +
+                grossSales - fixedCosts - inventoryPurchase);
             location.lastReport = new PortfolioLocationReportSnapshot
             {
                 day = simulatedDay,
@@ -1185,7 +1457,8 @@ namespace Margins
                 inventoryPurchaseCents = inventoryPurchase,
                 operatingProfitCents = operatingProfit,
                 cashChangeCents = grossSales - fixedCosts - inventoryPurchase,
-                primaryCause = primaryCause
+                primaryCause = primaryCause,
+                isDetailedOperation = false
             };
             location.hasLastReport = true;
 
@@ -1245,6 +1518,16 @@ namespace Margins
                     location.marketSummary,
                     definition.MarketSummary,
                     StringComparison.Ordinal) ||
+                (!string.IsNullOrWhiteSpace(location.businessTypeId) &&
+                 !string.Equals(
+                     location.businessTypeId,
+                     definition.BusinessTypeId,
+                     StringComparison.Ordinal)) ||
+                (!string.IsNullOrWhiteSpace(location.operatingModel) &&
+                 !string.Equals(
+                     location.operatingModel,
+                     definition.OperatingModel,
+                     StringComparison.Ordinal)) ||
                 location.baseDemandUnits != definition.BaseDemandUnits ||
                 location.competitionIndex != definition.CompetitionIndex ||
                 location.reputation < 0 ||
@@ -1257,7 +1540,13 @@ namespace Margins
                 location.openingInventoryCostCents !=
                 definition.OpeningInventoryCostCents ||
                 location.daysOperating < 0 ||
+                location.delegatedDaysOperating < 0 ||
                 location.lifetimeGrossSalesCents < 0 ||
+                location.lifetimeCostOfGoodsSoldCents < 0 ||
+                location.lifetimePayrollCents < 0 ||
+                location.lifetimeRentCents < 0 ||
+                location.lifetimeInventoryPurchaseCents < 0 ||
+                location.lifetimeLeaseAndSetupCents < 0 ||
                 !Enum.IsDefined(typeof(PortfolioPricingPolicy), location.pricingPolicy) ||
                 !Enum.IsDefined(typeof(PortfolioReorderPolicy), location.reorderPolicy))
             {
@@ -1325,8 +1614,8 @@ namespace Margins
                 return false;
             }
 
-            bool valid =
-                report.day >= 2 &&
+            bool commonValid =
+                report.day >= (report.isDetailedOperation ? 1 : 2) &&
                 string.Equals(
                     report.locationId,
                     location.locationId,
@@ -1337,15 +1626,25 @@ namespace Margins
                 report.lostDemandUnits == report.demandUnits - report.unitsSold &&
                 report.endingInventoryUnits == location.inventoryUnits &&
                 report.reorderedUnits >= 0 &&
-                report.unitPriceCents > 0 &&
-                report.grossSalesCents == expectedGrossSales &&
-                report.costOfGoodsSoldCents == expectedCostOfGoods &&
                 report.payrollCents >= 0 &&
-                report.rentCents == location.dailyRentCents &&
-                report.inventoryPurchaseCents == expectedInventoryPurchase &&
                 report.operatingProfitCents == expectedOperatingProfit &&
                 report.cashChangeCents == expectedCashChange &&
                 !string.IsNullOrWhiteSpace(report.primaryCause);
+            bool modeValid = report.isDetailedOperation
+                ? report.unitPriceCents == 0 &&
+                  report.demandUnits == report.unitsSold &&
+                  report.lostDemandUnits == 0 &&
+                  report.reorderedUnits == 0 &&
+                  report.grossSalesCents >= 0 &&
+                  report.costOfGoodsSoldCents >= 0 &&
+                  report.rentCents >= 0 &&
+                  report.inventoryPurchaseCents >= 0
+                : report.unitPriceCents > 0 &&
+                  report.grossSalesCents == expectedGrossSales &&
+                  report.costOfGoodsSoldCents == expectedCostOfGoods &&
+                  report.rentCents == location.dailyRentCents &&
+                  report.inventoryPurchaseCents == expectedInventoryPurchase;
+            bool valid = commonValid && modeValid;
             if (!valid)
             {
                 error = "Portfolio location report does not reconcile.";
@@ -1421,6 +1720,8 @@ namespace Margins
                 displayName = definition.DisplayName,
                 districtName = definition.DistrictName,
                 marketSummary = definition.MarketSummary,
+                businessTypeId = definition.BusinessTypeId,
+                operatingModel = definition.OperatingModel,
                 baseDemandUnits = definition.BaseDemandUnits,
                 competitionIndex = definition.CompetitionIndex,
                 reputation = definition.StartingReputation,
@@ -1432,7 +1733,14 @@ namespace Margins
                 pricingPolicy = PortfolioPricingPolicy.Balanced,
                 reorderPolicy = PortfolioReorderPolicy.Balanced,
                 daysOperating = 0,
+                delegatedDaysOperating = 0,
                 lifetimeGrossSalesCents = 0,
+                lifetimeCostOfGoodsSoldCents = 0,
+                lifetimePayrollCents = 0,
+                lifetimeRentCents = 0,
+                lifetimeInventoryPurchaseCents = 0,
+                lifetimeLeaseAndSetupCents = 0,
+                lifetimeCashChangeCents = 0,
                 lifetimeOperatingProfitCents = 0,
                 hasLastReport = false,
                 lastReport = null
@@ -1538,7 +1846,17 @@ namespace Margins
                 cashCents = source.cashCents,
                 companyReputation = source.companyReputation,
                 firstShiftCompleted = source.firstShiftCompleted,
+                detailedOperationInitialized = source.detailedOperationInitialized,
                 processedDetailedSessionId = source.processedDetailedSessionId,
+                reconciledDetailedGrossSalesCents = source.reconciledDetailedGrossSalesCents,
+                reconciledDetailedCostOfGoodsSoldCents = source.reconciledDetailedCostOfGoodsSoldCents,
+                reconciledDetailedOperatingExpensesCents = source.reconciledDetailedOperatingExpensesCents,
+                reconciledDetailedPayrollCents = source.reconciledDetailedPayrollCents,
+                reconciledDetailedRentCents = source.reconciledDetailedRentCents,
+                reconciledDetailedInventoryAcquiredCostCents = source.reconciledDetailedInventoryAcquiredCostCents,
+                reconciledDetailedUnitsSold = source.reconciledDetailedUnitsSold,
+                reconciledDetailedTransactionCount = source.reconciledDetailedTransactionCount,
+                lifetimeCorporateCostsCents = source.lifetimeCorporateCostsCents,
                 employees = source.employees?
                     .Select(CloneEmployee)
                     .ToList() ?? new List<PortfolioEmployeeSnapshot>(),
@@ -1546,6 +1864,14 @@ namespace Margins
                     .Select(CloneLocation)
                     .ToList() ?? new List<PortfolioLocationSnapshot>()
             };
+            if (clone.detailedOperationInitialized &&
+                clone.reconciledDetailedOperatingExpensesCents > 0 &&
+                clone.reconciledDetailedPayrollCents == 0 &&
+                clone.reconciledDetailedRentCents == 0)
+            {
+                clone.reconciledDetailedRentCents =
+                    clone.reconciledDetailedOperatingExpensesCents;
+            }
             SortCollections(clone);
             return clone;
         }
@@ -1573,12 +1899,22 @@ namespace Margins
         private static PortfolioLocationSnapshot CloneLocation(
             PortfolioLocationSnapshot source)
         {
+            PortfolioProgressionRules.TryGetLocationDefinition(
+                source.locationId,
+                out PortfolioLocationDefinition definition);
+            bool legacyLocation = string.IsNullOrWhiteSpace(source.businessTypeId);
             return new PortfolioLocationSnapshot
             {
                 locationId = source.locationId,
                 displayName = source.displayName,
                 districtName = source.districtName,
                 marketSummary = source.marketSummary,
+                businessTypeId = string.IsNullOrWhiteSpace(source.businessTypeId)
+                    ? definition?.BusinessTypeId
+                    : source.businessTypeId,
+                operatingModel = string.IsNullOrWhiteSpace(source.operatingModel)
+                    ? definition?.OperatingModel
+                    : source.operatingModel,
                 baseDemandUnits = source.baseDemandUnits,
                 competitionIndex = source.competitionIndex,
                 reputation = source.reputation,
@@ -1590,7 +1926,16 @@ namespace Margins
                 pricingPolicy = source.pricingPolicy,
                 reorderPolicy = source.reorderPolicy,
                 daysOperating = source.daysOperating,
+                delegatedDaysOperating = legacyLocation
+                    ? source.daysOperating
+                    : source.delegatedDaysOperating,
                 lifetimeGrossSalesCents = source.lifetimeGrossSalesCents,
+                lifetimeCostOfGoodsSoldCents = source.lifetimeCostOfGoodsSoldCents,
+                lifetimePayrollCents = source.lifetimePayrollCents,
+                lifetimeRentCents = source.lifetimeRentCents,
+                lifetimeInventoryPurchaseCents = source.lifetimeInventoryPurchaseCents,
+                lifetimeLeaseAndSetupCents = source.lifetimeLeaseAndSetupCents,
+                lifetimeCashChangeCents = source.lifetimeCashChangeCents,
                 lifetimeOperatingProfitCents = source.lifetimeOperatingProfitCents,
                 hasLastReport = source.hasLastReport,
                 lastReport = source.hasLastReport
@@ -1617,6 +1962,7 @@ namespace Margins
                    report.inventoryPurchaseCents == 0 &&
                    report.operatingProfitCents == 0 &&
                    report.cashChangeCents == 0 &&
+                   !report.isDetailedOperation &&
                    string.IsNullOrEmpty(report.primaryCause);
         }
 
@@ -1645,7 +1991,8 @@ namespace Margins
                 inventoryPurchaseCents = source.inventoryPurchaseCents,
                 operatingProfitCents = source.operatingProfitCents,
                 cashChangeCents = source.cashChangeCents,
-                primaryCause = source.primaryCause
+                primaryCause = source.primaryCause,
+                isDetailedOperation = source.isDetailedOperation
             };
         }
 

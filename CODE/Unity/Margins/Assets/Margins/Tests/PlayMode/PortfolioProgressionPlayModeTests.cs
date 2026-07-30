@@ -58,28 +58,35 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator SceneStartsWithLockedManagementProgression()
+        public IEnumerator SceneStartsWithInitializedManagementProgression()
         {
             PortfolioProgressionSnapshot snapshot =
                 portfolio.Progression.CreateSnapshot();
             Assert.That(snapshot.firstShiftCompleted, Is.False);
-            Assert.That(snapshot.cashCents, Is.EqualTo(PortfolioProgressionRules.StartingCashCents));
+            Assert.That(snapshot.detailedOperationInitialized, Is.True);
+            Assert.That(
+                snapshot.cashCents,
+                Is.EqualTo(
+                    PortfolioProgressionRules.StartingCashCents - 600 - 9_000));
             Assert.That(snapshot.locations.Count, Is.EqualTo(1));
+            Assert.That(snapshot.locations[0].inventoryUnits, Is.EqualTo(8));
             Assert.That(snapshot.employees, Is.Empty);
             Assert.That(portfolio.OwnsManagementDesk, Is.False);
 
             player.SetGameplayMode(false);
-            Assert.That(portfolio.OwnsManagementDesk, Is.False);
+            Assert.That(portfolio.OwnsManagementDesk, Is.True);
             yield return null;
         }
 
         [UnityTest]
-        public IEnumerator PhysicalFirstShiftUnlocksDeskAndPostsMoneyOnce()
+        public IEnumerator PhysicalFirstShiftPostsMoneyOnceAndDeskRemainsAvailable()
         {
             CompletePhysicalFirstShift();
+            PortfolioProgressionSnapshot completed =
+                portfolio.Progression.CreateSnapshot();
             long expectedCash =
                 PortfolioProgressionRules.StartingCashCents +
-                store.ResultTotals.contributionAfterCostOfGoodsCents;
+                completed.locations[0].lastReport.cashChangeCents;
 
             yield return null;
 
@@ -96,11 +103,11 @@ namespace Margins.Tests
             Assert.That(portfolio.Progression.CashCents, Is.EqualTo(expectedCash));
 
             Assert.That(player.IsGameplayMode, Is.True);
-            Assert.That(store.TryAcknowledgeResult(out error), Is.True, error);
-            yield return null;
-
-            Assert.That(player.IsGameplayMode, Is.False);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            Assert.That(store.ResultTotals, Is.Null);
+            player.SetGameplayMode(false);
             Assert.That(portfolio.OwnsManagementDesk, Is.True);
+            yield return null;
         }
 
         [UnityTest]
@@ -165,6 +172,68 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator HiredTeamPerformsDetailedReceivingStockingCheckoutAndStandardsWork()
+        {
+            CompletePhysicalFirstShift();
+            HireFirstTeam();
+            Assert.That(
+                portfolio.TrySynchronizeLivePayroll(out string error),
+                Is.True,
+                error);
+
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            StagedCheckoutInteractionComponent staged =
+                Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            Assert.That(employeeWork, Is.Not.Null);
+            Assert.That(
+                employeeWork.TryValidateConfiguration(out error),
+                Is.True,
+                error);
+
+            float deadline = Time.realtimeSinceStartup + 24f;
+            while (!staged.AllBasketsComplete &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(staged.AllBasketsComplete, Is.True);
+            Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(4));
+            Assert.That(delivery.IsCarried, Is.False);
+            Assert.That(
+                GameObject.Find("Detailed Cashier Employee"),
+                Is.Not.Null);
+            Assert.That(
+                GameObject.Find("Detailed Stock Employee"),
+                Is.Not.Null);
+            Assert.That(
+                GameObject.Find("Detailed Manager Employee"),
+                Is.Not.Null);
+            Assert.That(store.LivePayrollCents, Is.EqualTo(42_000));
+
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot firstLocation =
+                portfolio.Progression.Locations.Single();
+            Assert.That(firstLocation.lastReport.payrollCents, Is.EqualTo(42_000));
+            Assert.That(firstLocation.lastReport.rentCents, Is.EqualTo(9_000));
+            Assert.That(
+                firstLocation.lastReport.operatingProfitCents,
+                Is.EqualTo(
+                    firstLocation.lastReport.grossSalesCents -
+                    firstLocation.lastReport.costOfGoodsSoldCents -
+                    firstLocation.lastReport.payrollCents -
+                    firstLocation.lastReport.rentCents));
+        }
+
+        [UnityTest]
         public IEnumerator PhysicalShiftBuildsAndRestoresTwoLocationPortfolio()
         {
             CompletePhysicalFirstShift();
@@ -172,8 +241,7 @@ namespace Margins.Tests
                 portfolio.TrySynchronizeDetailedShift(out string error),
                 Is.True,
                 error);
-            Assert.That(store.TryAcknowledgeResult(out error), Is.True, error);
-            yield return null;
+            player.SetGameplayMode(false);
             Assert.That(portfolio.OwnsManagementDesk, Is.True);
 
             HireFirstTeam();
@@ -239,6 +307,7 @@ namespace Margins.Tests
                 Is.EqualTo(
                     expected.locations.Sum(location =>
                         location.lastReport.cashChangeCents)));
+            yield return null;
         }
 
         [UnityTest]
@@ -268,7 +337,10 @@ namespace Margins.Tests
             Assert.That(migrated.firstShiftCompleted, Is.False);
             Assert.That(migrated.employees, Is.Empty);
             Assert.That(migrated.locations.Count, Is.EqualTo(1));
-            Assert.That(migrated.cashCents, Is.EqualTo(PortfolioProgressionRules.StartingCashCents));
+            Assert.That(
+                migrated.cashCents,
+                Is.EqualTo(
+                    PortfolioProgressionRules.StartingCashCents - 600 - 9_000));
             yield return null;
         }
 
@@ -335,7 +407,8 @@ namespace Margins.Tests
                     placementResult.Failure.ToString());
             }
 
-            Assert.That(store.TryBeginPreparation(out string error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            string error;
             DeliveryBoxComponent delivery =
                 Object.FindAnyObjectByType<DeliveryBoxComponent>();
             StockingController stocking =
@@ -358,7 +431,6 @@ namespace Margins.Tests
                 error);
             Assert.That(stocking.TryPickUpLooseUnit(loose, out _, out error), Is.True, error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
-            Assert.That(store.TryOpenStore(out error), Is.True, error);
             Assert.That(checkout.TryBeginSession("transaction-portfolio-001", out error), Is.True, error);
             Assert.That(
                 checkout.TryScan(cola, 1, out CheckoutFailure scanFailure),
@@ -369,13 +441,12 @@ namespace Margins.Tests
                 Is.True,
                 completionFailure.ToString());
 
-            CleaningTaskComponent cleaning =
-                Object.FindAnyObjectByType<CleaningTaskComponent>();
-            cleaning.TryApplyProgress(cleaning.RequiredProgressUnits);
-            Assert.That(cleaning.IsComplete, Is.True);
-            Assert.That(store.TryBeginClosing(out error), Is.True, error);
-            Assert.That(store.TryFinishClosing(out error), Is.True, error);
-            Assert.That(store.ResultTotals, Is.Not.Null);
+            Assert.That(store.CurrentTotals, Is.Not.Null);
+            Assert.That(store.CurrentTotals.transactionCount, Is.EqualTo(1));
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
         }
 
         private void HireFirstTeam()

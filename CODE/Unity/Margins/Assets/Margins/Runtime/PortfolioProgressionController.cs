@@ -35,8 +35,8 @@ namespace Margins
         public bool IsInitialized => progression != null;
         public bool OwnsManagementDesk =>
             progression != null &&
-            progression.FirstShiftCompleted &&
             firstPersonController != null &&
+            !GamePauseMenuController.IsAnyMenuOpen &&
             !firstPersonController.IsGameplayMode;
         public string LastAction => lastAction;
         public string SelectedLocationId => selectedLocationId;
@@ -57,20 +57,48 @@ namespace Margins
 
         private void Update()
         {
+            if (!TrySynchronizeLivePayroll(out string payrollError))
+            {
+                Record(payrollError, false);
+            }
             TrySynchronizeDetailedShift(out _);
             if (!hasOpenedDeskAfterFirstShift &&
                 progression != null &&
                 progression.FirstShiftCompleted &&
-                firstStore != null &&
-                firstStore.State == StoreOperatingState.Closed &&
                 firstPersonController != null)
             {
                 hasOpenedDeskAfterFirstShift = true;
-                firstPersonController.SetGameplayMode(false);
                 Record(
-                    "First shift accepted. Company management is now available from Tab.",
+                    "Company management is now available from Tab without ending store operations.",
                     true);
             }
+        }
+
+        public bool TrySynchronizeLivePayroll(out string error)
+        {
+            if (progression == null || firstStore == null)
+            {
+                error = "Company or first-store payroll state is unavailable.";
+                return false;
+            }
+
+            long payrollCents;
+            try
+            {
+                payrollCents = progression.Employees
+                    .Where(employee => string.Equals(
+                        employee.assignedLocationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal))
+                    .Sum(employee => employee.dailyWageCents);
+            }
+            catch (OverflowException)
+            {
+                error = "Assigned payroll exceeds supported cent storage.";
+                return false;
+            }
+
+            return firstStore.TrySetLivePayrollCents(payrollCents, out error);
         }
 
         public bool TryValidateConfiguration(out string error)
@@ -106,31 +134,49 @@ namespace Margins
                 return false;
             }
 
-            StoreSessionTotals totals = firstStore.ResultTotals;
+            PortfolioLocationSnapshot firstLocation = progression.Locations.FirstOrDefault(
+                location => string.Equals(
+                    location.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            if (firstLocation != null && firstLocation.delegatedDaysOperating > 0)
+            {
+                // Once an off-site day has advanced, its aggregate inventory and
+                // report are authoritative. Do not repost the still-loaded detailed
+                // scene on top of delegated sales, purchasing, payroll, or rent.
+                error = null;
+                return true;
+            }
+
+            StoreSessionTotals totals = firstStore.CurrentTotals;
             if (totals == null)
             {
                 error = null;
                 return true;
             }
 
-            if (!TryGetRemainingInventoryUnits(
+            if (!TryGetDetailedInventory(
                     firstStoreInventory.Inventory?.CreateSnapshot(),
+                    firstStore.Checkout.ProductUnitCostsCents,
                     out int remainingInventoryUnits,
+                    out long inventoryAssetValueCents,
                     out error))
             {
                 return false;
             }
 
-            bool success = progression.TryPostDetailedShift(
+            bool success = progression.TryReconcileDetailedOperation(
                 firstStore.StableSessionId,
                 totals,
                 remainingInventoryUnits,
-                out bool alreadyPosted,
+                inventoryAssetValueCents,
+                out bool unchanged,
                 out error);
-            if (success && !alreadyPosted)
+            if (success && !unchanged && totals.transactionCount > 0)
             {
                 Record(
-                    $"Posted first-shift contribution {FormatCents(totals.contributionAfterCostOfGoodsCents)} to company cash.",
+                    $"Live operation reconciled: cash {FormatCents(progression.CashCents)}, " +
+                    $"sales {FormatCents(totals.grossSalesCents)}, COGS {FormatCents(totals.costOfGoodsSoldCents)}.",
                     true);
             }
             return success;
@@ -189,20 +235,42 @@ namespace Margins
         {
             PortfolioProgression migration = PortfolioProgression.CreateInitial();
             StoreOperatingSnapshot operating = firstStoreSnapshot?.storeOperating;
-            if (operating?.hasResult == true && operating.totals != null)
+            StoreSessionTotals migratedTotals = operating?.hasResult == true
+                ? operating.totals
+                : null;
+            if (migratedTotals == null && firstStoreSnapshot != null)
             {
-                if (!TryGetRemainingInventoryUnits(
-                        firstStoreSnapshot.inventory,
-                        out int remainingInventoryUnits,
+                if (!CompletedTransactionLedger.TryRestore(
+                        firstStoreSnapshot.transactionLedger,
+                        out CompletedTransactionLedger ledger,
+                        out error) ||
+                    !StoreSessionTotals.TryCreateFromLedger(
+                        ledger,
+                        firstStore.IncludedOperatingExpensesCents,
+                        out migratedTotals,
                         out error))
                 {
                     migrated = null;
                     return false;
                 }
-                if (!migration.TryPostDetailedShift(
+            }
+            if (migratedTotals != null)
+            {
+                if (!TryGetDetailedInventory(
+                        firstStoreSnapshot.inventory,
+                        firstStore.Checkout.ProductUnitCostsCents,
+                        out int remainingInventoryUnits,
+                        out long inventoryAssetValueCents,
+                        out error))
+                {
+                    migrated = null;
+                    return false;
+                }
+                if (!migration.TryReconcileDetailedOperation(
                         operating.sessionId,
-                        operating.totals,
+                        migratedTotals,
                         remainingInventoryUnits,
+                        inventoryAssetValueCents,
                         out _,
                         out error))
                 {
@@ -216,13 +284,16 @@ namespace Margins
             return true;
         }
 
-        private static bool TryGetRemainingInventoryUnits(
+        private static bool TryGetDetailedInventory(
             FirstStoreInventorySnapshot inventory,
+            System.Collections.Generic.IReadOnlyDictionary<string, int> unitCostsCents,
             out int totalUnits,
+            out long inventoryAssetValueCents,
             out string error)
         {
             totalUnits = 0;
-            if (inventory?.locations == null)
+            inventoryAssetValueCents = 0;
+            if (inventory?.locations == null || unitCostsCents == null)
             {
                 error = "Detailed first-store inventory is missing.";
                 return false;
@@ -244,7 +315,19 @@ namespace Margins
                             error = "Detailed first-store inventory contains an invalid quantity.";
                             return false;
                         }
+                        if (!unitCostsCents.TryGetValue(
+                                quantity.productId,
+                                out int unitCostCents) ||
+                            unitCostCents < 0)
+                        {
+                            error =
+                                $"Detailed inventory product '{quantity.productId}' has no authoritative unit cost.";
+                            return false;
+                        }
                         totalUnits = checked(totalUnits + quantity.quantityUnits);
+                        inventoryAssetValueCents = checked(
+                            inventoryAssetValueCents +
+                            (long)quantity.quantityUnits * unitCostCents);
                     }
                 }
             }
@@ -396,7 +479,7 @@ namespace Margins
             PortfolioLocationSnapshot first = snapshot.locations.First(location =>
                 location.locationId == PortfolioProgressionRules.FirstLocationId);
             DrawCheck(
-                first.daysOperating > 0,
+                first.delegatedDaysOperating > 0,
                 "Manager has proven at least one delegated operating day");
             DrawCheck(snapshot.locations.Count > 1, "Second market selected and lease signed");
             bool portfolioStaffed = snapshot.locations.All(location =>
@@ -567,10 +650,12 @@ namespace Margins
             GUILayout.Label($"{location.displayName.ToUpperInvariant()}  /  {location.districtName.ToUpperInvariant()}");
             GUILayout.Label(location.marketSummary);
             GUILayout.Label(
+                $"BUSINESS SYSTEM  /  {location.businessTypeId}\n{location.operatingModel}");
+            GUILayout.Label(
                 $"Demand index {location.baseDemandUnits}  |  competition {location.competitionIndex}/100  |  " +
                 $"reputation {location.reputation}/100\n" +
                 $"Inventory {location.inventoryUnits}/{location.inventoryCapacityUnits}  |  " +
-                $"rent {FormatCents(location.dailyRentCents)}/day  |  delegated days {location.daysOperating}");
+                $"rent {FormatCents(location.dailyRentCents)}/day  |  delegated days {location.delegatedDaysOperating}");
             GUILayout.Space(8f);
             GUILayout.Label("PRICING POLICY");
             GUILayout.BeginHorizontal();
@@ -662,6 +747,10 @@ namespace Margins
                 GUILayout.Label(
                     $"{location.displayName.ToUpperInvariant()}  /  {location.districtName}\n" +
                     $"Lifetime sales {FormatCents(location.lifetimeGrossSalesCents)}  |  " +
+                    $"COGS {FormatCents(location.lifetimeCostOfGoodsSoldCents)}  |  " +
+                    $"purchases {FormatCents(location.lifetimeInventoryPurchaseCents)}\n" +
+                    $"Payroll {FormatCents(location.lifetimePayrollCents)}  |  " +
+                    $"rent {FormatCents(location.lifetimeRentCents)}  |  " +
                     $"operating profit {FormatCents(location.lifetimeOperatingProfitCents)}  |  " +
                     $"reputation {location.reputation}/100  |  inventory {location.inventoryUnits}/{location.inventoryCapacityUnits}");
                 PortfolioLocationReportSnapshot report = location.lastReport;

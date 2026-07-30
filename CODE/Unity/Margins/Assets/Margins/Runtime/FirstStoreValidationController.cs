@@ -25,6 +25,7 @@ namespace Margins
 
         public string LastAction => lastAction;
         public bool IsHudModeActive =>
+            !GamePauseMenuController.IsAnyMenuOpen &&
             firstPersonController != null &&
             !firstPersonController.IsGameplayMode &&
             (portfolioProgression == null ||

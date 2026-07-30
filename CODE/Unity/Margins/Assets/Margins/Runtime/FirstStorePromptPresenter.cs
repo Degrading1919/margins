@@ -43,6 +43,7 @@ namespace Margins
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
         [SerializeField] private CleaningTaskComponent cleaning;
         [SerializeField] private StoreOperatingController store;
+        [SerializeField] private PortfolioProgressionController portfolio;
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
         [Header("Objective world targets")]
@@ -134,6 +135,11 @@ namespace Margins
             if (!TryValidateConfiguration(out _))
             {
                 return FirstStoreObjectiveKind.ClockIn;
+            }
+
+            if (store.IsContinuousOperation)
+            {
+                return FirstStoreObjectiveKind.Complete;
             }
 
             bool saleComplete = checkout.CompletedTransactionCount > 0;
@@ -337,13 +343,22 @@ namespace Margins
             float height = Screen.height / scale;
 
             DrawStoreBadge();
-            DrawChecklist(width);
-            DrawObjective(width, height);
+            if (store != null && store.IsContinuousOperation)
+            {
+                DrawContinuousStatus(width);
+                DrawContinuousAction(width, height);
+            }
+            else
+            {
+                DrawChecklist(width);
+                DrawObjective(width, height);
+            }
             DrawCrosshair(width, height);
             DrawHeldItem(width, height);
             DrawFeedback(width, height);
             DrawIntroControls(height);
-            if (store != null && store.State == StoreOperatingState.ClosedWithResultPending)
+            if (store != null && !store.IsContinuousOperation &&
+                store.State == StoreOperatingState.ClosedWithResultPending)
             {
                 DrawResult(width, height);
             }
@@ -360,8 +375,90 @@ namespace Margins
             GUI.Label(new Rect(54f, 43f, 365f, 30f), storeDisplayName, titleStyle);
             GUI.Label(
                 new Rect(54f, 80f, 365f, 24f),
-                $"FIRST SHIFT  /  {FriendlyStoreState()}",
+                store != null && store.IsContinuousOperation
+                    ? $"LIVE BUSINESS  /  {FriendlyStoreState()}"
+                    : $"FIRST SHIFT  /  {FriendlyStoreState()}",
                 eyebrowStyle);
+        }
+
+        private void DrawContinuousStatus(float width)
+        {
+            StoreSessionTotals totals = store?.CurrentTotals;
+            PortfolioProgressionSnapshot company =
+                portfolio?.Progression?.CreateSnapshot();
+            long cash = company?.cashCents ?? 0;
+            Rect panel = new(width - 442f, 30f, 410f, 196f);
+            DrawPanel(panel, Night);
+            DrawPanel(new Rect(panel.x, panel.y, 7f, panel.height), Teal);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 16f, 350f, 24f),
+                $"DAY {company?.currentDay ?? 1}  /  LIVE LEDGER",
+                eyebrowStyle);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 49f, 350f, 32f),
+                $"Cash  {FormatCents(cash)}",
+                titleStyle);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 90f, 360f, 25f),
+                $"Sales {FormatCents(totals?.grossSalesCents ?? 0)}   •   " +
+                $"COGS {FormatCents(totals?.costOfGoodsSoldCents ?? 0)}",
+                bodyStyle);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 123f, 360f, 25f),
+                $"Rent/overhead {FormatCents(totals?.includedOperatingExpensesCents ?? 0)}   •   " +
+                $"Stock {CountDetailedInventory()} units",
+                smallStyle);
+            string condition = cleaning != null && cleaning.NeedsCleaning
+                ? "Store condition: spill needs attention"
+                : "Store condition: clean";
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 157f, 360f, 24f),
+                condition,
+                cleaning != null && cleaning.NeedsCleaning ? bodyStyle : smallStyle);
+        }
+
+        private void DrawContinuousAction(float width, float height)
+        {
+            Rect panel = new((width - 920f) * 0.5f, height - 142f, 920f, 104f);
+            DrawPanel(panel, Night);
+            DrawPanel(new Rect(panel.x, panel.y, 8f, panel.height), Teal);
+            FirstStoreWorldInteractionPrompt prompt = interaction.CurrentPrompt;
+            string headline = prompt == null
+                ? "Operate freely — receive, stock, serve, clean when needed, or manage the company"
+                : prompt.Action;
+            GUI.Label(
+                new Rect(panel.x + 28f, panel.y + 17f, 850f, 32f),
+                headline,
+                objectiveStyle);
+            if (prompt == null)
+            {
+                GUI.Label(
+                    new Rect(panel.x + 28f, panel.y + 59f, 850f, 24f),
+                    "Tab company management   •   Escape game menu   •   F5 quick save   •   F9 quick load",
+                    smallStyle);
+                return;
+            }
+
+            DrawPanel(new Rect(panel.x + 28f, panel.y + 57f, 44f, 28f), Teal);
+            GUI.Label(new Rect(panel.x + 28f, panel.y + 58f, 44f, 25f), prompt.Input, keyStyle);
+            GUI.Label(
+                new Rect(panel.x + 86f, panel.y + 58f, 780f, 25f),
+                string.IsNullOrWhiteSpace(prompt.StateOrBlocker)
+                    ? "Ready"
+                    : prompt.StateOrBlocker,
+                smallStyle);
+        }
+
+        private int CountDetailedInventory()
+        {
+            FirstStoreInventory inventory = delivery?.InventoryComponent?.Inventory;
+            if (inventory == null || colaProduct == null || chipsProduct == null)
+            {
+                return 0;
+            }
+
+            return inventory.GetTotalQuantity(colaProduct.StableProductId) +
+                   inventory.GetTotalQuantity(chipsProduct.StableProductId);
         }
 
         private void DrawChecklist(float width)

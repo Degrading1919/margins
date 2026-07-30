@@ -14,7 +14,7 @@ namespace Margins.Tests.EditMode
             transactionCount: 1);
 
         [Test]
-        public void DetailedShiftPostsContributionExactlyOnce()
+        public void DetailedShiftPostsCashBasisExactlyOnce()
         {
             PortfolioProgression progression = PortfolioProgression.CreateInitial();
             long startingCash = progression.CashCents;
@@ -30,7 +30,9 @@ namespace Margins.Tests.EditMode
                 error);
             Assert.That(alreadyPosted, Is.False);
             Assert.That(progression.FirstShiftCompleted, Is.True);
-            Assert.That(progression.CashCents, Is.EqualTo(startingCash + 108));
+            long acquiredInventoryCost = (7 * 135) + 150;
+            long expectedCash = startingCash + 348 - 90 - acquiredInventoryCost;
+            Assert.That(progression.CashCents, Is.EqualTo(expectedCash));
             Assert.That(
                 progression.Locations.Single().inventoryUnits,
                 Is.EqualTo(7),
@@ -46,7 +48,7 @@ namespace Margins.Tests.EditMode
                 Is.True,
                 error);
             Assert.That(alreadyPosted, Is.True);
-            Assert.That(progression.CashCents, Is.EqualTo(startingCash + 108));
+            Assert.That(progression.CashCents, Is.EqualTo(expectedCash));
 
             Assert.That(
                 progression.TryPostDetailedShift(
@@ -56,7 +58,7 @@ namespace Margins.Tests.EditMode
                     out _,
                     out _),
                 Is.False);
-            Assert.That(progression.CashCents, Is.EqualTo(startingCash + 108));
+            Assert.That(progression.CashCents, Is.EqualTo(expectedCash));
         }
 
         [Test]
@@ -98,6 +100,120 @@ namespace Margins.Tests.EditMode
         }
 
         [Test]
+        public void DetailedInventoryPurchasesCogsRentPayrollAndCashReconcileWithoutDoubleCounting()
+        {
+            PortfolioProgression progression = PortfolioProgression.CreateInitial();
+            long startingCash = progression.CashCents;
+            StoreSessionTotals beforeSales = new(
+                grossSalesCents: 0,
+                costOfGoodsSoldCents: 0,
+                includedOperatingExpensesCents: 9_000,
+                contributionAfterCostOfGoodsCents: -9_000,
+                unitsSold: 0,
+                transactionCount: 0);
+
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    "session-live-store-001",
+                    beforeSales,
+                    remainingInventoryUnits: 8,
+                    inventoryAssetValueCents: 600,
+                    out bool unchanged,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(unchanged, Is.False);
+            Assert.That(progression.CashCents, Is.EqualTo(startingCash - 600 - 9_000));
+
+            StoreSessionTotals firstSale = new(
+                grossSalesCents: 348,
+                costOfGoodsSoldCents: 150,
+                includedOperatingExpensesCents: 9_000,
+                contributionAfterCostOfGoodsCents: -8_802,
+                unitsSold: 2,
+                transactionCount: 1);
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    "session-live-store-001",
+                    firstSale,
+                    remainingInventoryUnits: 6,
+                    inventoryAssetValueCents: 450,
+                    out unchanged,
+                    out error),
+                Is.True,
+                error);
+            long cashAfterSale = startingCash - 600 - 9_000 + 348;
+            Assert.That(progression.CashCents, Is.EqualTo(cashAfterSale));
+            Assert.That(
+                progression.Locations.Single().lifetimeCostOfGoodsSoldCents,
+                Is.EqualTo(150),
+                "COGS must reduce profit but must not be a second inventory cash outflow.");
+
+            Assert.That(
+                progression.TryHireCandidate(
+                    "employee-elena-ruiz",
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error),
+                Is.True,
+                error);
+            StoreSessionTotals staffed = new(
+                grossSalesCents: 348,
+                costOfGoodsSoldCents: 150,
+                includedOperatingExpensesCents: 21_000,
+                contributionAfterCostOfGoodsCents: -20_802,
+                unitsSold: 2,
+                transactionCount: 1);
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    "session-live-store-001",
+                    staffed,
+                    remainingInventoryUnits: 6,
+                    inventoryAssetValueCents: 450,
+                    out unchanged,
+                    out error),
+                Is.True,
+                error);
+
+            PortfolioProgressionSnapshot snapshot = progression.CreateSnapshot();
+            PortfolioLocationSnapshot location = snapshot.locations.Single();
+            Assert.That(location.lifetimeGrossSalesCents, Is.EqualTo(348));
+            Assert.That(location.lifetimeCostOfGoodsSoldCents, Is.EqualTo(150));
+            Assert.That(location.lifetimeInventoryPurchaseCents, Is.EqualTo(600));
+            Assert.That(location.lifetimeRentCents, Is.EqualTo(9_000));
+            Assert.That(location.lifetimePayrollCents, Is.EqualTo(12_000));
+            Assert.That(location.lifetimeOperatingProfitCents, Is.EqualTo(-20_802));
+            Assert.That(location.lifetimeCashChangeCents, Is.EqualTo(-21_252));
+            Assert.That(location.lastReport.cashChangeCents, Is.EqualTo(-21_252));
+            Assert.That(
+                snapshot.cashCents,
+                Is.EqualTo(
+                    startingCash -
+                    600 -
+                    9_000 +
+                    348 -
+                    25_000 -
+                    12_000));
+
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    "session-live-store-001",
+                    staffed,
+                    remainingInventoryUnits: 6,
+                    inventoryAssetValueCents: 450,
+                    out unchanged,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(unchanged, Is.True);
+            Assert.That(
+                PortfolioProgression.TryValidateSnapshot(
+                    progression.CreateSnapshot(),
+                    out error),
+                Is.True,
+                error);
+        }
+
+        [Test]
         public void DelegatedDayReconcilesMoneyInventoryPeopleAndReport()
         {
             PortfolioProgression progression = ReadyWithFirstTeam();
@@ -114,7 +230,8 @@ namespace Margins.Tests.EditMode
             PortfolioLocationSnapshot location = after.locations.Single();
             PortfolioLocationReportSnapshot report = location.lastReport;
             Assert.That(after.currentDay, Is.EqualTo(2));
-            Assert.That(location.daysOperating, Is.EqualTo(1));
+            Assert.That(location.daysOperating, Is.EqualTo(2));
+            Assert.That(location.delegatedDaysOperating, Is.EqualTo(1));
             Assert.That(report, Is.Not.Null);
             Assert.That(report.day, Is.EqualTo(2));
             Assert.That(report.demandUnits, Is.EqualTo(report.unitsSold + report.lostDemandUnits));

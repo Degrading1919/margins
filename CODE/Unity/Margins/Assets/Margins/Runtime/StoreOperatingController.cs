@@ -13,12 +13,16 @@ namespace Margins
         [SerializeField] private CleaningTaskComponent cleaningTask;
         [SerializeField] private string[] requiredFixtureInstanceIds;
         [SerializeField, Min(0)] private int includedOperatingExpensesCents;
+        [SerializeField] private bool continuousOperation;
+
+        private long livePayrollCents;
 
         internal StoreOperatingSession Session { get; private set; }
         public StoreOperatingState State =>
             Session?.State ?? StoreOperatingState.Closed;
         public string StableSessionId => stableSessionId;
         public StoreSessionTotals ResultTotals => Session?.Totals;
+        public bool IsContinuousOperation => continuousOperation;
         public bool IsInitialized => Session != null;
         public FixturePlacementController FixturePlacement => fixturePlacement;
         public StockingController Stocking => stocking;
@@ -26,6 +30,50 @@ namespace Margins
         public CleaningTaskComponent CleaningTask => cleaningTask;
         public int IncludedOperatingExpensesCents =>
             includedOperatingExpensesCents;
+        public long LivePayrollCents => livePayrollCents;
+
+        public StoreSessionTotals CurrentTotals
+        {
+            get
+            {
+                if (Session?.Totals != null)
+                {
+                    return Session.Totals;
+                }
+
+                return checkout?.TransactionLedger != null &&
+                       StoreSessionTotals.TryCreateFromLedger(
+                           checkout.TransactionLedger,
+                           checked(includedOperatingExpensesCents + livePayrollCents),
+                           out StoreSessionTotals live,
+                           out _)
+                    ? live
+                    : null;
+            }
+        }
+
+        public bool TrySetLivePayrollCents(long payrollCents, out string error)
+        {
+            if (payrollCents < 0)
+            {
+                error = "Live payroll cannot be negative.";
+                return false;
+            }
+
+            try
+            {
+                _ = checked(includedOperatingExpensesCents + payrollCents);
+            }
+            catch (OverflowException)
+            {
+                error = "Live operating expenses exceed supported cent storage.";
+                return false;
+            }
+
+            livePayrollCents = payrollCents;
+            error = null;
+            return true;
+        }
 
         private void Start()
         {
@@ -172,6 +220,20 @@ namespace Margins
             }
 
             Session = session;
+            if (continuousOperation)
+            {
+                if (!Session.TryTransition(
+                        StoreOperatingState.Preparing,
+                        out failure) ||
+                    !Session.TryTransition(
+                        StoreOperatingState.Open,
+                        out failure))
+                {
+                    Session = null;
+                    error = $"Continuous store startup was rejected ({failure}).";
+                    return false;
+                }
+            }
             error = null;
             return true;
         }
@@ -348,6 +410,11 @@ namespace Margins
 
         public bool IsFixtureModificationRestricted(string fixtureInstanceId)
         {
+            if (continuousOperation)
+            {
+                return false;
+            }
+
             if (State != StoreOperatingState.Open &&
                 State != StoreOperatingState.Closing)
             {
