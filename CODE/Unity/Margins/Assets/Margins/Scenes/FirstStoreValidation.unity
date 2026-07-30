@@ -524,7 +524,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2952a7d875ffe5428e0fbe5ec2775c5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.FirstPersonController
   characterController: {fileID: 33272901}
   cameraPivot: {fileID: 369055667}
@@ -2249,6 +2249,7 @@ MonoBehaviour:
   interactionController: {fileID: 33272902}
   stagedCheckout: {fileID: 1595772827}
   stagedCheckoutWorldTarget: {fileID: 1034734705}
+  portfolioProgression: {fileID: 794714430}
   saveFileName: first-store-vertical-slice.json
 --- !u!1 &315607742
 GameObject:
@@ -6043,6 +6044,7 @@ GameObject:
   - component: {fileID: 794714426}
   - component: {fileID: 794714428}
   - component: {fileID: 794714429}
+  - component: {fileID: 794714430}
   m_Layer: 0
   m_Name: First-Store Validation Controls
   m_TagString: Untagged
@@ -6074,6 +6076,7 @@ MonoBehaviour:
   colaProduct: {fileID: 11400000, guid: 210ac9c19d9e50748b52257b560c29d1, type: 2}
   chipsProduct: {fileID: 11400000, guid: 772e8be3753c1bf4cb5f5ac442ebc934, type: 2}
   firstPersonController: {fileID: 33272900}
+  portfolioProgression: {fileID: 794714430}
 --- !u!4 &794714427
 Transform:
   m_ObjectHideFlags: 0
@@ -6181,6 +6184,21 @@ MonoBehaviour:
   - {fileID: 737863861}
   - {fileID: 980435817}
   - {fileID: 882297609}
+--- !u!114 &794714430
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 794714425}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dcdf70a788143c84fba2d2fd716a9e3d, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Margins.Runtime::Margins.PortfolioProgressionController
+  firstPersonController: {fileID: 33272900}
+  firstStore: {fileID: 2123028612}
+  firstStoreInventory: {fileID: 1319953152}
 --- !u!1 &797198642
 GameObject:
   m_ObjectHideFlags: 0

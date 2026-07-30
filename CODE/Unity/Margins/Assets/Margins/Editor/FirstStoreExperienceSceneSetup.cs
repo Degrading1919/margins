@@ -244,6 +244,34 @@ namespace Margins.Editor
             SetArray(experience, "interiorLights", interiorLights);
             SetArray(experience, "practicalLightRenderers", practicalRenderers);
 
+            PortfolioProgressionController portfolio =
+                GetOrAdd<PortfolioProgressionController>(controlsObject);
+            SetObject(portfolio, "firstPersonController", player);
+            SetObject(
+                portfolio,
+                "firstStore",
+                Require("Store Operating Controller")
+                    .GetComponent<StoreOperatingController>());
+            SetObject(
+                portfolio,
+                "firstStoreInventory",
+                Require("First-Store Inventory")
+                    .GetComponent<FirstStoreInventoryComponent>());
+
+            FirstStoreDiskPersistenceController diskPersistence =
+                UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
+            if (diskPersistence != null)
+            {
+                SetObject(diskPersistence, "portfolioProgression", portfolio);
+            }
+
+            FirstStoreValidationController validation =
+                controlsObject.GetComponent<FirstStoreValidationController>();
+            if (validation != null)
+            {
+                SetObject(validation, "portfolioProgression", portfolio);
+            }
+
             EditorUtility.SetDirty(presentationRoot);
             AssetDatabase.SaveAssets();
         }

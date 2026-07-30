@@ -17,6 +17,7 @@ namespace Margins
         internal StoreOperatingSession Session { get; private set; }
         public StoreOperatingState State =>
             Session?.State ?? StoreOperatingState.Closed;
+        public string StableSessionId => stableSessionId;
         public StoreSessionTotals ResultTotals => Session?.Totals;
         public bool IsInitialized => Session != null;
         public FixturePlacementController FixturePlacement => fixturePlacement;

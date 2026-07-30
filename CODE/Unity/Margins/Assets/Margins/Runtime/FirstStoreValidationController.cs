@@ -17,6 +17,7 @@ namespace Margins
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
         [SerializeField] private FirstPersonController firstPersonController;
+        [SerializeField] private PortfolioProgressionController portfolioProgression;
 
         private int transactionOrdinal = 1;
         private string lastCompletedTransactionId;
@@ -24,15 +25,20 @@ namespace Margins
 
         public string LastAction => lastAction;
         public bool IsHudModeActive =>
-            firstPersonController != null && !firstPersonController.IsGameplayMode;
+            firstPersonController != null &&
+            !firstPersonController.IsGameplayMode &&
+            (portfolioProgression == null ||
+             !portfolioProgression.OwnsManagementDesk);
 
         private void Start()
         {
             string error = null;
             if (firstPersonController == null ||
                 diskPersistence == null ||
+                portfolioProgression == null ||
                 !delivery.TryInitialize(out error) ||
                 !store.TryInitialize(out error) ||
+                !portfolioProgression.TryValidateConfiguration(out error) ||
                 !diskPersistence.TryValidateConfiguration(out error))
             {
                 Record(
