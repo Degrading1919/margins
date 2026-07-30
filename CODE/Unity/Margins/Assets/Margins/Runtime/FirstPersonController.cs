@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -28,12 +29,28 @@ namespace Margins
 
         [SerializeField] private CharacterController characterController;
         [SerializeField] private Transform cameraPivot;
-        [SerializeField, Min(0f)] private float moveSpeed = 4f;
+        [SerializeField, Min(0f)] private float moveSpeed = 3.7f;
+        [SerializeField, Min(0f)] private float briskWalkSpeed = 5.2f;
+        [SerializeField, Min(0.01f)] private float acceleration = 17f;
+        [SerializeField, Min(0.01f)] private float deceleration = 23f;
         [SerializeField, Min(0f)] private float mouseSensitivity = 0.1f;
-        [SerializeField] private float gravity = -20f;
+        [SerializeField] private float gravity = -24f;
+        [SerializeField, Range(0f, 0.08f)] private float cameraBobAmplitude = 0.026f;
+        [SerializeField, Range(0f, 3f)] private float cameraBobFrequency = 1.75f;
 
         private float pitch;
         private float verticalVelocity;
+        private Vector3 planarVelocity;
+        private Vector3 cameraBaseLocalPosition;
+        private Camera playerCamera;
+        private float baseFieldOfView = 70f;
+        private float bobPhase;
+        private float distanceSinceFootstep;
+        private bool cameraStateCaptured;
+        private bool wasGrounded;
+
+        public event Action<bool> Footstep;
+        public event Action Landed;
 
         public bool IsGameplayMode { get; private set; }
         public CursorLockMode RequestedCursorLockState { get; private set; }
@@ -41,6 +58,9 @@ namespace Margins
             IsGameplayMode &&
             (Application.isBatchMode ||
              Cursor.lockState == CursorLockMode.Locked);
+        public bool CameraMotionEnabled { get; private set; } = true;
+        public bool IsBriskWalking { get; private set; }
+        public float CurrentPlanarSpeed => planarVelocity.magnitude;
 
         public FirstStorePlayerTransformSnapshot CaptureTransformSnapshot()
         {
@@ -103,6 +123,11 @@ namespace Margins
                 pitch = snapshot.cameraPitchDegrees;
                 cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
                 verticalVelocity = 0f;
+                planarVelocity = Vector3.zero;
+                bobPhase = 0f;
+                distanceSinceFootstep = 0f;
+                EnsureCameraState();
+                cameraPivot.localPosition = cameraBaseLocalPosition;
             }
             finally
             {
@@ -118,6 +143,7 @@ namespace Margins
 
         private void OnEnable()
         {
+            EnsureCameraState();
             SetGameplayMode(true);
         }
 
@@ -125,6 +151,9 @@ namespace Margins
         {
             IsGameplayMode = false;
             RequestedCursorLockState = CursorLockMode.None;
+            planarVelocity = Vector3.zero;
+            IsBriskWalking = false;
+            ResetCameraMotion(true);
             UnlockCursor();
         }
 
@@ -133,6 +162,8 @@ namespace Margins
             HandleModeToggle();
             if (!IsGameplayMode)
             {
+                IsBriskWalking = false;
+                ResetCameraMotion(false);
                 return;
             }
 
@@ -170,8 +201,17 @@ namespace Margins
             input.x -= Keyboard.current.aKey.isPressed ? 1f : 0f;
             input = Vector2.ClampMagnitude(input, 1f);
 
-            Vector3 horizontalMovement = (transform.right * input.x + transform.forward * input.y) * moveSpeed;
-            characterController.Move(horizontalMovement * Time.deltaTime);
+            IsBriskWalking = input.sqrMagnitude > 0.01f &&
+                             (Keyboard.current.leftShiftKey.isPressed ||
+                              Keyboard.current.rightShiftKey.isPressed);
+            float targetSpeed = IsBriskWalking ? briskWalkSpeed : moveSpeed;
+            Vector3 desiredVelocity =
+                (transform.right * input.x + transform.forward * input.y) * targetSpeed;
+            float rate = input.sqrMagnitude > 0.01f ? acceleration : deceleration;
+            planarVelocity = Vector3.MoveTowards(
+                planarVelocity,
+                desiredVelocity,
+                rate * Time.deltaTime);
 
             if (characterController.isGrounded && verticalVelocity < 0f)
             {
@@ -182,7 +222,19 @@ namespace Margins
                 verticalVelocity += gravity * Time.deltaTime;
             }
 
-            characterController.Move(Vector3.up * (verticalVelocity * Time.deltaTime));
+            Vector3 frameMotion = planarVelocity + Vector3.up * verticalVelocity;
+            CollisionFlags collisionFlags = characterController.Move(
+                frameMotion * Time.deltaTime);
+            bool grounded = characterController.isGrounded ||
+                            (collisionFlags & CollisionFlags.Below) != 0;
+            if (grounded && !wasGrounded && verticalVelocity < -4f)
+            {
+                Landed?.Invoke();
+            }
+            wasGrounded = grounded;
+
+            UpdateCameraMotion(grounded, targetSpeed);
+            UpdateFootsteps(grounded);
         }
 
         private void HandleLook()
@@ -197,7 +249,7 @@ namespace Margins
             Vector2 lookDelta = Mouse.current.delta.ReadValue() * mouseSensitivity;
             transform.Rotate(0f, lookDelta.x, 0f);
             pitch = Mathf.Clamp(pitch - lookDelta.y, MinimumPitchDegrees, MaximumPitchDegrees);
-            cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            ApplyCameraRotation();
         }
 
         private void HandleModeToggle()
@@ -205,6 +257,131 @@ namespace Margins
             if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
             {
                 SetGameplayMode(!IsGameplayMode);
+            }
+
+            if (Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame)
+            {
+                CameraMotionEnabled = !CameraMotionEnabled;
+                if (!CameraMotionEnabled)
+                {
+                    ResetCameraMotion(false);
+                }
+            }
+        }
+
+        private void UpdateCameraMotion(bool grounded, float targetSpeed)
+        {
+            EnsureCameraState();
+            if (cameraPivot == null)
+            {
+                return;
+            }
+
+            float speed = planarVelocity.magnitude;
+            bool moving = CameraMotionEnabled && grounded && speed > 0.15f;
+            Vector3 targetPosition = cameraBaseLocalPosition;
+            float roll = 0f;
+            if (moving)
+            {
+                float speedRatio = Mathf.Clamp01(speed / Mathf.Max(0.01f, targetSpeed));
+                bobPhase += Time.deltaTime * cameraBobFrequency *
+                            Mathf.Lerp(5.2f, 7.4f, speedRatio);
+                targetPosition += new Vector3(
+                    Mathf.Cos(bobPhase * 0.5f) * cameraBobAmplitude * 0.45f,
+                    Mathf.Sin(bobPhase) * cameraBobAmplitude,
+                    0f);
+                roll = Mathf.Cos(bobPhase * 0.5f) * 0.35f * speedRatio;
+            }
+
+            cameraPivot.localPosition = Vector3.Lerp(
+                cameraPivot.localPosition,
+                targetPosition,
+                1f - Mathf.Exp(-14f * Time.deltaTime));
+            ApplyCameraRotation(roll);
+
+            if (playerCamera != null)
+            {
+                float targetFov = baseFieldOfView + (IsBriskWalking ? 2.5f : 0f);
+                playerCamera.fieldOfView = Mathf.Lerp(
+                    playerCamera.fieldOfView,
+                    targetFov,
+                    1f - Mathf.Exp(-7f * Time.deltaTime));
+            }
+        }
+
+        private void UpdateFootsteps(bool grounded)
+        {
+            if (!grounded || planarVelocity.sqrMagnitude < 0.12f)
+            {
+                distanceSinceFootstep = 0f;
+                return;
+            }
+
+            distanceSinceFootstep += planarVelocity.magnitude * Time.deltaTime;
+            float stepDistance = IsBriskWalking ? 1.35f : 1.55f;
+            if (distanceSinceFootstep < stepDistance)
+            {
+                return;
+            }
+
+            distanceSinceFootstep %= stepDistance;
+            Footstep?.Invoke(IsBriskWalking);
+        }
+
+        private void EnsureCameraState()
+        {
+            if (cameraPivot == null)
+            {
+                return;
+            }
+
+            if (!cameraStateCaptured)
+            {
+                cameraBaseLocalPosition = cameraPivot.localPosition;
+                cameraStateCaptured = true;
+            }
+
+            if (playerCamera == null)
+            {
+                playerCamera = cameraPivot.GetComponentInChildren<Camera>();
+                if (playerCamera != null)
+                {
+                    baseFieldOfView = playerCamera.fieldOfView;
+                }
+            }
+        }
+
+        private void ResetCameraMotion(bool immediate)
+        {
+            EnsureCameraState();
+            if (cameraPivot == null)
+            {
+                return;
+            }
+
+            cameraPivot.localPosition = immediate
+                ? cameraBaseLocalPosition
+                : Vector3.Lerp(
+                    cameraPivot.localPosition,
+                    cameraBaseLocalPosition,
+                    1f - Mathf.Exp(-14f * Time.deltaTime));
+            ApplyCameraRotation();
+            if (playerCamera != null)
+            {
+                playerCamera.fieldOfView = immediate
+                    ? baseFieldOfView
+                    : Mathf.Lerp(
+                        playerCamera.fieldOfView,
+                        baseFieldOfView,
+                        1f - Mathf.Exp(-7f * Time.deltaTime));
+            }
+        }
+
+        private void ApplyCameraRotation(float roll = 0f)
+        {
+            if (cameraPivot != null)
+            {
+                cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, roll);
             }
         }
 

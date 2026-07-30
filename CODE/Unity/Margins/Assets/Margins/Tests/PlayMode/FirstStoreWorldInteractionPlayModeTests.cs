@@ -101,9 +101,20 @@ namespace Margins.Tests
             int expectedRemovals = remaining;
 
             Assert.That(openTarget.TryPrimary(out error), Is.True, error);
-            for (int index = 0; index < expectedRemovals; index++)
+            Assert.That(colaTarget.TryPrimary(out error), Is.True, error);
+            StockingController stocking = Object.FindAnyObjectByType<StockingController>();
+            Assert.That(stocking.HeldPhysicalUnit, Is.Not.Null);
+            for (int index = 1; index < expectedRemovals; index++)
             {
-                Assert.That(colaTarget.TryPrimary(out error), Is.True, error);
+                Assert.That(
+                    delivery.TryRemoveOneUnit(
+                        cola,
+                        out _,
+                        out _,
+                        out _,
+                        out error),
+                    Is.True,
+                    error);
             }
 
             Assert.That(delivery.TryGetConfiguredProductRemaining(cola, out _, out remaining, out error), Is.True, error);
@@ -111,7 +122,8 @@ namespace Margins.Tests
             Assert.That(colaTarget.TryPrimary(out string exhaustedError), Is.False);
             StringAssert.Contains("No", exhaustedError);
             Assert.That(inventory.Inventory.GetTotalQuantity(cola.StableProductId), Is.EqualTo(totalBefore));
-            Assert.That(inventory.Inventory.GetQuantity("loc-loose", cola.StableProductId), Is.EqualTo(expectedRemovals));
+            Assert.That(inventory.Inventory.GetQuantity("loc-held", cola.StableProductId), Is.EqualTo(1));
+            Assert.That(inventory.Inventory.GetQuantity("loc-loose", cola.StableProductId), Is.EqualTo(expectedRemovals - 1));
         }
 
         [UnityTest]
@@ -142,7 +154,8 @@ namespace Margins.Tests
 
             Assert.That(openTarget.TryPrimary(out string error), Is.True, error);
             Assert.That(colaDeliveryTarget.TryPrimary(out error), Is.True, error);
-            Assert.That(stocking.TryPickUpLooseUnit(cola, out ProductItem held, out error), Is.True, error);
+            ProductItem held = stocking.HeldPhysicalUnit;
+            Assert.That(held, Is.Not.Null);
             Assert.That(held.AdjustQuarterTurns(1), Is.True);
             int totalBefore = inventory.Inventory.GetTotalQuantity(cola.StableProductId);
             int physicalBefore = stocking.PhysicalUnits.VisibleUnitCount;

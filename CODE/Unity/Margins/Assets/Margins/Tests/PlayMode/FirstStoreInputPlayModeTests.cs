@@ -291,6 +291,96 @@ namespace Margins.Tests
                 Is.EqualTo(visibleBefore));
         }
 
+        [UnityTest]
+        public IEnumerator FirstShiftWorldPathReachesResultWithPresentationConfigured()
+        {
+            yield return LoadValidationScene();
+
+            FirstStoreExperienceController experience =
+                Object.FindAnyObjectByType<FirstStoreExperienceController>();
+            Assert.That(experience, Is.Not.Null);
+            Assert.That(experience.TryValidateConfiguration(out string error), Is.True, error);
+            Assert.That(GameObject.Find("First Store Presentation"), Is.Not.Null);
+            Assert.That(Object.FindObjectsByType<Light>(FindObjectsInactive.Include).Length, Is.GreaterThanOrEqualTo(9));
+
+            StoreOperatingWorldInteractionTarget storeTarget =
+                GameObject.Find("World Store Operating Control")
+                    .GetComponent<StoreOperatingWorldInteractionTarget>();
+            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
+
+            FixturePlacementController placement =
+                GameObject.Find("Fixture Placement").GetComponent<FixturePlacementController>();
+            PlaceableFixtureComponent fixture =
+                GameObject.Find("Essential Checkout Fixture").GetComponent<PlaceableFixtureComponent>();
+            Assert.That(
+                placement.TryPlace(fixture, new GridPosition(1, 1), 0).IsSuccess,
+                Is.True);
+
+            DeliveryBoxComponent delivery =
+                GameObject.Find("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
+            Assert.That(
+                delivery.GetComponent<DeliveryOpenWorldInteractionTarget>()
+                    .TryPrimary(out error),
+                Is.True,
+                error);
+
+            ShelfSnapWorldInteractionTarget[] shelfTargets =
+                Object.FindObjectsByType<ShelfSnapWorldInteractionTarget>(
+                    FindObjectsInactive.Exclude);
+            StockingController stocking = Object.FindAnyObjectByType<StockingController>();
+            foreach (DeliveryProductWorldInteractionTarget productTarget in
+                     delivery.GetComponentsInChildren<DeliveryProductWorldInteractionTarget>())
+            {
+                Assert.That(productTarget.TryPrimary(out error), Is.True, error);
+                Assert.That(stocking.HeldPhysicalUnit, Is.Not.Null);
+                Assert.That(
+                    stocking.HeldPhysicalUnit.Definition,
+                    Is.SameAs(productTarget.ProductDefinition));
+                ShelfSnapWorldInteractionTarget matchingShelf = shelfTargets
+                    .OrderBy(target => target.SnapPointId)
+                    .First(target => stocking.CanStockHeldUnit(
+                        target.ShelfFixture,
+                        target.SnapPointId,
+                        out _));
+                Assert.That(matchingShelf.TryPrimary(out error), Is.True, error);
+            }
+
+            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
+
+            StagedCheckoutWorldInteractionTarget checkoutTarget =
+                GameObject.Find("World Checkout Interaction")
+                    .GetComponent<StagedCheckoutWorldInteractionTarget>();
+            StagedCheckoutInteractionComponent stagedCheckout =
+                Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>();
+            int checkoutActions = 0;
+            while (!stagedCheckout.AllBasketsComplete && checkoutActions < 10)
+            {
+                Assert.That(checkoutTarget.TryPrimary(out error), Is.True, error);
+                checkoutActions++;
+            }
+            Assert.That(stagedCheckout.AllBasketsComplete, Is.True);
+            Assert.That(checkoutActions, Is.InRange(3, 6));
+
+            CleaningWorldInteractionTarget cleaningTarget =
+                GameObject.Find("World Cleaning Interaction")
+                    .GetComponent<CleaningWorldInteractionTarget>();
+            CleaningTaskComponent cleaning =
+                GameObject.Find("Cleaning Task").GetComponent<CleaningTaskComponent>();
+            while (!cleaning.IsComplete)
+            {
+                Assert.That(cleaningTarget.TryPrimary(out error), Is.True, error);
+            }
+
+            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
+            StoreOperatingController store =
+                GameObject.Find("Store Operating Controller")
+                    .GetComponent<StoreOperatingController>();
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+            Assert.That(store.ResultTotals.transactionCount, Is.EqualTo(1));
+            Assert.That(store.ResultTotals.unitsSold, Is.EqualTo(2));
+        }
+
         private static IEnumerator LoadValidationScene()
         {
             yield return SceneManager.LoadSceneAsync(

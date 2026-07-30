@@ -9,6 +9,8 @@ namespace Margins
         [SerializeField] private string stableTargetId;
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
         [SerializeField] private StoreOperatingController operatingController;
+        [SerializeField] private FixturePlacementController fixturePlacement;
+        [SerializeField] private PlaceableFixtureComponent requiredFixture;
 
         private bool replayAcknowledged;
 
@@ -18,7 +20,9 @@ namespace Margins
         public bool IsAvailable =>
             FirstStoreIdentifier.IsValid(stableTargetId) &&
             stagedCheckout != null &&
-            operatingController != null;
+            operatingController != null &&
+            (fixturePlacement == null || requiredFixture == null ||
+             fixturePlacement.IsPlaced(requiredFixture.StableFixtureInstanceId));
 
         public FirstStoreWorldInteractionPrompt Prompt
         {
@@ -59,7 +63,7 @@ namespace Margins
                     case StagedCheckoutPrimaryAction.Begin:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Begin staged checkout",
+                            "Start checkout",
                             blocker ?? basket);
 
                     case StagedCheckoutPrimaryAction.Scan:
@@ -78,25 +82,25 @@ namespace Margins
                     case StagedCheckoutPrimaryAction.Complete:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Complete transaction",
+                            "Finish sale",
                             blocker ?? $"subtotal {subtotal}");
 
                     case StagedCheckoutPrimaryAction.Replay when !replayAcknowledged:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Verify completed transaction",
+                            "Clear completed basket",
                             $"already completed; subtotal {subtotal}");
 
                     case StagedCheckoutPrimaryAction.Replay:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Continue staged checkout",
+                            "Serve next basket",
                             $"{basket} completed");
 
                     default:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Use checkout",
+                            "Use register",
                             blocker ?? "no staged action available");
                 }
             }
@@ -116,14 +120,20 @@ namespace Margins
             }
 
             StagedCheckoutPrimaryAction actionBefore = stagedCheckout.NextAction;
-            if (actionBefore == StagedCheckoutPrimaryAction.Replay &&
-                replayAcknowledged)
+            if (actionBefore == StagedCheckoutPrimaryAction.Replay)
             {
-                bool continued = stagedCheckout.TryContinue(out error);
-                if (continued)
+                bool replayed = stagedCheckout.TryPrimary(
+                    out _,
+                    out _,
+                    out error);
+                if (!replayed)
                 {
-                    replayAcknowledged = false;
+                    return false;
                 }
+
+                replayAcknowledged = true;
+                bool continued = stagedCheckout.TryContinue(out error);
+                replayAcknowledged = false;
                 return continued;
             }
 
@@ -131,9 +141,9 @@ namespace Margins
                 out _,
                 out _,
                 out error);
-            if (success && actionBefore == StagedCheckoutPrimaryAction.Replay)
+            if (success && actionBefore == StagedCheckoutPrimaryAction.Complete)
             {
-                replayAcknowledged = true;
+                success = stagedCheckout.TryContinue(out error);
             }
             return success;
         }

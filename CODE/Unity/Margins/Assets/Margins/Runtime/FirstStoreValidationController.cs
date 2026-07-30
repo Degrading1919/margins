@@ -115,9 +115,6 @@ namespace Margins
         {
             if (!IsHudModeActive)
             {
-                GUI.Label(
-                    new Rect(12f, 12f, 560f, 24f),
-                    "Tab: validation HUD | E: context action | Q: cancel/correct | Wheel: rotate | Backspace: remove fixture");
                 return;
             }
 

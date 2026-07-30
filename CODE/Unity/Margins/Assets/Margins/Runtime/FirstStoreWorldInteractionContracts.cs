@@ -3,6 +3,26 @@ using System.Collections.Generic;
 
 namespace Margins
 {
+    public readonly struct FirstStoreInteractionFeedback
+    {
+        public FirstStoreInteractionFeedback(
+            bool succeeded,
+            string targetId,
+            string action,
+            string message)
+        {
+            Succeeded = succeeded;
+            TargetId = targetId ?? string.Empty;
+            Action = action ?? string.Empty;
+            Message = message ?? string.Empty;
+        }
+
+        public bool Succeeded { get; }
+        public string TargetId { get; }
+        public string Action { get; }
+        public string Message { get; }
+    }
+
     public enum FirstStoreWorldInteractionPriority
     {
         HeldPlacement = 0,

@@ -109,6 +109,7 @@ namespace Margins.Editor
             ConfigureDelivery(
                 deliveryObject,
                 delivery,
+                stocking,
                 cola,
                 chips,
                 colaMaterial,
@@ -131,6 +132,25 @@ namespace Margins.Editor
             SetObject(checkoutTarget, "stableTargetId", "target-checkout-staged-01");
             SetObject(checkoutTarget, "stagedCheckout", staged);
             SetObject(checkoutTarget, "operatingController", store);
+            SetObject(checkoutTarget, "fixturePlacement", fixturePlacement);
+            SetObject(checkoutTarget, "requiredFixture", requiredFixture);
+
+            FirstStoreDiskPersistenceController diskPersistence =
+                UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
+            if (diskPersistence != null)
+            {
+                SetObject(
+                    diskPersistence,
+                    "persistenceMapper",
+                    UnityEngine.Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>());
+                SetObject(
+                    diskPersistence,
+                    "firstPersonController",
+                    playerObject.GetComponent<FirstPersonController>());
+                SetObject(diskPersistence, "interactionController", interaction);
+                SetObject(diskPersistence, "stagedCheckout", staged);
+                SetObject(diskPersistence, "stagedCheckoutWorldTarget", checkoutTarget);
+            }
 
             GameObject cleaningTargetObject = CreateWorldShape(
                 "World Cleaning Interaction",
@@ -162,10 +182,15 @@ namespace Margins.Editor
             SetObject(presenter, "fixturePlacement", fixturePlacement);
             SetArray(presenter, "requiredFixtures", requiredFixture);
             SetObject(presenter, "delivery", delivery);
+            SetObject(presenter, "stocking", stocking);
             SetObject(presenter, "checkout", checkout);
             SetObject(presenter, "stagedCheckout", staged);
             SetObject(presenter, "cleaning", cleaning);
             SetObject(presenter, "store", store);
+            SetObject(presenter, "colaProduct", cola);
+            SetObject(presenter, "chipsProduct", chips);
+
+            FirstStoreExperienceSceneSetup.Apply(scene);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -176,6 +201,7 @@ namespace Margins.Editor
         private static void ConfigureDelivery(
             GameObject deliveryObject,
             DeliveryBoxComponent delivery,
+            StockingController stocking,
             ProductDefinition cola,
             ProductDefinition chips,
             Material colaMaterial,
@@ -198,6 +224,8 @@ namespace Margins.Editor
             SetObject(colaTarget, "stableTargetId", "target-delivery-cola-01");
             SetObject(colaTarget, "deliveryBox", delivery);
             SetObject(colaTarget, "productDefinition", cola);
+            SetObject(colaTarget, "stocking", stocking);
+            SetBoolean(colaTarget, "autoHoldOnTake", true);
 
             GameObject chipsTargetObject = CreateChildShape(
                 deliveryObject.transform,
@@ -210,6 +238,8 @@ namespace Margins.Editor
             SetObject(chipsTarget, "stableTargetId", "target-delivery-chips-01");
             SetObject(chipsTarget, "deliveryBox", delivery);
             SetObject(chipsTarget, "productDefinition", chips);
+            SetObject(chipsTarget, "stocking", stocking);
+            SetBoolean(chipsTarget, "autoHoldOnTake", true);
         }
 
         private static void ConfigureShelfTargets(
@@ -257,16 +287,12 @@ namespace Margins.Editor
             SerializedObject serialized = new(staged);
             serialized.FindProperty("checkout").objectReferenceValue = checkout;
             SerializedProperty baskets = serialized.FindProperty("baskets");
-            baskets.arraySize = 2;
+            baskets.arraySize = 1;
             ConfigureBasket(
                 baskets.GetArrayElementAtIndex(0),
                 "staged-transaction-001",
                 (cola, 1),
                 (chips, 1));
-            ConfigureBasket(
-                baskets.GetArrayElementAtIndex(1),
-                "staged-transaction-002",
-                (cola, 1));
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(staged);
         }
@@ -320,10 +346,14 @@ namespace Margins.Editor
             Material material,
             string label)
         {
-            GameObject existing = SceneManager.GetActiveScene()
-                .GetRootGameObjects()
-                .FirstOrDefault(root => root.name == objectName);
-            if (existing != null)
+            Scene activeScene = SceneManager.GetActiveScene();
+            GameObject[] existingObjects = Resources
+                .FindObjectsOfTypeAll<GameObject>()
+                .Where(candidate =>
+                    candidate.scene == activeScene &&
+                    candidate.name == objectName)
+                .ToArray();
+            foreach (GameObject existing in existingObjects)
             {
                 UnityEngine.Object.DestroyImmediate(existing);
             }

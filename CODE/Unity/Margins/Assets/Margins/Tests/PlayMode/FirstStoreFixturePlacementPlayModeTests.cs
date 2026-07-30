@@ -52,7 +52,13 @@ namespace Margins.Tests
             yield return null;
             Release(keyboard.eKey, queueEventOnly: true);
             yield return null;
-            Assert.That(mode.IsActive, Is.True);
+            Assert.That(
+                mode.IsActive,
+                Is.True,
+                $"Focused {interaction.FocusedTargetId}; feedback {interaction.LastFeedback}; " +
+                $"enabled {interaction.IsWorldInteractionEnabled}; handle active {handle.gameObject.activeInHierarchy}; " +
+                $"collider {handle.GetComponent<Collider>().enabled}; " +
+                $"camera {Camera.main.transform.position} target {handle.transform.position}");
 
             Vector3 previewPoint = GridCellCenter(placement, 1, 1);
             Assert.That(mode.TryPreviewAtWorldPoint(previewPoint, out string error), Is.True, error);
@@ -131,7 +137,13 @@ namespace Margins.Tests
             yield return null;
             Release(keyboard.backspaceKey, queueEventOnly: true);
             yield return null;
-            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
+            Assert.That(
+                placement.IsPlaced(fixture.StableFixtureInstanceId),
+                Is.False,
+                $"Focused {interaction.FocusedTargetId}; feedback {interaction.LastFeedback}; " +
+                $"enabled {interaction.IsWorldInteractionEnabled}; handle active {handle.gameObject.activeInHierarchy}; " +
+                $"collider {handle.GetComponent<Collider>().enabled}; " +
+                $"camera {Camera.main.transform.position} target {handle.transform.position}");
             Assert.That(handle.IsAvailable, Is.True);
 
             Assert.That(handle.TryPrimary(out string error), Is.True, error);

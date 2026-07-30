@@ -18,6 +18,8 @@ namespace Margins
         private IFirstStoreWorldInteractionTarget focusedTarget;
         private FirstStoreWorldInteractionPrompt currentPrompt;
 
+        public event Action<FirstStoreInteractionFeedback> InteractionResolved;
+
         public ProductItem HeldProduct => stocking?.HeldPhysicalUnit;
         public bool IsWorldInteractionEnabled =>
             firstPersonController != null &&
@@ -26,6 +28,7 @@ namespace Margins
         public FirstStoreWorldInteractionPrompt CurrentPrompt => currentPrompt;
         public string CurrentPromptText => currentPrompt?.FormattedText ?? string.Empty;
         public string LastFeedback { get; private set; }
+        public int FeedbackRevision { get; private set; }
 
         private void Start()
         {
@@ -185,8 +188,10 @@ namespace Margins
                 return false;
             }
 
+            string targetId = focusedTarget.StableTargetId;
+            string action = focusedTarget.Prompt?.Action ?? "Interact";
             bool success = focusedTarget.TryPrimary(out error);
-            LastFeedback = success ? null : error;
+            RecordInteraction(success, targetId, action, error);
             RefreshFocus();
             return success;
         }
@@ -207,8 +212,10 @@ namespace Margins
                 return false;
             }
 
+            string targetId = focusedTarget.StableTargetId;
+            string action = focusedTarget.Prompt?.Action ?? "Cancel";
             bool success = focusedTarget.TryCancel(out error);
-            LastFeedback = success ? null : error;
+            RecordInteraction(success, targetId, action, error);
             RefreshFocus();
             return success;
         }
@@ -225,22 +232,27 @@ namespace Margins
             }
 
             Ray ray = new(viewCamera.transform.position, viewCamera.transform.forward);
-            if (!Physics.Raycast(
-                    ray,
-                    out RaycastHit hit,
-                    pickupDistance,
-                    pickupLayers,
-                    QueryTriggerInteraction.Ignore))
+            RaycastHit[] hits = Physics.RaycastAll(
+                ray,
+                pickupDistance,
+                pickupLayers,
+                QueryTriggerInteraction.Ignore);
+            Array.Sort(hits, static (left, right) =>
+                left.distance.CompareTo(right.distance));
+
+            ProductItem targetedUnit = null;
+            for (int index = 0; index < hits.Length; index++)
             {
-                error = "No loose physical product unit is targeted.";
-                return false;
+                targetedUnit = hits[index].collider.GetComponentInParent<ProductItem>();
+                if (targetedUnit != null)
+                {
+                    break;
+                }
             }
 
-            ProductItem targetedUnit =
-                hit.collider.GetComponentInParent<ProductItem>();
             if (targetedUnit == null)
             {
-                error = "The targeted collider is not a physical product unit.";
+                error = "No loose physical product unit is targeted.";
                 return false;
             }
 
@@ -315,8 +327,9 @@ namespace Margins
                 return false;
             }
 
+            string targetId = focusedTarget.StableTargetId;
             bool success = removable.TryRemove(out error);
-            LastFeedback = success ? null : error;
+            RecordInteraction(success, targetId, "Remove fixture", error);
             RefreshFocus();
             return success;
         }
@@ -328,12 +341,25 @@ namespace Margins
                 bool changed = fixturePlacementMode.AdjustQuarterTurns(
                     direction,
                     out string error);
-                LastFeedback = changed ? null : error;
+                RecordInteraction(
+                    changed,
+                    fixturePlacementMode.StableTargetId,
+                    "Rotate fixture",
+                    error);
                 RefreshFocus();
                 return changed;
             }
 
-            return TryRotateHeldUnit(direction);
+            bool rotated = TryRotateHeldUnit(direction);
+            if (rotated)
+            {
+                RecordInteraction(
+                    true,
+                    HeldProduct?.PhysicalUnitId,
+                    "Rotate product",
+                    null);
+            }
+            return rotated;
         }
 
         private void CancelActiveFixturePlacement()
@@ -357,6 +383,26 @@ namespace Margins
             focusedTarget = null;
             currentPrompt = null;
             LastFeedback = null;
+        }
+
+        private void RecordInteraction(
+            bool succeeded,
+            string targetId,
+            string action,
+            string error)
+        {
+            LastFeedback = succeeded ? null : error;
+            FeedbackRevision++;
+            string message = succeeded
+                ? action
+                : string.IsNullOrWhiteSpace(error)
+                    ? "That action is unavailable."
+                    : error;
+            InteractionResolved?.Invoke(new FirstStoreInteractionFeedback(
+                succeeded,
+                targetId,
+                action,
+                message));
         }
 
         private static IFirstStoreWorldInteractionTarget FindExplicitTarget(
