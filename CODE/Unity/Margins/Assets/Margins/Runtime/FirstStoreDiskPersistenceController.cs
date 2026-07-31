@@ -85,6 +85,10 @@ namespace Margins
         [SerializeField] private PortfolioProgressionController portfolioProgression;
         [SerializeField] private string saveFileName = "first-store-vertical-slice.json";
 
+        private float quickLoadConfirmationUntil;
+
+        public event Action<bool, string> OperationCompleted;
+
         public string LastDiagnostic { get; private set; } =
             "No first-store disk save or load has been attempted.";
         public bool LastOperationSucceeded { get; private set; }
@@ -92,6 +96,7 @@ namespace Margins
             Application.persistentDataPath,
             "Margins",
             saveFileName);
+        public bool HasSaveFile => File.Exists(SavePath);
 
         private void Update()
         {
@@ -101,13 +106,34 @@ namespace Margins
                 return;
             }
 
+            if (GamePauseMenuController.IsAnyMenuOpen)
+            {
+                return;
+            }
+
             if (keyboard.f5Key.wasPressedThisFrame)
             {
+                quickLoadConfirmationUntil = 0f;
                 TrySave();
             }
             else if (keyboard.f9Key.wasPressedThisFrame)
             {
-                TryLoad();
+                if (Time.unscaledTime <= quickLoadConfirmationUntil)
+                {
+                    quickLoadConfirmationUntil = 0f;
+                    TryLoad();
+                }
+                else
+                {
+                    quickLoadConfirmationUntil = Time.unscaledTime + 3.5f;
+                    LastOperationSucceeded = true;
+                    LastDiagnostic = HasSaveFile
+                        ? "Press F9 again to reload your last save."
+                        : "No saved company is available yet.";
+                    OperationCompleted?.Invoke(
+                        LastOperationSucceeded,
+                        LastDiagnostic);
+                }
             }
         }
 
@@ -521,6 +547,7 @@ namespace Margins
             LastOperationSucceeded = true;
             LastDiagnostic = diagnostic;
             Debug.Log(diagnostic, this);
+            OperationCompleted?.Invoke(true, diagnostic);
             return true;
         }
 
@@ -529,6 +556,7 @@ namespace Margins
             LastOperationSucceeded = false;
             LastDiagnostic = diagnostic;
             Debug.LogWarning(diagnostic, this);
+            OperationCompleted?.Invoke(false, diagnostic);
             return false;
         }
     }

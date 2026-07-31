@@ -210,6 +210,89 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator QPutsHeldProductDownWithoutLosingInventory()
+        {
+            yield return LoadValidationScene();
+
+            ProductItem held = PickUpOneTargetedCola();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            FirstStoreInventoryComponent inventory =
+                Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
+            int totalBefore = inventory.Inventory.GetTotalQuantity(ColaProductId);
+
+            Press(keyboard.qKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.qKey, queueEventOnly: true);
+            yield return null;
+
+            Assert.That(stocking.PlayerHasHeldUnit, Is.False);
+            Assert.That(stocking.HeldPhysicalUnit, Is.Null);
+            Assert.That(held.IsHeld, Is.False);
+            Assert.That(held.transform.parent, Is.Null);
+            Assert.That(
+                stocking.PhysicalUnits.IsAtLocation(held, "loc-loose"),
+                Is.True);
+            Assert.That(
+                inventory.Inventory.GetQuantity("loc-held", ColaProductId),
+                Is.Zero);
+            Assert.That(
+                inventory.Inventory.GetQuantity("loc-loose", ColaProductId),
+                Is.EqualTo(1));
+            Assert.That(
+                inventory.Inventory.GetTotalQuantity(ColaProductId),
+                Is.EqualTo(totalBefore));
+        }
+
+        [UnityTest]
+        public IEnumerator EmployeeCarriedStockDoesNotAppearInPlayerHands()
+        {
+            yield return LoadValidationScene();
+
+            ProductItem carried = PickUpOneTargetedCola();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            GameObject employeeCarrier = new("Test Employee Carrier");
+            carried.transform.SetParent(employeeCarrier.transform, true);
+
+            Assert.That(stocking.HasHeldUnit, Is.True);
+            Assert.That(stocking.PlayerHasHeldUnit, Is.False);
+            Assert.That(stocking.HeldPhysicalUnit, Is.Null);
+            Assert.That(stocking.IsAnotherCarrierUsingHeldInventory, Is.True);
+
+            carried.transform.SetParent(stocking.HoldPoint, true);
+            Object.Destroy(employeeCarrier);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator EscapeReturnsFromManagementBeforeOpeningPauseMenu()
+        {
+            yield return LoadValidationScene();
+
+            GamePauseMenuController menu =
+                Object.FindAnyObjectByType<GamePauseMenuController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+
+            Press(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(player.IsGameplayMode, Is.False);
+
+            Press(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+
+            Assert.That(player.IsGameplayMode, Is.True);
+            Assert.That(menu.IsOpen, Is.False);
+            Assert.That(GamePauseMenuController.IsAnyMenuOpen, Is.False);
+            Assert.That(Time.timeScale, Is.EqualTo(1f));
+        }
+
+        [UnityTest]
         public IEnumerator HudModeSuppressesPickupStockingAndRotation()
         {
             yield return LoadValidationScene();

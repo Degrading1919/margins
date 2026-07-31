@@ -227,6 +227,7 @@ namespace Margins.Editor
             SetObject(presenter, "cleaning", cleaning);
             SetObject(presenter, "store", store);
             SetObject(presenter, "portfolio", portfolio);
+            SetObject(presenter, "persistence", diskPersistence);
             SetObject(presenter, "colaProduct", cola);
             SetObject(presenter, "chipsProduct", chips);
 
@@ -551,27 +552,70 @@ namespace Margins.Editor
             GameObject root = new(objectName);
             root.transform.SetPositionAndRotation(position, Quaternion.identity);
 
-            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = $"{objectName} Body";
-            body.transform.SetParent(root.transform, false);
-            body.transform.localScale = new Vector3(0.46f, 0.82f, 0.46f);
-            Collider collider = body.GetComponent<Collider>();
-            if (collider != null)
+            GameObject torso = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            torso.name = $"{objectName} Torso";
+            torso.transform.SetParent(root.transform, false);
+            torso.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            torso.transform.localScale = new Vector3(0.43f, 0.62f, 0.34f);
+            Collider torsoCollider = torso.GetComponent<Collider>();
+            if (torsoCollider != null)
             {
-                UnityEngine.Object.DestroyImmediate(collider);
+                UnityEngine.Object.DestroyImmediate(torsoCollider);
             }
-            ApplyMaterial(body, material);
+            ApplyMaterial(torso, material);
+
+            GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = $"{objectName} Head";
+            head.transform.SetParent(root.transform, false);
+            head.transform.localPosition = new Vector3(0f, 0.92f, 0f);
+            head.transform.localScale = Vector3.one * 0.38f;
+            Collider headCollider = head.GetComponent<Collider>();
+            if (headCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(headCollider);
+            }
+            ApplyMaterial(head, material);
+
+            for (int index = 0; index < 2; index++)
+            {
+                GameObject leg = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                leg.name = $"{objectName} Leg {index + 1}";
+                leg.transform.SetParent(root.transform, false);
+                leg.transform.localPosition = new Vector3(
+                    index == 0 ? -0.17f : 0.17f,
+                    -0.72f,
+                    0f);
+                leg.transform.localScale = new Vector3(0.2f, 0.58f, 0.24f);
+                Collider legCollider = leg.GetComponent<Collider>();
+                if (legCollider != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(legCollider);
+                }
+                ApplyMaterial(leg, material);
+            }
+
+            GameObject badge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            badge.name = $"{objectName} Role Badge";
+            badge.transform.SetParent(root.transform, false);
+            badge.transform.localPosition = new Vector3(0f, 0.3f, -0.35f);
+            badge.transform.localScale = new Vector3(0.32f, 0.17f, 0.035f);
+            Collider badgeCollider = badge.GetComponent<Collider>();
+            if (badgeCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(badgeCollider);
+            }
+            ApplyMaterial(badge, material);
 
             GameObject labelObject = new($"{objectName} Label");
             labelObject.transform.SetParent(root.transform, false);
-            labelObject.transform.localPosition = new Vector3(0f, 1.35f, 0f);
+            labelObject.transform.localPosition = new Vector3(0f, 0.3f, -0.375f);
             labelObject.transform.localRotation = Quaternion.identity;
-            labelObject.transform.localScale = Vector3.one * 0.1f;
+            labelObject.transform.localScale = Vector3.one * 0.035f;
             label = labelObject.AddComponent<TextMesh>();
-            label.text = objectName;
+            label.text = string.Empty;
             label.anchor = TextAnchor.MiddleCenter;
             label.alignment = TextAlignment.Center;
-            label.characterSize = 0.28f;
+            label.characterSize = 0.22f;
             label.fontSize = 48;
             label.color = Color.white;
 

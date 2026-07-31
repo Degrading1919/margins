@@ -38,7 +38,9 @@ namespace Margins
                     physicalUnits.TryGetOldestUnitAtLocation(
                         heldLocationId,
                         out ProductItem item) &&
-                    item.IsHeld)
+                    item.IsHeld &&
+                    holdPoint != null &&
+                    item.transform.IsChildOf(holdPoint))
                 {
                     return item;
                 }
@@ -46,6 +48,9 @@ namespace Margins
                 return null;
             }
         }
+        public bool PlayerHasHeldUnit => HeldPhysicalUnit != null;
+        public bool IsAnotherCarrierUsingHeldInventory =>
+            HasHeldUnit && !PlayerHasHeldUnit;
 
         public bool HasHeldUnit
         {
@@ -342,6 +347,75 @@ namespace Margins
 
             unit.PickUp(carrierPoint);
             selectedUnit = unit;
+            error = null;
+            return true;
+        }
+
+        public bool TrySetDownPlayerHeldUnit(
+            out ProductItem releasedUnit,
+            out string error)
+        {
+            releasedUnit = null;
+            if (!TryInitializeDependencies(out error))
+            {
+                return false;
+            }
+
+            ProductItem item = HeldPhysicalUnit;
+            if (item == null || item.Definition == null)
+            {
+                error = IsAnotherCarrierUsingHeldInventory
+                    ? "A team member is moving stock. Try again in a moment."
+                    : "You are not holding a product.";
+                return false;
+            }
+
+            string productId = item.Definition.StableProductId;
+            InventoryTransferResult preview =
+                inventoryComponent.Inventory.CanTransfer(
+                    productId,
+                    heldLocationId,
+                    looseLocationId,
+                    1);
+            if (!preview.IsSuccess)
+            {
+                error = "There is no safe place to put this product down.";
+                return false;
+            }
+
+            if (!physicalUnits.TryChangeLocation(
+                    item,
+                    heldLocationId,
+                    looseLocationId,
+                    out error))
+            {
+                return false;
+            }
+
+            InventoryTransferResult transfer =
+                inventoryComponent.Inventory.TryTransfer(
+                    productId,
+                    heldLocationId,
+                    looseLocationId,
+                    1);
+            if (!transfer.IsSuccess)
+            {
+                bool rolledBack = physicalUnits.TryChangeLocation(
+                    item,
+                    looseLocationId,
+                    heldLocationId,
+                    out string rollbackError);
+                Debug.LogError(
+                    $"Held-product set-down failed after physical reservation " +
+                    $"({transfer.Failure}); physical rollback {rolledBack}: " +
+                    $"{rollbackError ?? "ok"}.",
+                    this);
+                error = "The product could not be put down. It is still in your hands.";
+                return false;
+            }
+
+            item.ReleaseLoose(showInvalidPlacementFeedback: false);
+            releasedUnit = item;
             error = null;
             return true;
         }

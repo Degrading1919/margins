@@ -387,7 +387,19 @@ namespace Margins
             }
             if (active && label != null)
             {
-                label.text = $"{employee.displayName}\n{assignment}";
+                string firstName = employee.displayName;
+                int firstSpace = firstName.IndexOf(' ');
+                if (firstSpace > 0)
+                {
+                    firstName = firstName.Substring(0, firstSpace);
+                }
+                string role = assignment;
+                int separator = role.IndexOf('\u2022');
+                if (separator > 0)
+                {
+                    role = role.Substring(0, separator).Trim();
+                }
+                label.text = $"{firstName.ToUpperInvariant()}\n{role}";
             }
         }
     }

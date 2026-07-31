@@ -20,10 +20,10 @@ namespace Margins.Editor
         {
             EnsureFolder("Assets/Margins/Content", "FirstStoreExperience");
 
-            Material wall = Material("Wall Warm Plaster", new Color(0.68f, 0.61f, 0.51f), 0f, 0.22f);
-            Material wallLight = Material("Wall Light", new Color(0.84f, 0.79f, 0.69f), 0f, 0.2f);
-            Material tile = Material("Store Tile", new Color(0.16f, 0.19f, 0.19f), 0f, 0.48f);
-            Material ceiling = Material("Ceiling", new Color(0.49f, 0.47f, 0.42f), 0f, 0.25f);
+            Material wall = Material("Wall Warm Plaster", new Color(0.57f, 0.53f, 0.47f), 0f, 0.22f);
+            Material wallLight = Material("Wall Light", new Color(0.75f, 0.72f, 0.66f), 0f, 0.2f);
+            Material tile = Material("Store Tile", new Color(0.18f, 0.21f, 0.21f), 0f, 0.48f);
+            Material ceiling = Material("Ceiling", new Color(0.4f, 0.4f, 0.37f), 0f, 0.25f);
             Material charcoal = Material("Fixture Charcoal", new Color(0.055f, 0.075f, 0.08f), 0.35f, 0.52f);
             Material metal = Material("Painted Metal", new Color(0.14f, 0.17f, 0.17f), 0.55f, 0.56f);
             Material laminate = Material("Warm Laminate", new Color(0.45f, 0.25f, 0.105f), 0f, 0.34f);
@@ -40,7 +40,7 @@ namespace Margins.Editor
             Material amberEmission = EmissiveMaterial(
                 "Objective Amber",
                 new Color(1f, 0.36f, 0.055f),
-                4.5f);
+                3.2f);
             Material tealEmission = EmissiveMaterial(
                 "Open Sign Teal",
                 new Color(0.08f, 0.88f, 0.63f),
@@ -48,7 +48,7 @@ namespace Margins.Editor
             Material warmEmission = EmissiveMaterial(
                 "Warm Practical",
                 new Color(1f, 0.55f, 0.22f),
-                3.6f);
+                2.4f);
 
             ConfigureProductPrefab(
                 "Assets/Margins/Content/FirstStoreValidation/ValidationColaUnit.prefab",
@@ -194,8 +194,10 @@ namespace Margins.Editor
 
             GameObject objectiveBeacon = CreateObjectiveBeacon(
                 presentationRoot.transform,
-                amberEmission,
-                cream);
+                amberEmission);
+            GameObject focusIndicator = CreateFocusIndicator(
+                presentationRoot.transform,
+                tealEmission);
 
             FirstStorePromptPresenter presenter = Require("First-Store Validation Controls")
                 .GetComponent<FirstStorePromptPresenter>();
@@ -241,6 +243,11 @@ namespace Margins.Editor
             SetObject(experience, "cleaningSpillVisual", cleaningTarget.transform);
             SetObject(experience, "cleaningSpillRenderer", cleaningTarget.GetComponent<Renderer>());
             SetObject(experience, "objectiveBeacon", objectiveBeacon.transform);
+            SetObject(experience, "focusIndicator", focusIndicator.transform);
+            SetArray(
+                experience,
+                "focusIndicatorRenderers",
+                focusIndicator.GetComponentsInChildren<Renderer>(true));
             SetArray(experience, "interiorLights", interiorLights);
             SetArray(experience, "practicalLightRenderers", practicalRenderers);
 
@@ -315,7 +322,7 @@ namespace Margins.Editor
             directionalObject.transform.rotation = Quaternion.Euler(42f, -32f, 0f);
             directional.type = LightType.Directional;
             directional.color = new Color(0.8f, 0.86f, 1f);
-            directional.intensity = 0.58f;
+            directional.intensity = 0.42f;
             directional.shadows = LightShadows.Soft;
             directional.shadowStrength = 0.72f;
 
@@ -330,7 +337,7 @@ namespace Margins.Editor
                 "Exterior Sign Glow",
                 new Vector3(0f, 3.55f, -5.85f),
                 new Color(1f, 0.32f, 0.12f),
-                6.5f,
+                3.6f,
                 4.2f,
                 false);
         }
@@ -385,7 +392,7 @@ namespace Margins.Editor
                 0.2f,
                 cream.color,
                 TextAnchor.MiddleCenter);
-            CreateText(root, "Window Hours", "OPEN LATE  /  COLD DRINKS  /  SNACKS",
+            CreateText(root, "Window Hours", "LOCALLY OWNED  /  OPEN LATE",
                 new Vector3(-2.9f, 0.75f, -5.32f), 0.075f, cream.color, TextAnchor.MiddleCenter);
 
             CreateShape(root, "Entry Mat", PrimitiveType.Cube,
@@ -448,7 +455,7 @@ namespace Margins.Editor
 
             CreateShape(root, "Receiving Floor Zone", PrimitiveType.Cube,
                 new Vector3(-3.3f, 0.012f, 4.3f), new Vector3(3.2f, 0.025f, 2.5f), charcoal, false);
-            CreateText(root, "Receiving Wall Sign", "RECEIVING  /  STARTER DELIVERY",
+            CreateText(root, "Receiving Wall Sign", "RECEIVING",
                 new Vector3(-2.75f, 2.45f, 5.72f), 0.09f, cream.color, TextAnchor.MiddleCenter);
             CreateShape(root, "Receiving Rail", PrimitiveType.Cube,
                 new Vector3(-2.75f, 2.16f, 5.74f), new Vector3(4.3f, 0.05f, 0.06f), orange, false);
@@ -466,7 +473,7 @@ namespace Margins.Editor
 
             CreateShape(root, "Checkout Floor Accent", PrimitiveType.Cube,
                 new Vector3(3.25f, 0.015f, -1.95f), new Vector3(3.15f, 0.03f, 2.5f), teal, false);
-            CreateText(root, "Checkout Overhead", "CHECKOUT 01",
+            CreateText(root, "Checkout Overhead", "CHECKOUT",
                 new Vector3(3.25f, 2.55f, -0.85f), 0.11f, cream.color, TextAnchor.MiddleCenter);
 
             List<Light> lights = new();
@@ -492,8 +499,8 @@ namespace Margins.Editor
                     $"Store Light {index + 1}",
                     positions[index] + Vector3.down * 0.18f,
                     index >= 6 ? new Color(0.72f, 0.82f, 1f) : new Color(1f, 0.69f, 0.38f),
-                    index >= 6 ? 5.2f : 5.8f,
-                    index >= 6 ? 5.5f : 7.5f,
+                    index >= 6 ? 2.7f : 3.2f,
+                    index >= 6 ? 5f : 6.5f,
                     index == 1 || index == 4 || index == 6);
                 lights.Add(light);
             }
@@ -502,7 +509,7 @@ namespace Margins.Editor
                 "Checkout Focus Light",
                 new Vector3(3.2f, 3.18f, -1.55f),
                 new Color(1f, 0.48f, 0.18f),
-                6f,
+                3.4f,
                 20f,
                 72f);
             lights.Add(checkoutFocus);
@@ -656,7 +663,7 @@ namespace Margins.Editor
                 Quaternion.identity);
             fixtureHandle.transform.localScale = new Vector3(2.25f, 0.62f, 1.25f);
             fixtureHandle.GetComponent<Renderer>().sharedMaterial = cardboard;
-            CreateText(fixtureHandle.transform, "Experience Checkout Kit Label", "CHECKOUT KIT  /  E TO PLACE",
+            CreateText(fixtureHandle.transform, "Experience Checkout Kit Label", "CHECKOUT KIT",
                 new Vector3(0f, 0.7f, -0.52f), 0.06f, cream.color, TextAnchor.MiddleCenter);
 
             DestroyExperienceChildren(requiredFixture.transform);
@@ -702,7 +709,7 @@ namespace Margins.Editor
 
             CreateShape(checkoutTarget.transform, "Experience Scanner Glow", PrimitiveType.Cube,
                 new Vector3(-0.78f, -0.05f, -0.57f), new Vector3(0.7f, 0.12f, 0.12f), amberEmission, false);
-            TextMesh displayText = CreateText(checkoutTarget.transform, "Experience Register Display", "SET UP\nCHECKOUT",
+            TextMesh displayText = CreateText(checkoutTarget.transform, "Experience Register Display", "REGISTER\nOFFLINE",
                 new Vector3(0f, 0.04f, -0.58f), 0.13f, cream.color, TextAnchor.MiddleCenter);
 
             GameObject colaProp = CreateShape(requiredFixture.transform, "Experience Checkout Cola Prop", PrimitiveType.Cylinder,
@@ -730,9 +737,9 @@ namespace Margins.Editor
             storeControl.GetComponent<Renderer>().sharedMaterial = charcoal;
             GameObject statePanel = CreateShape(storeControl.transform, "Experience Store State Glow", PrimitiveType.Cube,
                 new Vector3(0f, 0.08f, -0.58f), new Vector3(0.86f, 0.38f, 0.08f), tealEmission, false);
-            TextMesh stateText = CreateText(storeControl.transform, "Experience Store State Text", "CLOSED  /  CLOCK IN",
+            TextMesh stateText = CreateText(storeControl.transform, "Experience Store State Text", "CLOSED",
                 new Vector3(0f, 0.08f, -0.66f), 0.115f, cream.color, TextAnchor.MiddleCenter);
-            CreateText(storeControl.transform, "Experience Store Panel Label", "SHIFT CONTROL",
+            CreateText(storeControl.transform, "Experience Store Panel Label", "OPEN / CLOSED",
                 new Vector3(0f, 0.48f, -0.58f), 0.08f, cream.color, TextAnchor.MiddleCenter);
             return new StoreControlPresentation(stateText, statePanel.GetComponent<Renderer>());
         }
@@ -763,8 +770,7 @@ namespace Margins.Editor
 
         private static GameObject CreateObjectiveBeacon(
             Transform root,
-            Material amberEmission,
-            Material cream)
+            Material amberEmission)
         {
             GameObject beacon = new("Objective Beacon");
             beacon.transform.SetParent(root, false);
@@ -773,9 +779,57 @@ namespace Margins.Editor
                 Quaternion.Euler(0f, 45f, 45f));
             CreateShape(beacon.transform, "Objective Ring", PrimitiveType.Cylinder,
                 new Vector3(0f, -0.28f, 0f), new Vector3(0.42f, 0.025f, 0.42f), amberEmission, false);
-            CreateText(beacon.transform, "Objective Next Label", "NEXT",
-                new Vector3(0f, 0.33f, 0f), 0.075f, cream.color, TextAnchor.MiddleCenter);
             return beacon;
+        }
+
+        private static GameObject CreateFocusIndicator(
+            Transform root,
+            Material material)
+        {
+            GameObject indicator = new("Focus Indicator");
+            indicator.transform.SetParent(root, false);
+            const float edge = 0.36f;
+            const float offset = 0.27f;
+            const float thickness = 0.035f;
+            Vector3[] horizontalPositions =
+            {
+                new(-offset, offset, 0f),
+                new(offset, offset, 0f),
+                new(-offset, -offset, 0f),
+                new(offset, -offset, 0f)
+            };
+            Vector3[] verticalPositions =
+            {
+                new(-offset, offset, 0f),
+                new(offset, offset, 0f),
+                new(-offset, -offset, 0f),
+                new(offset, -offset, 0f)
+            };
+            for (int index = 0; index < horizontalPositions.Length; index++)
+            {
+                float horizontalSign = index % 2 == 0 ? 1f : -1f;
+                float verticalSign = index < 2 ? -1f : 1f;
+                CreateShape(
+                    indicator.transform,
+                    $"Focus Corner H {index + 1}",
+                    PrimitiveType.Cube,
+                    horizontalPositions[index] +
+                    Vector3.right * horizontalSign * edge * 0.25f,
+                    new Vector3(edge, thickness, thickness),
+                    material,
+                    false);
+                CreateShape(
+                    indicator.transform,
+                    $"Focus Corner V {index + 1}",
+                    PrimitiveType.Cube,
+                    verticalPositions[index] +
+                    Vector3.up * verticalSign * edge * 0.25f,
+                    new Vector3(thickness, edge, thickness),
+                    material,
+                    false);
+            }
+            indicator.SetActive(false);
+            return indicator;
         }
 
         private static void ConfigureProductPrefab(

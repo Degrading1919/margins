@@ -39,6 +39,8 @@ namespace Margins
         [SerializeField] private Transform cleaningSpillVisual;
         [SerializeField] private Renderer cleaningSpillRenderer;
         [SerializeField] private Transform objectiveBeacon;
+        [SerializeField] private Transform focusIndicator;
+        [SerializeField] private Renderer[] focusIndicatorRenderers;
         [SerializeField] private Light[] interiorLights;
         [SerializeField] private Renderer[] practicalLightRenderers;
 
@@ -69,6 +71,9 @@ namespace Margins
         private MaterialPropertyBlock lightPropertyBlock;
         private Renderer[] checkoutFixtureRenderers;
         private Collider[] checkoutFixtureColliders;
+        private MaterialPropertyBlock focusPropertyBlock;
+        private float focusFeedbackUntil;
+        private bool focusFeedbackSucceeded = true;
 
         public bool TryValidateConfiguration(out string error)
         {
@@ -105,6 +110,7 @@ namespace Margins
                 storefrontStateMaterial = storefrontStateRenderer.material;
             }
             lightPropertyBlock = new MaterialPropertyBlock();
+            focusPropertyBlock = new MaterialPropertyBlock();
             checkoutFixtureRenderers = checkoutFixture != null
                 ? checkoutFixture.GetComponentsInChildren<Renderer>(true)
                 : Array.Empty<Renderer>();
@@ -181,6 +187,7 @@ namespace Margins
             UpdateCleaningPresentation();
             UpdateStorePresentation();
             UpdateObjectiveBeacon();
+            UpdateFocusIndicator();
             UpdateThresholdAudio();
         }
 
@@ -290,7 +297,7 @@ namespace Margins
 
             if (!fixturePlaced)
             {
-                checkoutDisplayText.text = "SET UP\nCHECKOUT";
+                checkoutDisplayText.text = "REGISTER\nOFFLINE";
                 SetCheckoutProps(false, false);
                 return;
             }
@@ -314,7 +321,7 @@ namespace Margins
             switch (stagedCheckout.NextAction)
             {
                 case StagedCheckoutPrimaryAction.Begin:
-                    checkoutDisplayText.text = "CUSTOMER READY\nPRESS E";
+                    checkoutDisplayText.text = "NEXT\nCUSTOMER";
                     SetCheckoutProps(true, true);
                     break;
 
@@ -329,12 +336,12 @@ namespace Margins
 
                 case StagedCheckoutPrimaryAction.Complete:
                     checkoutDisplayText.text =
-                        $"TOTAL {FormatCents(stagedCheckout.SubtotalCents)}\nPRESS E";
+                        $"TOTAL\n{FormatCents(stagedCheckout.SubtotalCents)}";
                     SetCheckoutProps(false, false);
                     break;
 
                 default:
-                    checkoutDisplayText.text = "CHECKOUT 01";
+                    checkoutDisplayText.text = "LANE\nREADY";
                     SetCheckoutProps(false, false);
                     break;
             }
@@ -388,11 +395,11 @@ namespace Margins
             {
                 storefrontStateText.text = store.State switch
                 {
-                    StoreOperatingState.Closed => "CLOSED  /  CLOCK IN",
-                    StoreOperatingState.Preparing => "SETTING UP",
+                    StoreOperatingState.Closed => "CLOSED",
+                    StoreOperatingState.Preparing => "SETUP",
                     StoreOperatingState.Open => "OPEN",
                     StoreOperatingState.Closing => "CLOSING",
-                    StoreOperatingState.ClosedWithResultPending => "SHIFT COMPLETE",
+                    StoreOperatingState.ClosedWithResultPending => "RESULT READY",
                     _ => "CLOSED"
                 };
             }
@@ -410,8 +417,8 @@ namespace Margins
                 storefrontStateMaterial.SetColor("_EmissionColor", signColor * 3.2f);
             }
 
-            float lightMultiplier = open ? 1.2f :
-                store.State == StoreOperatingState.Preparing ? 0.92f : 0.55f;
+            float lightMultiplier = open ? 1.05f :
+                store.State == StoreOperatingState.Preparing ? 0.88f : 0.52f;
             for (int index = 0; index < baseLightIntensities.Length; index++)
             {
                 if (interiorLights[index] != null)
@@ -433,7 +440,7 @@ namespace Margins
 
                 renderer.GetPropertyBlock(lightPropertyBlock);
                 Color emission = new Color(1f, 0.68f, 0.36f, 1f) *
-                                 Mathf.Lerp(1.1f, 4.5f, lightMultiplier / 1.2f);
+                                 Mathf.Lerp(0.9f, 3.2f, lightMultiplier / 1.05f);
                 lightPropertyBlock.SetColor("_EmissionColor", emission);
                 renderer.SetPropertyBlock(lightPropertyBlock);
             }
@@ -493,6 +500,77 @@ namespace Margins
             objectiveBeacon.localScale = Vector3.one * scale;
         }
 
+        private void UpdateFocusIndicator()
+        {
+            if (focusIndicator == null)
+            {
+                return;
+            }
+
+            bool visible = interaction != null &&
+                           interaction.IsWorldInteractionEnabled &&
+                           interaction.CurrentPrompt != null &&
+                           interaction.HasFocusedWorldPoint;
+            if (focusIndicator.gameObject.activeSelf != visible)
+            {
+                focusIndicator.gameObject.SetActive(visible);
+            }
+            if (!visible)
+            {
+                return;
+            }
+
+            Camera viewCamera = Camera.main;
+            Vector3 point = interaction.FocusedWorldPoint +
+                            interaction.FocusedWorldNormal * 0.025f;
+            focusIndicator.position = point;
+            if (viewCamera != null)
+            {
+                Vector3 fromCamera = point - viewCamera.transform.position;
+                if (fromCamera.sqrMagnitude > 0.001f)
+                {
+                    focusIndicator.rotation = Quaternion.LookRotation(
+                        fromCamera.normalized,
+                        Vector3.up);
+                }
+
+                float distance = fromCamera.magnitude;
+                float baseScale = Mathf.Clamp(distance * 0.065f, 0.16f, 0.34f);
+                float pulse = 1f + Mathf.Sin(Time.unscaledTime * 5.5f) * 0.045f;
+                if (Time.unscaledTime < focusFeedbackUntil &&
+                    !focusFeedbackSucceeded)
+                {
+                    point += focusIndicator.right *
+                             Mathf.Sin(Time.unscaledTime * 46f) * 0.025f;
+                    focusIndicator.position = point;
+                }
+                focusIndicator.localScale = Vector3.one * baseScale * pulse;
+            }
+
+            Color color = Time.unscaledTime < focusFeedbackUntil
+                ? focusFeedbackSucceeded
+                    ? new Color(0.12f, 0.9f, 0.72f, 1f)
+                    : new Color(1f, 0.22f, 0.14f, 1f)
+                : new Color(0.2f, 0.88f, 0.74f, 1f);
+            for (int index = 0;
+                 focusIndicatorRenderers != null &&
+                 index < focusIndicatorRenderers.Length;
+                 index++)
+            {
+                Renderer renderer = focusIndicatorRenderers[index];
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                renderer.GetPropertyBlock(focusPropertyBlock);
+                focusPropertyBlock.SetColor("_BaseColor", color);
+                focusPropertyBlock.SetColor("_Color", color);
+                focusPropertyBlock.SetColor("_EmissionColor", color * 3.2f);
+                renderer.SetPropertyBlock(focusPropertyBlock);
+            }
+        }
+
         private void UpdateThresholdAudio()
         {
             bool inside = player.transform.position.z > -5.05f;
@@ -514,6 +592,9 @@ namespace Margins
 
         private void HandleInteractionResolved(FirstStoreInteractionFeedback feedback)
         {
+            focusFeedbackSucceeded = feedback.Succeeded;
+            focusFeedbackUntil = Time.unscaledTime +
+                                 (feedback.Succeeded ? 0.22f : 0.48f);
             if (!feedback.Succeeded)
             {
                 Play(invalidClip, 0.72f);
@@ -741,9 +822,12 @@ namespace Margins
             ulong absolute = negative
                 ? (ulong)(-(cents + 1)) + 1UL
                 : (ulong)cents;
+            string dollars = (absolute / 100).ToString(
+                "N0",
+                System.Globalization.CultureInfo.InvariantCulture);
             return negative
-                ? $"-${absolute / 100}.{absolute % 100:00}"
-                : $"${absolute / 100}.{absolute % 100:00}";
+                ? $"-${dollars}.{absolute % 100:00}"
+                : $"${dollars}.{absolute % 100:00}";
         }
     }
 }

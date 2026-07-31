@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 
 namespace Margins
 {
@@ -33,7 +34,9 @@ namespace Margins
         [SerializeField, Min(0f)] private float briskWalkSpeed = 5.2f;
         [SerializeField, Min(0.01f)] private float acceleration = 17f;
         [SerializeField, Min(0.01f)] private float deceleration = 23f;
-        [SerializeField, Min(0f)] private float mouseSensitivity = 0.1f;
+        [FormerlySerializedAs("mouseSensitivity")]
+        [SerializeField, Min(0f)] private float horizontalLookSensitivity = 0.1f;
+        [SerializeField, Min(0f)] private float verticalLookSensitivity = 0.1f;
         [SerializeField] private bool invertY;
         [SerializeField] private float gravity = -24f;
         [SerializeField, Range(0f, 0.08f)] private float cameraBobAmplitude = 0.026f;
@@ -49,6 +52,8 @@ namespace Margins
         private float distanceSinceFootstep;
         private bool cameraStateCaptured;
         private bool wasGrounded;
+        private int discardLookThroughFrame;
+        private bool hasAppliedInitialMode;
 
         public event Action<bool> Footstep;
         public event Action Landed;
@@ -60,7 +65,9 @@ namespace Margins
             (Application.isBatchMode ||
              Cursor.lockState == CursorLockMode.Locked);
         public bool CameraMotionEnabled { get; private set; } = true;
-        public float MouseSensitivity => mouseSensitivity;
+        public float MouseSensitivity => horizontalLookSensitivity;
+        public float HorizontalLookSensitivity => horizontalLookSensitivity;
+        public float VerticalLookSensitivity => verticalLookSensitivity;
         public bool InvertY => invertY;
         public bool IsBriskWalking { get; private set; }
         public float CurrentPlanarSpeed => planarVelocity.magnitude;
@@ -176,18 +183,26 @@ namespace Margins
 
         public void SetGameplayMode(bool isGameplayMode)
         {
+            bool shouldDiscardRelockDelta =
+                isGameplayMode &&
+                hasAppliedInitialMode &&
+                !IsGameplayMode;
             IsGameplayMode = isGameplayMode;
             RequestedCursorLockState = isGameplayMode
                 ? CursorLockMode.Locked
                 : CursorLockMode.None;
             if (isGameplayMode)
             {
+                discardLookThroughFrame = shouldDiscardRelockDelta
+                    ? Time.frameCount + 1
+                    : Time.frameCount - 1;
                 LockCursor();
             }
             else
             {
                 UnlockCursor();
             }
+            hasAppliedInitialMode = true;
         }
 
         private void HandleMovement()
@@ -249,9 +264,17 @@ namespace Margins
                 return;
             }
 
-            Vector2 lookDelta = Mouse.current.delta.ReadValue() * mouseSensitivity;
-            transform.Rotate(0f, lookDelta.x, 0f);
-            float verticalLook = invertY ? -lookDelta.y : lookDelta.y;
+            if (Time.frameCount <= discardLookThroughFrame)
+            {
+                Mouse.current.delta.ReadValue();
+                return;
+            }
+
+            Vector2 rawDelta = Mouse.current.delta.ReadValue();
+            float horizontalLook = rawDelta.x * horizontalLookSensitivity;
+            float verticalLook = rawDelta.y * verticalLookSensitivity;
+            transform.Rotate(0f, horizontalLook, 0f);
+            verticalLook = invertY ? -verticalLook : verticalLook;
             pitch = Mathf.Clamp(pitch - verticalLook, MinimumPitchDegrees, MaximumPitchDegrees);
             ApplyCameraRotation();
         }
@@ -283,7 +306,23 @@ namespace Margins
             bool shouldInvertY,
             bool cameraMotionEnabled)
         {
-            mouseSensitivity = Mathf.Clamp(sensitivity, 0.01f, 0.5f);
+            ApplyPlayerSettings(
+                sensitivity,
+                sensitivity,
+                shouldInvertY,
+                cameraMotionEnabled);
+        }
+
+        public void ApplyPlayerSettings(
+            float horizontalSensitivity,
+            float verticalSensitivity,
+            bool shouldInvertY,
+            bool cameraMotionEnabled)
+        {
+            horizontalLookSensitivity =
+                Mathf.Clamp(horizontalSensitivity, 0.01f, 0.5f);
+            verticalLookSensitivity =
+                Mathf.Clamp(verticalSensitivity, 0.01f, 0.5f);
             invertY = shouldInvertY;
             CameraMotionEnabled = cameraMotionEnabled;
             if (!CameraMotionEnabled)

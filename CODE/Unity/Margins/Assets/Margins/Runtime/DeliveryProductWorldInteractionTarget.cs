@@ -32,8 +32,11 @@ namespace Margins
                     ? $"delivery sealed; {remainingUnits} left"
                     : remainingUnits <= 0
                         ? "delivery case empty"
-                        : autoHoldOnTake && stocking != null && stocking.HeldPhysicalUnit != null
+                        : autoHoldOnTake && stocking != null && stocking.PlayerHasHeldUnit
                             ? $"hands full; stock {GetHeldProductName()} first"
+                            : autoHoldOnTake && stocking != null &&
+                              stocking.IsAnotherCarrierUsingHeldInventory
+                                ? "team member is moving stock"
                             : $"{remainingUnits} left; take to hand";
                 return new FirstStoreWorldInteractionPrompt(
                     "E",
@@ -75,9 +78,11 @@ namespace Margins
                 return false;
             }
 
-            if (autoHoldOnTake && stocking != null && stocking.HeldPhysicalUnit != null)
+            if (autoHoldOnTake && stocking != null && stocking.HasHeldUnit)
             {
-                error = $"Stock {GetHeldProductName()} before taking another item.";
+                error = stocking.PlayerHasHeldUnit
+                    ? $"Stock or put down {GetHeldProductName()} before taking another item."
+                    : "A team member is moving stock. Try again in a moment.";
                 return false;
             }
 

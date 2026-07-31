@@ -255,7 +255,7 @@ namespace Margins.Tests
             Assert.That(interaction.CurrentPromptText, Is.Empty);
             Assert.That(cleaning.CompletedProgressUnits, Is.EqualTo(before));
             Assert.That(interaction.TryPrimaryInteraction(out string error), Is.False);
-            StringAssert.Contains("HUD", error);
+            StringAssert.Contains("store", error);
         }
 
         private static IEnumerator LoadValidationScene()

@@ -57,12 +57,19 @@ namespace Margins
                         "open container; contents stay inside");
                 }
 
-                if (stocking.HasHeldUnit)
+                if (stocking.PlayerHasHeldUnit)
                 {
                     return new FirstStoreWorldInteractionPrompt(
                         "E",
                         "Pick up delivery",
                         "hands full");
+                }
+                if (stocking.IsAnotherCarrierUsingHeldInventory)
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        "Pick up delivery",
+                        "team member is moving stock");
                 }
 
                 return new FirstStoreWorldInteractionPrompt(
@@ -84,7 +91,9 @@ namespace Margins
             {
                 if (stocking.HasHeldUnit)
                 {
-                    error = "Stock or put down the held product first.";
+                    error = stocking.PlayerHasHeldUnit
+                        ? "Stock or put down the product in your hands first."
+                        : "A team member is moving stock. Try again in a moment.";
                     return false;
                 }
                 return deliveryBox.TryPickUp(carryPoint, out error);

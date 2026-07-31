@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Margins
 {
@@ -21,19 +22,26 @@ namespace Margins
     }
 
     /// <summary>
-    /// Derived first-shift guidance. It owns no gameplay state and is absent from saves.
+    /// Presentation-only guidance. The default HUD stays quiet and reveals
+    /// controls, blockers, held state, and business depth only in context.
     /// </summary>
     public sealed class FirstStorePromptPresenter : MonoBehaviour
     {
-        private static readonly Color Ink = new(0.93f, 0.95f, 0.94f, 1f);
-        private static readonly Color MutedInk = new(0.67f, 0.72f, 0.71f, 1f);
-        private static readonly Color Night = new(0.035f, 0.055f, 0.075f, 0.94f);
-        private static readonly Color NightSoft = new(0.055f, 0.085f, 0.105f, 0.9f);
-        private static readonly Color Teal = new(0.12f, 0.78f, 0.68f, 1f);
-        private static readonly Color Amber = new(1f, 0.58f, 0.2f, 1f);
-        private static readonly Color Error = new(0.95f, 0.28f, 0.22f, 1f);
+        private static readonly Color Ink =
+            new(0.94f, 0.96f, 0.95f, 1f);
+        private static readonly Color MutedInk =
+            new(0.64f, 0.7f, 0.69f, 1f);
+        private static readonly Color Night =
+            new(0.025f, 0.04f, 0.052f, 0.94f);
+        private static readonly Color NightSoft =
+            new(0.055f, 0.08f, 0.092f, 0.92f);
+        private static readonly Color Teal =
+            new(0.12f, 0.78f, 0.68f, 1f);
+        private static readonly Color Amber =
+            new(1f, 0.58f, 0.2f, 1f);
+        private static readonly Color Error =
+            new(0.95f, 0.3f, 0.23f, 1f);
 
-        [SerializeField] private string storeDisplayName = "MILE 7 MARKET";
         [SerializeField] private FirstStoreInteractionController interaction;
         [SerializeField] private FixturePlacementController fixturePlacement;
         [SerializeField] private PlaceableFixtureComponent[] requiredFixtures;
@@ -44,6 +52,7 @@ namespace Margins
         [SerializeField] private CleaningTaskComponent cleaning;
         [SerializeField] private StoreOperatingController store;
         [SerializeField] private PortfolioProgressionController portfolio;
+        [SerializeField] private FirstStoreDiskPersistenceController persistence;
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
         [Header("Objective world targets")]
@@ -61,7 +70,7 @@ namespace Margins
         private GUIStyle eyebrowStyle;
         private GUIStyle bodyStyle;
         private GUIStyle smallStyle;
-        private GUIStyle objectiveStyle;
+        private GUIStyle promptStyle;
         private GUIStyle keyStyle;
         private GUIStyle centerStyle;
         private GUIStyle resultValueStyle;
@@ -69,6 +78,9 @@ namespace Margins
         private float feedbackUntil;
         private string feedbackText;
         private bool feedbackSucceeded;
+        private bool helpVisible;
+        private FirstStoreObjectiveKind priorObjective;
+        private float objectiveToastUntil;
 
         public string CurrentPromptText =>
             interaction != null && interaction.IsWorldInteractionEnabled
@@ -80,13 +92,20 @@ namespace Margins
         public int CurrentObjectiveStep => GetObjectiveStep(CurrentObjectiveKind);
         public int ObjectiveStepCount => 8;
         public Transform CurrentObjectiveTarget => ResolveObjectiveTarget(CurrentObjectiveKind);
+        public bool HelpVisible => helpVisible;
 
         private void OnEnable()
         {
             shownAt = Time.unscaledTime;
+            priorObjective = DeriveObjectiveKind();
+            objectiveToastUntil = Time.unscaledTime + 6f;
             if (interaction != null)
             {
                 interaction.InteractionResolved += HandleInteractionResolved;
+            }
+            if (persistence != null)
+            {
+                persistence.OperationCompleted += HandlePersistenceCompleted;
             }
         }
 
@@ -95,6 +114,32 @@ namespace Margins
             if (interaction != null)
             {
                 interaction.InteractionResolved -= HandleInteractionResolved;
+            }
+            if (persistence != null)
+            {
+                persistence.OperationCompleted -= HandlePersistenceCompleted;
+            }
+        }
+
+        private void Update()
+        {
+            FirstStoreObjectiveKind objective = DeriveObjectiveKind();
+            if (objective != priorObjective)
+            {
+                priorObjective = objective;
+                objectiveToastUntil = Time.unscaledTime + 5.5f;
+            }
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null &&
+                keyboard.hKey.wasPressedThisFrame &&
+                !GamePauseMenuController.IsAnyMenuOpen)
+            {
+                helpVisible = !helpVisible;
+                if (helpVisible)
+                {
+                    objectiveToastUntil = Time.unscaledTime + 8f;
+                }
             }
         }
 
@@ -127,7 +172,7 @@ namespace Margins
         {
             return TryValidateConfiguration(out _)
                 ? DescribeObjective(DeriveObjectiveKind())
-                : "Resolve first-store configuration";
+                : "Store setup needs attention";
         }
 
         private FirstStoreObjectiveKind DeriveObjectiveKind()
@@ -221,30 +266,30 @@ namespace Margins
             return objective switch
             {
                 FirstStoreObjectiveKind.ClockIn =>
-                    "Enter the store and clock in at the front panel",
+                    "Use the front control to begin",
                 FirstStoreObjectiveKind.PlaceCheckout =>
-                    "Place the checkout counter on the sales floor",
+                    "Place the checkout counter",
                 FirstStoreObjectiveKind.OpenDelivery =>
-                    "Open the starter delivery in Receiving",
+                    "Open the delivery in Receiving",
                 FirstStoreObjectiveKind.TakeCola =>
-                    "Take a cola case item from the delivery",
+                    "Take cola from the delivery",
                 FirstStoreObjectiveKind.TakeChips =>
-                    "Take a chips case item from the delivery",
+                    "Take chips from the delivery",
                 FirstStoreObjectiveKind.StockHeldProduct =>
-                    $"Stock {HeldProductName()} on the highlighted shelf",
+                    $"Stock {HeldProductName()} on its shelf",
                 FirstStoreObjectiveKind.OpenStore =>
-                    "Switch the front panel to OPEN",
+                    "Open for business",
                 FirstStoreObjectiveKind.CompleteCheckout =>
-                    "Serve the waiting basket at Checkout 01",
+                    "Serve the waiting customer",
                 FirstStoreObjectiveKind.CleanSpill =>
                     "Clean the spill before closing",
                 FirstStoreObjectiveKind.BeginClosing =>
-                    "Return to the front panel and begin closing",
+                    "Begin closing at the front control",
                 FirstStoreObjectiveKind.FinalizeClosing =>
-                    "Finish closing and post the shift result",
+                    "Finish closing once the floor is clear",
                 FirstStoreObjectiveKind.ReviewResult =>
-                    "Review the shift result at the front panel",
-                _ => "First shift complete — explore or press F5 to save"
+                    "Review the shift result",
+                _ => "The business is yours to run"
             };
         }
 
@@ -314,15 +359,33 @@ namespace Margins
         {
             ProductDefinition definition = stocking?.HeldPhysicalUnit?.Definition;
             return definition == null || string.IsNullOrWhiteSpace(definition.DisplayName)
-                ? "the product"
+                ? "product"
                 : definition.DisplayName;
         }
 
         private void HandleInteractionResolved(FirstStoreInteractionFeedback feedback)
         {
             feedbackSucceeded = feedback.Succeeded;
-            feedbackText = feedback.Message;
-            feedbackUntil = Time.unscaledTime + (feedback.Succeeded ? 1.35f : 3.25f);
+            feedbackText = feedback.Succeeded
+                ? FriendlySuccess(feedback.Action)
+                : FriendlyFailure(feedback.Message);
+            feedbackUntil = Time.unscaledTime +
+                            (feedback.Succeeded ? 0.9f : 3.4f);
+        }
+
+        private void HandlePersistenceCompleted(bool succeeded, string diagnostic)
+        {
+            feedbackSucceeded = succeeded;
+            feedbackText = succeeded
+                ? diagnostic.Contains("Press F9", StringComparison.OrdinalIgnoreCase)
+                    ? "Press F9 again to reload"
+                    : diagnostic.Contains("Loaded", StringComparison.OrdinalIgnoreCase)
+                        ? "Company loaded"
+                        : diagnostic.Contains("No saved", StringComparison.OrdinalIgnoreCase)
+                            ? "No saved company yet"
+                            : "Company saved"
+                : FriendlyFailure(diagnostic);
+            feedbackUntil = Time.unscaledTime + (succeeded ? 1.8f : 3.8f);
         }
 
         private void OnGUI()
@@ -334,213 +397,115 @@ namespace Margins
 
             EnsureStyles();
             float scale = Mathf.Max(
-                0.62f,
-                Mathf.Min(Screen.width / 1920f, Screen.height / 1080f));
-            Matrix4x4 priorMatrix = GUI.matrix;
-            Color priorColor = GUI.color;
+                0.68f,
+                Mathf.Min(Screen.width / 1920f, Screen.height / 1080f) *
+                GamePauseMenuController.UserInterfaceScale);
+            Matrix4x4 previousMatrix = GUI.matrix;
+            Color previousColor = GUI.color;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
             float width = Screen.width / scale;
             float height = Screen.height / scale;
 
-            DrawStoreBadge();
             if (store != null && store.IsContinuousOperation)
             {
-                DrawContinuousStatus(width);
-                DrawContinuousAction(width, height);
+                DrawCompanyGlance(width);
             }
             else
             {
-                DrawChecklist(width);
-                DrawObjective(width, height);
+                DrawObjectiveToast(width);
             }
             DrawCrosshair(width, height);
+            DrawContextPrompt(width, height);
             DrawHeldItem(width, height);
             DrawFeedback(width, height);
-            DrawIntroControls(height);
+            DrawOperationalCue(height);
+            if (helpVisible)
+            {
+                DrawHelp(height);
+            }
             if (store != null && !store.IsContinuousOperation &&
                 store.State == StoreOperatingState.ClosedWithResultPending)
             {
                 DrawResult(width, height);
             }
 
-            GUI.matrix = priorMatrix;
-            GUI.color = priorColor;
+            GUI.matrix = previousMatrix;
+            GUI.color = previousColor;
         }
 
-        private void DrawStoreBadge()
+        private void DrawCompanyGlance(float width)
         {
-            Rect panel = new(32f, 30f, 410f, 102f);
-            DrawPanel(panel, Night);
-            DrawPanel(new Rect(panel.x, panel.y, 7f, panel.height), Teal);
-            GUI.Label(new Rect(54f, 43f, 365f, 30f), storeDisplayName, titleStyle);
-            GUI.Label(
-                new Rect(54f, 80f, 365f, 24f),
-                store != null && store.IsContinuousOperation
-                    ? $"LIVE BUSINESS  /  {FriendlyStoreState()}"
-                    : $"FIRST SHIFT  /  {FriendlyStoreState()}",
-                eyebrowStyle);
-        }
-
-        private void DrawContinuousStatus(float width)
-        {
-            StoreSessionTotals totals = store?.CurrentTotals;
             PortfolioProgressionSnapshot company =
                 portfolio?.Progression?.CreateSnapshot();
-            long cash = company?.cashCents ?? 0;
-            Rect panel = new(width - 442f, 30f, 410f, 196f);
+            if (company == null)
+            {
+                return;
+            }
+
+            Rect panel = new(width - 340f, 28f, 308f, 58f);
             DrawPanel(panel, Night);
-            DrawPanel(new Rect(panel.x, panel.y, 7f, panel.height), Teal);
+            DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Teal);
             GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 16f, 350f, 24f),
-                $"DAY {company?.currentDay ?? 1}  /  LIVE LEDGER",
+                new Rect(panel.x + 20f, panel.y + 8f, 98f, 20f),
+                $"DAY {company.currentDay}",
                 eyebrowStyle);
             GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 49f, 350f, 32f),
-                $"Cash  {FormatCents(cash)}",
+                new Rect(panel.x + 20f, panel.y + 27f, 265f, 24f),
+                FormatCents(company.cashCents),
                 titleStyle);
-            GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 90f, 360f, 25f),
-                $"Sales {FormatCents(totals?.grossSalesCents ?? 0)}   •   " +
-                $"COGS {FormatCents(totals?.costOfGoodsSoldCents ?? 0)}",
-                bodyStyle);
-            GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 123f, 360f, 25f),
-                $"Rent/overhead {FormatCents(totals?.includedOperatingExpensesCents ?? 0)}   •   " +
-                $"Stock {CountDetailedInventory()} units",
-                smallStyle);
-            string condition = cleaning != null && cleaning.NeedsCleaning
-                ? "Store condition: spill needs attention"
-                : "Store condition: clean";
-            GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 157f, 360f, 24f),
-                condition,
-                cleaning != null && cleaning.NeedsCleaning ? bodyStyle : smallStyle);
         }
 
-        private void DrawContinuousAction(float width, float height)
+        private void DrawObjectiveToast(float width)
         {
-            Rect panel = new((width - 920f) * 0.5f, height - 142f, 920f, 104f);
-            DrawPanel(panel, Night);
-            DrawPanel(new Rect(panel.x, panel.y, 8f, panel.height), Teal);
-            FirstStoreWorldInteractionPrompt prompt = interaction.CurrentPrompt;
-            string headline = prompt == null
-                ? "Operate freely — receive, stock, serve, clean when needed, or manage the company"
-                : prompt.Action;
-            GUI.Label(
-                new Rect(panel.x + 28f, panel.y + 17f, 850f, 32f),
-                headline,
-                objectiveStyle);
-            if (prompt == null)
+            if (!helpVisible &&
+                (Time.unscaledTime > objectiveToastUntil ||
+                 CurrentObjectiveKind == FirstStoreObjectiveKind.Complete))
             {
-                GUI.Label(
-                    new Rect(panel.x + 28f, panel.y + 59f, 850f, 24f),
-                    "Tab company management   •   Escape game menu   •   F5 quick save   •   F9 quick load",
-                    smallStyle);
                 return;
             }
 
-            DrawPanel(new Rect(panel.x + 28f, panel.y + 57f, 44f, 28f), Teal);
-            GUI.Label(new Rect(panel.x + 28f, panel.y + 58f, 44f, 25f), prompt.Input, keyStyle);
-            GUI.Label(
-                new Rect(panel.x + 86f, panel.y + 58f, 780f, 25f),
-                string.IsNullOrWhiteSpace(prompt.StateOrBlocker)
-                    ? "Ready"
-                    : prompt.StateOrBlocker,
-                smallStyle);
-        }
-
-        private int CountDetailedInventory()
-        {
-            FirstStoreInventory inventory = delivery?.InventoryComponent?.Inventory;
-            if (inventory == null || colaProduct == null || chipsProduct == null)
-            {
-                return 0;
-            }
-
-            return inventory.GetTotalQuantity(colaProduct.StableProductId) +
-                   inventory.GetTotalQuantity(chipsProduct.StableProductId);
-        }
-
-        private void DrawChecklist(float width)
-        {
-            Rect panel = new(width - 402f, 30f, 370f, 278f);
+            Rect panel = new((width - 660f) * 0.5f, 30f, 660f, 72f);
             DrawPanel(panel, Night);
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 17f, 320f, 28f), "SHIFT PLAN", eyebrowStyle);
-
-            bool saleComplete = checkout != null && checkout.CompletedTransactionCount > 0;
-            bool opened = saleComplete ||
-                          store.State == StoreOperatingState.Open ||
-                          store.State == StoreOperatingState.Closing ||
-                          store.State == StoreOperatingState.ClosedWithResultPending;
-            bool closed = store.State == StoreOperatingState.ClosedWithResultPending ||
-                          (store.State == StoreOperatingState.Closed && saleComplete &&
-                           cleaning != null && cleaning.IsComplete);
-            bool fixturePlaced = requiredFixtures != null && requiredFixtures.Length > 0 &&
-                                 requiredFixtures[0] != null && fixturePlacement != null &&
-                                 fixturePlacement.IsPlaced(
-                                     requiredFixtures[0].StableFixtureInstanceId);
-            bool clockedIn = store.State != StoreOperatingState.Closed || fixturePlaced ||
-                             (delivery != null && delivery.IsOpen) || saleComplete;
-            bool stocked = HasStocked(colaProduct) && HasStocked(chipsProduct);
-
-            DrawChecklistLine(panel, 0, clockedIn, "Clock in");
-            DrawChecklistLine(panel, 1, fixturePlaced, "Place checkout");
-            DrawChecklistLine(panel, 2, delivery != null && delivery.IsOpen, "Open delivery");
-            DrawChecklistLine(panel, 3, stocked, "Stock cola + chips");
-            DrawChecklistLine(panel, 4, opened, "Open the store");
-            DrawChecklistLine(panel, 5, saleComplete, "Complete one sale");
-            DrawChecklistLine(panel, 6, cleaning != null && cleaning.IsComplete, "Clean the spill");
-            DrawChecklistLine(panel, 7, closed, "Close and review");
-        }
-
-        private void DrawChecklistLine(Rect panel, int index, bool complete, string label)
-        {
-            float y = panel.y + 53f + index * 26f;
-            Color marker = complete ? Teal : new Color(0.22f, 0.28f, 0.3f, 1f);
-            DrawPanel(new Rect(panel.x + 22f, y + 5f, 13f, 13f), marker);
-            GUIStyle style = new(bodyStyle) { normal = { textColor = complete ? MutedInk : Ink } };
-            GUI.Label(new Rect(panel.x + 48f, y, 285f, 24f), label, style);
-            if (complete)
-            {
-                GUI.Label(new Rect(panel.x + 295f, y, 46f, 24f), "DONE", eyebrowStyle);
-            }
-        }
-
-        private void DrawObjective(float width, float height)
-        {
-            Rect panel = new((width - 980f) * 0.5f, height - 156f, 980f, 118f);
-            DrawPanel(panel, Night);
-            DrawPanel(new Rect(panel.x, panel.y, 8f, panel.height), Amber);
+            DrawPanel(new Rect(panel.x, panel.y, 6f, panel.height), Amber);
             GUI.Label(
-                new Rect(panel.x + 30f, panel.y + 13f, 620f, 24f),
-                $"TASK {CurrentObjectiveStep} OF {ObjectiveStepCount}",
+                new Rect(panel.x + 22f, panel.y + 9f, 600f, 20f),
+                "NEXT",
                 eyebrowStyle);
             GUI.Label(
-                new Rect(panel.x + 30f, panel.y + 38f, 900f, 34f),
+                new Rect(panel.x + 22f, panel.y + 30f, 600f, 30f),
                 CurrentObjectiveText,
-                objectiveStyle);
+                bodyStyle);
+        }
 
+        private void DrawContextPrompt(float width, float height)
+        {
             FirstStoreWorldInteractionPrompt prompt = interaction.CurrentPrompt;
             if (prompt == null)
             {
-                GUI.Label(
-                    new Rect(panel.x + 30f, panel.y + 82f, 900f, 23f),
-                    "Follow the amber marker and center it in view",
-                    smallStyle);
                 return;
             }
 
-            DrawPanel(new Rect(panel.x + 30f, panel.y + 79f, 44f, 28f), Teal);
-            GUI.Label(new Rect(panel.x + 30f, panel.y + 80f, 44f, 25f), prompt.Input, keyStyle);
+            string state = FriendlyPromptState(prompt.StateOrBlocker);
+            bool hasState = !string.IsNullOrWhiteSpace(state);
+            float panelHeight = hasState ? 76f : 54f;
+            Rect panel = new(
+                (width - 660f) * 0.5f,
+                height * 0.68f,
+                660f,
+                panelHeight);
+            DrawPanel(panel, Night);
+            Rect key = new(panel.x + 14f, panel.y + 11f, 42f, 32f);
+            DrawPanel(key, Teal);
+            GUI.Label(key, prompt.Input, keyStyle);
             GUI.Label(
-                new Rect(panel.x + 88f, panel.y + 79f, 430f, 27f),
-                prompt.Action,
-                bodyStyle);
-            if (!string.IsNullOrWhiteSpace(prompt.StateOrBlocker))
+                new Rect(panel.x + 72f, panel.y + 8f, panel.width - 90f, 38f),
+                FriendlyAction(prompt.Action),
+                promptStyle);
+            if (hasState)
             {
                 GUI.Label(
-                    new Rect(panel.x + 520f, panel.y + 80f, 420f, 25f),
-                    prompt.StateOrBlocker,
+                    new Rect(panel.x + 72f, panel.y + 43f, panel.width - 90f, 25f),
+                    state,
                     smallStyle);
             }
         }
@@ -549,14 +514,15 @@ namespace Margins
         {
             float x = width * 0.5f;
             float y = height * 0.5f;
-            Color color = interaction.CurrentPrompt == null ?
-                new Color(0.8f, 0.84f, 0.82f, 0.62f) : Teal;
-            DrawPanel(new Rect(x - 8f, y - 1f, 16f, 2f), color);
-            DrawPanel(new Rect(x - 1f, y - 8f, 2f, 16f), color);
-            if (interaction.CurrentPrompt != null)
-            {
-                DrawPanel(new Rect(x - 2f, y - 2f, 4f, 4f), Ink);
-            }
+            bool focused = interaction.CurrentPrompt != null;
+            Color color = focused
+                ? Teal
+                : new Color(0.88f, 0.91f, 0.89f, 0.58f);
+            float radius = focused ? 8f : 4f;
+            DrawPanel(new Rect(x - radius, y - 1f, radius * 0.65f, 2f), color);
+            DrawPanel(new Rect(x + radius * 0.35f, y - 1f, radius * 0.65f, 2f), color);
+            DrawPanel(new Rect(x - 1f, y - radius, 2f, radius * 0.65f), color);
+            DrawPanel(new Rect(x - 1f, y + radius * 0.35f, 2f, radius * 0.65f), color);
         }
 
         private void DrawHeldItem(float width, float height)
@@ -567,57 +533,117 @@ namespace Margins
                 return;
             }
 
-            Rect panel = new(width - 402f, height - 148f, 370f, 76f);
+            Rect panel = new(width - 350f, height - 94f, 318f, 62f);
             DrawPanel(panel, NightSoft);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 12f, 320f, 20f), "IN HAND", eyebrowStyle);
+            DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Amber);
             GUI.Label(
-                new Rect(panel.x + 20f, panel.y + 35f, 320f, 28f),
+                new Rect(panel.x + 18f, panel.y + 8f, panel.width - 36f, 24f),
                 HeldProductName(),
                 bodyStyle);
+            GUI.Label(
+                new Rect(panel.x + 18f, panel.y + 34f, panel.width - 36f, 20f),
+                "Wheel  Rotate    •    Q  Put down",
+                smallStyle);
         }
 
         private void DrawFeedback(float width, float height)
         {
-            if (Time.unscaledTime > feedbackUntil || string.IsNullOrWhiteSpace(feedbackText))
+            if (Time.unscaledTime > feedbackUntil ||
+                string.IsNullOrWhiteSpace(feedbackText))
             {
                 return;
             }
 
-            Rect panel = new((width - 680f) * 0.5f, height * 0.5f + 58f, 680f, 58f);
+            float feedbackWidth = feedbackSucceeded ? 360f : 620f;
+            Rect panel = new(
+                (width - feedbackWidth) * 0.5f,
+                height * 0.54f,
+                feedbackWidth,
+                52f);
             DrawPanel(panel, Night);
             DrawPanel(
-                new Rect(panel.x, panel.y, 7f, panel.height),
+                new Rect(panel.x, panel.y, 6f, panel.height),
                 feedbackSucceeded ? Teal : Error);
             GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 14f, panel.width - 48f, 30f),
+                new Rect(panel.x + 18f, panel.y + 9f, panel.width - 36f, 34f),
                 feedbackText,
                 centerStyle);
         }
 
-        private void DrawIntroControls(float height)
+        private void DrawOperationalCue(float height)
         {
-            float age = Time.unscaledTime - shownAt;
-            if (age > 18f)
+            string cue = null;
+            Color cueColor = Teal;
+            if (cleaning != null && cleaning.NeedsCleaning)
             {
+                cue = "Cleanup needed";
+                cueColor = Amber;
+            }
+            else if (stagedCheckout != null &&
+                     !stagedCheckout.AllBasketsComplete &&
+                     stagedCheckout.NextAction == StagedCheckoutPrimaryAction.Begin)
+            {
+                cue = "Customer waiting";
+            }
+
+            if (cue != null)
+            {
+                Rect panel = new(30f, height - 72f, 220f, 40f);
+                DrawPanel(panel, NightSoft);
+                DrawPanel(
+                    new Rect(panel.x + 13f, panel.y + 15f, 10f, 10f),
+                    cueColor);
+                GUI.Label(
+                    new Rect(panel.x + 36f, panel.y + 8f, 170f, 24f),
+                    cue,
+                    smallStyle);
                 return;
             }
 
-            float alpha = age < 13f ? 1f : Mathf.InverseLerp(18f, 13f, age);
-            Color panelColor = Night;
-            panelColor.a *= alpha;
-            Rect panel = new(32f, height - 126f, 550f, 82f);
-            DrawPanel(panel, panelColor);
-            Color prior = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, alpha);
+            if (Time.unscaledTime - shownAt < 12f)
+            {
+                GUI.Label(
+                    new Rect(30f, height - 58f, 220f, 24f),
+                    "H  Help",
+                    smallStyle);
+            }
+        }
+
+        private void DrawHelp(float height)
+        {
+            Rect panel = new(30f, height - 294f, 430f, 252f);
+            DrawPanel(panel, Night);
+            DrawPanel(new Rect(panel.x, panel.y, 6f, panel.height), Teal);
             GUI.Label(
-                new Rect(panel.x + 20f, panel.y + 13f, 510f, 22f),
-                "WASD MOVE   •   SHIFT BRISK WALK   •   MOUSE LOOK",
+                new Rect(panel.x + 24f, panel.y + 18f, 370f, 28f),
+                "Controls",
+                titleStyle);
+            DrawHelpLine(panel, 0, "MOVE", "WASD   •   Shift brisk walk");
+            DrawHelpLine(panel, 1, "USE", "E interact   •   Q back / put down");
+            DrawHelpLine(panel, 2, "HANDLE", "Mouse wheel rotates held objects");
+            DrawHelpLine(panel, 3, "COMPANY", "Tab management   •   Esc menu");
+            DrawHelpLine(panel, 4, "SAVE", "F5 save   •   F9 twice to reload");
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 220f, 370f, 20f),
+                "Press H to close",
+                smallStyle);
+        }
+
+        private void DrawHelpLine(
+            Rect panel,
+            int index,
+            string label,
+            string value)
+        {
+            float y = panel.y + 58f + index * 31f;
+            GUI.Label(
+                new Rect(panel.x + 24f, y, 90f, 22f),
+                label,
                 eyebrowStyle);
             GUI.Label(
-                new Rect(panel.x + 20f, panel.y + 43f, 510f, 24f),
-                "E interact   •   Q back/correct   •   Wheel rotate   •   B camera motion",
+                new Rect(panel.x + 112f, y, 285f, 22f),
+                value,
                 smallStyle);
-            GUI.color = prior;
         }
 
         private void DrawResult(float width, float height)
@@ -628,69 +654,70 @@ namespace Margins
                 return;
             }
 
-            Rect shade = new(0f, 0f, width, height);
-            DrawPanel(shade, new Color(0.01f, 0.018f, 0.025f, 0.68f));
-            Rect panel = new((width - 820f) * 0.5f, (height - 500f) * 0.5f, 820f, 500f);
-            DrawPanel(panel, new Color(0.035f, 0.055f, 0.075f, 0.99f));
-            DrawPanel(new Rect(panel.x, panel.y, panel.width, 9f), Teal);
+            DrawPanel(
+                new Rect(0f, 0f, width, height),
+                new Color(0.008f, 0.014f, 0.02f, 0.78f));
+            Rect panel = new(
+                (width - 820f) * 0.5f,
+                (height - 490f) * 0.5f,
+                820f,
+                490f);
+            DrawPanel(panel, Night);
+            DrawPanel(new Rect(panel.x, panel.y, panel.width, 8f), Teal);
             GUI.Label(
-                new Rect(panel.x + 45f, panel.y + 38f, panel.width - 90f, 32f),
-                "FIRST SHIFT COMPLETE",
+                new Rect(panel.x + 42f, panel.y + 35f, panel.width - 84f, 38f),
+                "Shift complete",
                 titleStyle);
             GUI.Label(
-                new Rect(panel.x + 45f, panel.y + 79f, panel.width - 90f, 26f),
-                "You turned an empty lease into an operating store.",
+                new Rect(panel.x + 42f, panel.y + 77f, panel.width - 84f, 26f),
+                "Here is what the floor produced.",
                 bodyStyle);
 
-            DrawResultMetric(panel, 0, "GROSS SALES", FormatCents(totals.grossSalesCents));
-            DrawResultMetric(panel, 1, "INVENTORY COST", FormatCents(totals.costOfGoodsSoldCents));
-            DrawResultMetric(panel, 2, "SHIFT EXPENSES", FormatCents(totals.includedOperatingExpensesCents));
+            DrawResultMetric(panel, 0, "SALES", FormatCents(totals.grossSalesCents));
+            DrawResultMetric(panel, 1, "INVENTORY", FormatCents(totals.costOfGoodsSoldCents));
+            DrawResultMetric(
+                panel,
+                2,
+                "OVERHEAD",
+                FormatCents(totals.includedOperatingExpensesCents));
             DrawResultMetric(
                 panel,
                 3,
                 "CONTRIBUTION",
                 FormatCents(totals.contributionAfterCostOfGoodsCents));
             GUI.Label(
-                new Rect(panel.x + 45f, panel.y + 366f, panel.width - 90f, 26f),
-                $"{totals.unitsSold} items sold  •  {totals.transactionCount} completed sale",
+                new Rect(panel.x + 42f, panel.y + 365f, panel.width - 84f, 28f),
+                $"{totals.unitsSold} items  •  {totals.transactionCount} completed sales",
                 centerStyle);
             GUI.Label(
-                new Rect(panel.x + 45f, panel.y + 424f, panel.width - 90f, 34f),
-                "Return to the front panel and press E to continue",
-                objectiveStyle);
+                new Rect(panel.x + 42f, panel.y + 420f, panel.width - 84f, 30f),
+                "Use the front control to continue",
+                promptStyle);
         }
 
-        private void DrawResultMetric(Rect panel, int index, string label, string value)
+        private void DrawResultMetric(
+            Rect panel,
+            int index,
+            string label,
+            string value)
         {
-            float columnWidth = (panel.width - 110f) * 0.5f;
+            float columnWidth = (panel.width - 104f) * 0.5f;
             int column = index % 2;
             int row = index / 2;
             Rect metric = new(
-                panel.x + 45f + column * (columnWidth + 20f),
-                panel.y + 132f + row * 105f,
+                panel.x + 42f + column * (columnWidth + 20f),
+                panel.y + 128f + row * 102f,
                 columnWidth,
-                85f);
+                82f);
             DrawPanel(metric, NightSoft);
-            GUI.Label(new Rect(metric.x + 20f, metric.y + 13f, metric.width - 40f, 20f), label, eyebrowStyle);
-            GUI.Label(new Rect(metric.x + 20f, metric.y + 36f, metric.width - 40f, 38f), value, resultValueStyle);
-        }
-
-        private string FriendlyStoreState()
-        {
-            if (store == null)
-            {
-                return "LOADING";
-            }
-
-            return store.State switch
-            {
-                StoreOperatingState.Closed => "CLOSED",
-                StoreOperatingState.Preparing => "SETTING UP",
-                StoreOperatingState.Open => "OPEN",
-                StoreOperatingState.Closing => "CLOSING",
-                StoreOperatingState.ClosedWithResultPending => "SHIFT COMPLETE",
-                _ => "CLOSED"
-            };
+            GUI.Label(
+                new Rect(metric.x + 18f, metric.y + 12f, metric.width - 36f, 20f),
+                label,
+                eyebrowStyle);
+            GUI.Label(
+                new Rect(metric.x + 18f, metric.y + 34f, metric.width - 36f, 38f),
+                value,
+                resultValueStyle);
         }
 
         private void EnsureStyles()
@@ -700,14 +727,22 @@ namespace Margins
                 return;
             }
 
-            titleStyle = CreateStyle(25, FontStyle.Bold, Ink);
-            eyebrowStyle = CreateStyle(13, FontStyle.Bold, Teal);
+            titleStyle = CreateStyle(24, FontStyle.Bold, Ink);
+            eyebrowStyle = CreateStyle(12, FontStyle.Bold, Teal);
             bodyStyle = CreateStyle(18, FontStyle.Normal, Ink);
-            smallStyle = CreateStyle(15, FontStyle.Normal, MutedInk);
-            objectiveStyle = CreateStyle(22, FontStyle.Bold, Ink);
-            keyStyle = CreateStyle(17, FontStyle.Bold, Color.black, TextAnchor.MiddleCenter);
-            centerStyle = CreateStyle(17, FontStyle.Normal, Ink, TextAnchor.MiddleCenter);
-            resultValueStyle = CreateStyle(29, FontStyle.Bold, Ink);
+            smallStyle = CreateStyle(14, FontStyle.Normal, MutedInk);
+            promptStyle = CreateStyle(20, FontStyle.Bold, Ink);
+            keyStyle = CreateStyle(
+                17,
+                FontStyle.Bold,
+                Color.black,
+                TextAnchor.MiddleCenter);
+            centerStyle = CreateStyle(
+                16,
+                FontStyle.Normal,
+                Ink,
+                TextAnchor.MiddleCenter);
+            resultValueStyle = CreateStyle(28, FontStyle.Bold, Ink);
         }
 
         private static GUIStyle CreateStyle(
@@ -729,10 +764,126 @@ namespace Margins
 
         private static void DrawPanel(Rect rect, Color color)
         {
-            Color prior = GUI.color;
+            Color previous = GUI.color;
             GUI.color = color;
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = prior;
+            GUI.color = previous;
+        }
+
+        private static string FriendlyAction(string action)
+        {
+            if (string.IsNullOrWhiteSpace(action))
+            {
+                return "Use";
+            }
+            return action
+                .Replace("staged", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Trim();
+        }
+
+        private static string FriendlyPromptState(string state)
+        {
+            if (string.IsNullOrWhiteSpace(state) ||
+                string.Equals(state, "ready", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string friendly = state
+                .Replace("staged basket", "customer", StringComparison.OrdinalIgnoreCase)
+                .Replace("staged baskets", "customers", StringComparison.OrdinalIgnoreCase)
+                .Replace("Q corrects recent scan", "Q corrects", StringComparison.OrdinalIgnoreCase)
+                .Replace("aim at the visible product", "use the item on the counter", StringComparison.OrdinalIgnoreCase)
+                .Replace("; ", "  •  ", StringComparison.Ordinal);
+            return friendly.Length <= 92
+                ? friendly
+                : $"{friendly.Substring(0, 89)}…";
+        }
+
+        private static string FriendlySuccess(string action)
+        {
+            if (string.IsNullOrWhiteSpace(action))
+            {
+                return "Done";
+            }
+
+            if (action.Contains("Rotate", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Rotated";
+            }
+            if (action.Contains("Place", StringComparison.OrdinalIgnoreCase) ||
+                action.Contains("Stock", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Placed";
+            }
+            if (action.Contains("Open", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Opened";
+            }
+            if (action.Contains("payment", StringComparison.OrdinalIgnoreCase) ||
+                action.Contains("checkout", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Sale complete";
+            }
+            if (action.Contains("Clean", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Cleaned";
+            }
+            if (action.Contains("Put down", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Put down";
+            }
+            return action;
+        }
+
+        private static string FriendlyFailure(string diagnostic)
+        {
+            string value = diagnostic ?? string.Empty;
+            if (value.Contains("held", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("holding", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Put down what you are holding first.";
+            }
+            if (value.Contains("checkout", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("transaction", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Finish or cancel the current checkout first.";
+            }
+            if (value.Contains("occupied", StringComparison.OrdinalIgnoreCase))
+            {
+                return "That space is occupied.";
+            }
+            if (value.Contains("outside", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("bounds", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Keep the whole fixture inside the floor area.";
+            }
+            if (value.Contains("sealed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Open the delivery first.";
+            }
+            if (value.Contains("no accepted", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("No saved", StringComparison.OrdinalIgnoreCase))
+            {
+                return "No saved company is available yet.";
+            }
+            if (value.Contains("malformed", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("unsupported", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("reconcile", StringComparison.OrdinalIgnoreCase))
+            {
+                return "That save could not be opened. Nothing was changed.";
+            }
+            if (value.Contains("team member", StringComparison.OrdinalIgnoreCase))
+            {
+                return "A team member is moving stock. Try again in a moment.";
+            }
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "That action is not available.";
+            }
+            return value.Length <= 104
+                ? value
+                : "That action could not be completed. Try a different position.";
         }
 
         private static string FormatCents(long cents)
@@ -741,9 +892,12 @@ namespace Margins
             ulong absolute = negative
                 ? (ulong)(-(cents + 1)) + 1UL
                 : (ulong)cents;
+            string dollars = (absolute / 100).ToString(
+                "N0",
+                System.Globalization.CultureInfo.InvariantCulture);
             return negative
-                ? $"-${absolute / 100}.{absolute % 100:00}"
-                : $"${absolute / 100}.{absolute % 100:00}";
+                ? $"-${dollars}.{absolute % 100:00}"
+                : $"${dollars}.{absolute % 100:00}";
         }
     }
 }

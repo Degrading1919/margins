@@ -130,14 +130,21 @@ namespace Margins
             SetFeedbackMaterial(defaultMaterial);
         }
 
-        public void ReleaseLoose()
+        public void ReleaseLoose(bool showInvalidPlacementFeedback = true)
         {
             IsHeld = false;
             SnappedFixture = null;
             SnappedPointId = null;
             transform.SetParent(null, true);
             SetPhysicsHeld(false);
-            ShowTemporaryInvalidFeedback();
+            if (showInvalidPlacementFeedback)
+            {
+                ShowTemporaryInvalidFeedback();
+            }
+            else
+            {
+                SetFeedbackMaterial(defaultMaterial);
+            }
         }
 
         public void ApplySnappedPlacement(
