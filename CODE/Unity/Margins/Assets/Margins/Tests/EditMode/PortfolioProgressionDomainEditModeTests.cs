@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 
 namespace Margins.Tests.EditMode
@@ -12,6 +13,54 @@ namespace Margins.Tests.EditMode
             contributionAfterCostOfGoodsCents: 108,
             unitsSold: 2,
             transactionCount: 1);
+
+        [Test]
+        public void DetailedEmployeePacingUsesCompetenceFocusAndManagerPresence()
+        {
+            MethodInfo actionDelay = typeof(InStoreEmployeeWorkController)
+                .GetMethod(
+                    "ActionDelay",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(actionDelay, Is.Not.Null);
+
+            PortfolioEmployeeSnapshot strongCashier = new()
+            {
+                skill = 90,
+                reliability = 95,
+                taskFocus = PortfolioTaskFocus.Service
+            };
+            PortfolioEmployeeSnapshot weakCashier = new()
+            {
+                skill = 30,
+                reliability = 35,
+                taskFocus = PortfolioTaskFocus.Inventory
+            };
+            PortfolioEmployeeSnapshot manager = new()
+            {
+                skill = 80,
+                reliability = 90,
+                taskFocus = PortfolioTaskFocus.Balanced
+            };
+
+            float strongAlone = InvokeDelay(
+                actionDelay,
+                strongCashier,
+                null,
+                PortfolioTaskFocus.Service);
+            float weakAlone = InvokeDelay(
+                actionDelay,
+                weakCashier,
+                null,
+                PortfolioTaskFocus.Service);
+            float strongManaged = InvokeDelay(
+                actionDelay,
+                strongCashier,
+                manager,
+                PortfolioTaskFocus.Service);
+
+            Assert.That(strongAlone, Is.LessThan(weakAlone));
+            Assert.That(strongManaged, Is.LessThan(strongAlone));
+        }
 
         [Test]
         public void DetailedShiftPostsCashBasisExactlyOnce()
@@ -586,6 +635,17 @@ namespace Margins.Tests.EditMode
                     out error),
                 Is.True,
                 error);
+        }
+
+        private static float InvokeDelay(
+            MethodInfo actionDelay,
+            PortfolioEmployeeSnapshot employee,
+            PortfolioEmployeeSnapshot manager,
+            PortfolioTaskFocus preferredFocus)
+        {
+            return (float)actionDelay.Invoke(
+                null,
+                new object[] { employee, manager, preferredFocus });
         }
     }
 }

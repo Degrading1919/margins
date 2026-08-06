@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Margins
 {
     /// <summary>
-    /// Runs hired staff through the same detailed interactions the owner learned:
-    /// move/open deliveries, carry individual units to fixtures, scan the visible
-    /// basket, take payment, and respond to an actual mess.
+    /// Runs hired staff through the same authoritative detailed interactions the
+    /// owner uses: receive and stock physical units, serve live customers by
+    /// scanning their exact items, and respond to an actual mess.
     /// </summary>
     public sealed class InStoreEmployeeWorkController : MonoBehaviour
     {
@@ -15,7 +15,7 @@ namespace Margins
         [SerializeField] private StoreOperatingController store;
         [SerializeField] private DeliveryBoxComponent deliveryBox;
         [SerializeField] private StockingController stocking;
-        [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
         [SerializeField] private CleaningTaskComponent cleaning;
         [SerializeField] private ProductDefinition[] products;
 
@@ -45,6 +45,8 @@ namespace Margins
         public bool IsHandlingInventory =>
             employeeMovingBox || stockerUnit != null;
 
+        public StoreCustomerFlowController CustomerFlow => customerFlow;
+
         private void Start()
         {
             if (!TryValidateConfiguration(out string error))
@@ -57,10 +59,13 @@ namespace Margins
         private void Update()
         {
             PortfolioProgression progression = portfolio?.Progression;
+            bool storeAcceptsWork = store != null &&
+                                    (store.State == StoreOperatingState.Open ||
+                                     store.State == StoreOperatingState.Closing ||
+                                     IsHandlingInventory);
             bool canWork = progression != null &&
                            progression.FirstShiftCompleted &&
-                           store != null &&
-                           store.State == StoreOperatingState.Open &&
+                           storeAcceptsWork &&
                            !GamePauseMenuController.IsAnyMenuOpen;
 
             PortfolioEmployeeSnapshot cashier = canWork
@@ -73,9 +78,26 @@ namespace Margins
                 ? FindAssigned(progression, PortfolioEmployeeRole.Manager)
                 : null;
 
-            SetAvatar(cashierAvatar, cashierLabel, cashier, "CASHIER • SERVING");
-            SetAvatar(stockerAvatar, stockerLabel, stocker, "STOCK • RECEIVING");
-            SetAvatar(managerAvatar, managerLabel, manager, "MANAGER • SUPERVISING");
+            SetAvatar(
+                cashierAvatar,
+                cashierLabel,
+                cashier,
+                customerFlow != null &&
+                (customerFlow.HasActiveCheckout || customerFlow.QueuedCustomerCount > 0)
+                    ? "CASHIER • SERVING"
+                    : "CASHIER • READY");
+            SetAvatar(
+                stockerAvatar,
+                stockerLabel,
+                stocker,
+                IsHandlingInventory ? "STOCK • RESTOCKING" : "STOCK • READY");
+            SetAvatar(
+                managerAvatar,
+                managerLabel,
+                manager,
+                cleaning != null && cleaning.NeedsCleaning
+                    ? "MANAGER • STANDARDS"
+                    : "MANAGER • SUPERVISING");
 
             if (!canWork)
             {
@@ -90,7 +112,10 @@ namespace Margins
                 {
                     TryPerformCashierAction();
                     nextCashierActionAt = Time.unscaledTime +
-                                          ActionDelay(cashier, manager != null);
+                                          ActionDelay(
+                                              cashier,
+                                              manager,
+                                              PortfolioTaskFocus.Service);
                 }
             }
 
@@ -101,9 +126,13 @@ namespace Margins
                 if (Time.unscaledTime >= nextStockerActionAt &&
                     IsAt(stockerAvatar, destination))
                 {
-                    TryPerformStockerAction();
+                    TryPerformStockerAction(
+                        store.State == StoreOperatingState.Open);
                     nextStockerActionAt = Time.unscaledTime +
-                                          ActionDelay(stocker, manager != null);
+                                          ActionDelay(
+                                              stocker,
+                                              manager,
+                                              PortfolioTaskFocus.Inventory);
                 }
             }
 
@@ -116,7 +145,10 @@ namespace Margins
                 {
                     cleaning.TryApplyProgress(1);
                     nextStandardsActionAt = Time.unscaledTime +
-                                            ActionDelay(manager, false);
+                                            ActionDelay(
+                                                manager,
+                                                null,
+                                                PortfolioTaskFocus.Standards);
                 }
             }
             else if (stocker != null &&
@@ -128,14 +160,17 @@ namespace Margins
             {
                 cleaning.TryApplyProgress(1);
                 nextStandardsActionAt = Time.unscaledTime +
-                                        ActionDelay(stocker, false);
+                                        ActionDelay(
+                                            stocker,
+                                            null,
+                                            PortfolioTaskFocus.Standards);
             }
         }
 
         public bool TryValidateConfiguration(out string error)
         {
             if (portfolio == null || store == null || deliveryBox == null ||
-                stocking == null || stagedCheckout == null || cleaning == null ||
+                stocking == null || customerFlow == null || cleaning == null ||
                 products == null || products.Length == 0 ||
                 products.Any(product => product == null) ||
                 cashierAvatar == null || stockerAvatar == null ||
@@ -148,6 +183,15 @@ namespace Margins
                 return false;
             }
 
+            if (customerFlow.StoreOperating != store ||
+                customerFlow.Checkout != store.Checkout ||
+                customerFlow.PhysicalUnits != stocking.PhysicalUnits)
+            {
+                error =
+                    "Employee work must use the store's live customer, checkout, and physical-unit authorities.";
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -156,6 +200,9 @@ namespace Margins
         {
             stockerUnit = null;
             employeeMovingBox = false;
+            nextCashierActionAt = Time.unscaledTime;
+            nextStockerActionAt = Time.unscaledTime;
+            nextStandardsActionAt = Time.unscaledTime;
             deliveryRelocated = deliveryBox != null &&
                                 deliveryDropPoint != null &&
                                 HorizontalDistance(
@@ -165,32 +212,35 @@ namespace Margins
 
         private void TryPerformCashierAction()
         {
-            if (stagedCheckout == null || stagedCheckout.AllBasketsComplete)
+            if (customerFlow == null)
             {
                 return;
             }
 
-            switch (stagedCheckout.NextAction)
+            if (!customerFlow.HasActiveCheckout)
             {
-                case StagedCheckoutPrimaryAction.Begin:
-                    stagedCheckout.TryBeginCustomer(out _);
-                    break;
-                case StagedCheckoutPrimaryAction.Scan:
-                    stagedCheckout.TryScanVisibleProduct(
-                        stagedCheckout.ActiveProduct,
-                        out _,
-                        out _);
-                    break;
-                case StagedCheckoutPrimaryAction.Complete:
-                    if (stagedCheckout.TryTakePayment(out _, out _, out _))
-                    {
-                        stagedCheckout.TryContinue(out _);
-                    }
-                    break;
+                customerFlow.TryStartCheckout(out _);
+                return;
+            }
+
+            foreach (string physicalUnitId in
+                     customerFlow.ActiveCheckoutPhysicalUnitIds)
+            {
+                if (customerFlow.CanScanCustomerItem(physicalUnitId))
+                {
+                    customerFlow.TryScanCustomerItem(physicalUnitId, out _);
+                    return;
+                }
+            }
+
+            if (customerFlow.ActiveCheckoutScannedCount ==
+                customerFlow.ActiveCheckoutItemCount)
+            {
+                customerFlow.TryCompleteCheckout(out _);
             }
         }
 
-        private void TryPerformStockerAction()
+        private void TryPerformStockerAction(bool mayStartNewWork)
         {
             if (deliveryBox == null || stocking == null ||
                 deliveryBox.IsCarried && !employeeMovingBox)
@@ -200,6 +250,17 @@ namespace Margins
 
             if (employeeMovingBox)
             {
+                if (!deliveryBox.IsCarried ||
+                    !deliveryBox.transform.IsChildOf(stockerBoxCarryPoint))
+                {
+                    employeeMovingBox = false;
+                    deliveryRelocated = !deliveryBox.IsCarried &&
+                                        HorizontalDistance(
+                                            deliveryBox.transform,
+                                            deliveryDropPoint) < 1.25f;
+                    return;
+                }
+
                 if (deliveryBox.TrySetDown(
                         deliveryDropPoint.position,
                         deliveryDropPoint.rotation,
@@ -209,6 +270,32 @@ namespace Margins
                     deliveryRelocated = true;
                 }
                 return;
+            }
+
+            if (stockerUnit != null)
+            {
+                if (stockerUnit.IsHeld && stocking.TryStockHeldUnit(0, out _))
+                {
+                    stockerUnit = null;
+                }
+                else if (!stockerUnit.IsHeld)
+                {
+                    stockerUnit = null;
+                }
+                return;
+            }
+
+            if (!mayStartNewWork || stocking.HasHeldUnit)
+            {
+                return;
+            }
+
+            if (deliveryRelocated &&
+                HorizontalDistance(
+                    deliveryBox.transform,
+                    deliveryDropPoint) >= 1.25f)
+            {
+                deliveryRelocated = false;
             }
 
             if (!deliveryRelocated)
@@ -229,19 +316,6 @@ namespace Margins
             if (deliveryBox.IsSealed)
             {
                 deliveryBox.TryOpen(out _, out _);
-                return;
-            }
-
-            if (stockerUnit != null)
-            {
-                if (stockerUnit.IsHeld && stocking.TryStockHeldUnit(0, out _))
-                {
-                    stockerUnit = null;
-                }
-                else if (!stockerUnit.IsHeld)
-                {
-                    stockerUnit = null;
-                }
                 return;
             }
 
@@ -324,12 +398,31 @@ namespace Margins
 
         private static float ActionDelay(
             PortfolioEmployeeSnapshot employee,
-            bool managerPresent)
+            PortfolioEmployeeSnapshot manager,
+            PortfolioTaskFocus preferredFocus)
         {
             float skill = Mathf.Clamp01(employee.skill / 100f);
             float reliability = Mathf.Clamp01(employee.reliability / 100f);
-            float delay = Mathf.Lerp(2.1f, 0.85f, (skill + reliability) * 0.5f);
-            return managerPresent ? delay * 0.78f : delay;
+            float competence = skill * 0.55f + reliability * 0.45f;
+            float delay = Mathf.Lerp(2.35f, 0.72f, competence);
+
+            if (employee.taskFocus == preferredFocus)
+            {
+                delay *= 0.86f;
+            }
+            else if (employee.taskFocus == PortfolioTaskFocus.Balanced)
+            {
+                delay *= 0.94f;
+            }
+
+            if (manager != null)
+            {
+                float managerCompetence = Mathf.Clamp01(
+                    (manager.skill + manager.reliability) / 200f);
+                delay *= Mathf.Lerp(0.9f, 0.7f, managerCompetence);
+            }
+
+            return Mathf.Max(0.35f, delay);
         }
 
         private void MoveAvatar(Transform avatar, Transform destination)
@@ -393,13 +486,9 @@ namespace Margins
                 {
                     firstName = firstName.Substring(0, firstSpace);
                 }
-                string role = assignment;
-                int separator = role.IndexOf('\u2022');
-                if (separator > 0)
-                {
-                    role = role.Substring(0, separator).Trim();
-                }
-                label.text = $"{firstName.ToUpperInvariant()}\n{role}";
+                string roleAndWork = assignment.Replace(" • ", "\n");
+                label.text =
+                    $"{firstName.ToUpperInvariant()}\n{roleAndWork}";
             }
         }
     }

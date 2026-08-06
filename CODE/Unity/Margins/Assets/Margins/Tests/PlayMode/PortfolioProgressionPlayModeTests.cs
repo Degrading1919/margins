@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -172,9 +173,26 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator HiredTeamPerformsDetailedReceivingStockingCheckoutAndStandardsWork()
+        public IEnumerator HiredTeamServesLiveCustomerRestocksCleansAndRoundTripsOnce()
         {
             CompletePhysicalFirstShift();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+            FirstStoreInventoryComponent inventory =
+                Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            StoreCustomerFlowController flow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            ProductDefinition cola = GetProduct("prod-cola-can-355ml");
+            ProductDefinition chips = GetProduct("prod-potato-chips-small");
+            StockOneProduct(delivery, stocking, cola);
+            StockOneProduct(delivery, stocking, chips);
+
             HireFirstTeam();
             Assert.That(
                 portfolio.TrySynchronizeLivePayroll(out string error),
@@ -185,25 +203,87 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
             StagedCheckoutInteractionComponent staged =
                 Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>();
-            CheckoutStationComponent checkout =
-                Object.FindAnyObjectByType<CheckoutStationComponent>();
-            DeliveryBoxComponent delivery =
-                Object.FindAnyObjectByType<DeliveryBoxComponent>();
             Assert.That(employeeWork, Is.Not.Null);
             Assert.That(
                 employeeWork.TryValidateConfiguration(out error),
                 Is.True,
                 error);
+            Assert.That(staged.enabled, Is.False);
 
-            float deadline = Time.realtimeSinceStartup + 24f;
-            while (!staged.AllBasketsComplete &&
+            SetField(flow, "secondsUntilNextArrival", 1_000f);
+            SetField(flow, "arrivalIntervalSeconds", 1_000f);
+            SetField(flow, "nextCustomerOrdinal", 3);
+            DeliveryBoxWorldInteractionTarget deliveryTarget =
+                Object.FindAnyObjectByType<DeliveryBoxWorldInteractionTarget>();
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (!delivery.IsCarried &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(delivery.IsCarried, Is.True);
+            Assert.That(
+                deliveryTarget.TryCancel(out error),
+                Is.True,
+                error);
+            employeeWork.enabled = false;
+            yield return null;
+
+            int transactionCountBefore = checkout.CompletedTransactionCount;
+            int unitsSoldBefore = checkout.UnitsSold;
+            int inventoryBefore = TotalInventory(inventory, checkout);
+            if (!cleaning.NeedsCleaning)
+            {
+                Assert.That(cleaning.TryCreateMess(), Is.True);
+            }
+            Assert.That(cleaning.NeedsCleaning, Is.True);
+
+            Assert.That(
+                flow.TryAdmitCustomerNow(out string customerId, out error),
+                Is.True,
+                error);
+            Assert.That(customerId, Is.EqualTo("store-customer-000003"));
+
+            deadline = Time.realtimeSinceStartup + 12f;
+            while (!flow.CanStartCheckout &&
                    Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
             }
 
-            Assert.That(staged.AllBasketsComplete, Is.True);
-            Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(4));
+            Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
+            Assert.That(flow.TryStartCheckout(out error), Is.True, error);
+            Assert.That(flow.ActiveCheckoutItemCount, Is.EqualTo(2));
+            string playerScannedUnit = flow.ActiveCheckoutPhysicalUnitIds[0];
+            Assert.That(
+                flow.TryScanCustomerItem(playerScannedUnit, out error),
+                Is.True,
+                error);
+            Assert.That(flow.ActiveCheckoutScannedCount, Is.EqualTo(1));
+            employeeWork.enabled = true;
+
+            deadline = Time.realtimeSinceStartup + 20f;
+            while ((checkout.CompletedTransactionCount < transactionCountBefore + 1 ||
+                    !cleaning.IsComplete ||
+                    !HasAnyShelfStock(inventory, checkout)) &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(
+                checkout.CompletedTransactionCount,
+                Is.EqualTo(transactionCountBefore + 1));
+            Assert.That(checkout.UnitsSold, Is.EqualTo(unitsSoldBefore + 2));
+            Assert.That(
+                checkout.CompletedTransactions.Count(transaction =>
+                    transaction.transactionId == "sale-store-customer-000003"),
+                Is.EqualTo(1));
+            Assert.That(
+                TotalInventory(inventory, checkout),
+                Is.EqualTo(inventoryBefore - 2));
+            Assert.That(cleaning.IsComplete, Is.True);
+            Assert.That(HasAnyShelfStock(inventory, checkout), Is.True);
             Assert.That(delivery.IsCarried, Is.False);
             Assert.That(
                 GameObject.Find("Detailed Cashier Employee"),
@@ -215,6 +295,17 @@ namespace Margins.Tests
                 GameObject.Find("Detailed Manager Employee"),
                 Is.Not.Null);
             Assert.That(store.LivePayrollCents, Is.EqualTo(42_000));
+
+            deadline = Time.realtimeSinceStartup + 20f;
+            while ((flow.HasCustomersInStore || employeeWork.IsHandlingInventory) &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(flow.HasCustomersInStore, Is.False);
+            Assert.That(employeeWork.IsHandlingInventory, Is.False);
+            employeeWork.enabled = false;
+            flow.enabled = false;
 
             Assert.That(
                 portfolio.TrySynchronizeDetailedShift(out error),
@@ -231,6 +322,137 @@ namespace Margins.Tests
                     firstLocation.lastReport.costOfGoodsSoldCents -
                     firstLocation.lastReport.payrollCents -
                     firstLocation.lastReport.rentCents));
+
+            Assert.That(disk.TrySaveToPath(savePath), Is.True, disk.LastDiagnostic);
+            int savedTransactions = checkout.CompletedTransactionCount;
+            int savedInventory = TotalInventory(inventory, checkout);
+            long savedSales = checkout.GrossSalesCents;
+            Assert.That(disk.TryLoadFromPath(savePath), Is.True, disk.LastDiagnostic);
+            yield return null;
+            Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(savedTransactions));
+            Assert.That(TotalInventory(inventory, checkout), Is.EqualTo(savedInventory));
+            Assert.That(checkout.GrossSalesCents, Is.EqualTo(savedSales));
+            Assert.That(portfolio.Progression.Employees.Count, Is.EqualTo(3));
+        }
+
+        [UnityTest]
+        public IEnumerator StaffFinishesQueuedSaleAndStandardsWorkDuringClosing()
+        {
+            CompletePhysicalFirstShift();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+            FirstStoreInventoryComponent inventory =
+                Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            StoreCustomerFlowController flow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            StockOneProduct(
+                delivery,
+                stocking,
+                GetProduct("prod-cola-can-355ml"));
+            HireFirstTeam();
+
+            SetField(flow, "secondsUntilNextArrival", 1_000f);
+            SetField(flow, "arrivalIntervalSeconds", 1_000f);
+            int transactionCountBefore = checkout.CompletedTransactionCount;
+            int inventoryBefore = TotalInventory(inventory, checkout);
+            employeeWork.enabled = false;
+            Assert.That(cleaning.TryCreateMess(), Is.True);
+            Assert.That(
+                flow.TryAdmitCustomerNow(out _, out string error),
+                Is.True,
+                error);
+
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (!flow.CanStartCheckout &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
+            Assert.That(store.TryBeginClosing(out error), Is.True, error);
+            employeeWork.enabled = true;
+
+            deadline = Time.realtimeSinceStartup + 18f;
+            while ((flow.HasCustomersInStore || !cleaning.IsComplete) &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(flow.HasCustomersInStore, Is.False);
+            Assert.That(cleaning.IsComplete, Is.True);
+            Assert.That(
+                checkout.CompletedTransactionCount,
+                Is.EqualTo(transactionCountBefore + 1));
+            Assert.That(
+                TotalInventory(inventory, checkout),
+                Is.EqualTo(inventoryBefore - 1));
+            Assert.That(store.TryFinishClosing(out error), Is.True, error);
+            Assert.That(
+                store.State,
+                Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+        }
+
+        [UnityTest]
+        public IEnumerator StaffSetsDownInFlightDeliveryAfterFinalClose()
+        {
+            CompletePhysicalFirstShift();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            StoreCustomerFlowController flow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            StockOneProduct(
+                delivery,
+                stocking,
+                GetProduct("prod-cola-can-355ml"));
+            HireFirstTeam();
+            SetField(flow, "secondsUntilNextArrival", 1_000f);
+            SetField(flow, "arrivalIntervalSeconds", 1_000f);
+
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (!delivery.IsCarried &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(delivery.IsCarried, Is.True);
+            Assert.That(employeeWork.IsHandlingInventory, Is.True);
+            Assert.That(store.TryBeginClosing(out string error), Is.True, error);
+            for (int step = 0; step < 8 && !cleaning.IsComplete; step++)
+            {
+                cleaning.TryApplyProgress(1);
+            }
+            Assert.That(cleaning.IsComplete, Is.True);
+            Assert.That(store.TryFinishClosing(out error), Is.True, error);
+            Assert.That(
+                store.State,
+                Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+
+            deadline = Time.realtimeSinceStartup + 8f;
+            while (employeeWork.IsHandlingInventory &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(delivery.IsCarried, Is.False);
+            Assert.That(employeeWork.IsHandlingInventory, Is.False);
         }
 
         [UnityTest]
@@ -497,6 +719,77 @@ namespace Margins.Tests
                     out error),
                 Is.True,
                 error);
+        }
+
+        private static ProductDefinition GetProduct(string productId)
+        {
+            return Resources
+                .FindObjectsOfTypeAll<ProductDefinition>()
+                .Single(product => product.StableProductId == productId);
+        }
+
+        private static void StockOneProduct(
+            DeliveryBoxComponent delivery,
+            StockingController stocking,
+            ProductDefinition product)
+        {
+            Assert.That(
+                delivery.TryOpen(out _, out string error),
+                Is.True,
+                error);
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    product,
+                    out ProductItem loose,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                stocking.TryPickUpLooseUnit(loose, out _, out error),
+                Is.True,
+                error);
+            Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+        }
+
+        private static int TotalInventory(
+            FirstStoreInventoryComponent inventory,
+            CheckoutStationComponent checkout)
+        {
+            return checkout.ConfiguredProductIds.Sum(
+                inventory.Inventory.GetTotalQuantity);
+        }
+
+        private static bool HasAnyShelfStock(
+            FirstStoreInventoryComponent inventory,
+            CheckoutStationComponent checkout)
+        {
+            foreach (string productId in checkout.ConfiguredProductIds)
+            {
+                if (checkout.TryGetShelfLocation(
+                        productId,
+                        out string shelfLocationId) &&
+                    inventory.Inventory.GetQuantity(
+                        shelfLocationId,
+                        productId) > 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static void SetField<T>(
+            object target,
+            string fieldName,
+            T value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName);
+            field.SetValue(target, value);
         }
 
         private static void AssertPoseEqual(

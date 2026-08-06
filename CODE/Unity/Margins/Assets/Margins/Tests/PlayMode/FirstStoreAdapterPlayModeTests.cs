@@ -95,6 +95,8 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<StoreCustomerFlowController>();
             CustomerCheckoutWorldInteractionTarget customerCheckout =
                 Object.FindAnyObjectByType<CustomerCheckoutWorldInteractionTarget>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
 
             Assert.That(validation, Is.Not.Null);
             Assert.That(store, Is.Not.Null);
@@ -118,10 +120,20 @@ namespace Margins.Tests
             Assert.That(store.CustomerFlow, Is.SameAs(customerFlow));
             Assert.That(customerCheckout, Is.Not.Null);
             Assert.That(customerCheckout.enabled, Is.True);
+            Assert.That(employeeWork, Is.Not.Null);
+            Assert.That(employeeWork.CustomerFlow, Is.SameAs(customerFlow));
+            Assert.That(
+                employeeWork.TryValidateConfiguration(out error),
+                Is.True,
+                error);
             Assert.That(
                 Object.FindAnyObjectByType<StagedCheckoutWorldInteractionTarget>()
                     .enabled,
-                Is.True);
+                Is.False);
+            Assert.That(
+                Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>()
+                    .enabled,
+                Is.False);
         }
 
         [UnityTest]

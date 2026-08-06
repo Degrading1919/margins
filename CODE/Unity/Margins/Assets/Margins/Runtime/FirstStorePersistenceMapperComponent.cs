@@ -107,6 +107,15 @@ namespace Margins
                 return false;
             }
 
+            if (employeeWork != null &&
+                (!employeeWork.TryValidateConfiguration(out error) ||
+                 employeeWork.CustomerFlow != customerFlow))
+            {
+                error ??=
+                    "First-store persistence employee work does not use the configured live customer flow.";
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -171,6 +180,13 @@ namespace Margins
             FirstStoreSnapshot snapshot,
             out string error)
         {
+            if (employeeWork != null && employeeWork.IsHandlingInventory)
+            {
+                error =
+                    "Wait for the employee to set down or stock carried inventory before loading.";
+                return false;
+            }
+
             if (customerFlow != null &&
                 customerFlow.TryGetRestoreBlocker(out error))
             {
@@ -315,6 +331,13 @@ namespace Margins
                     blocker = "Set down the carried delivery box before saving.";
                     return true;
                 }
+            }
+
+            if (employeeWork != null && employeeWork.IsHandlingInventory)
+            {
+                blocker =
+                    "Wait for the employee to set down or stock carried inventory before saving.";
+                return true;
             }
 
             if (checkout.HasActiveIncompleteSession)

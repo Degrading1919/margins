@@ -106,7 +106,7 @@ namespace Margins.Editor
                 checkoutTargetObject.GetComponent<StagedCheckoutWorldInteractionTarget>();
             if (stagedTarget != null)
             {
-                stagedTarget.enabled = true;
+                stagedTarget.enabled = false;
                 EditorUtility.SetDirty(stagedTarget);
             }
 
@@ -125,7 +125,7 @@ namespace Margins.Editor
                          FindObjectsInactive.Include,
                          FindObjectsSortMode.None))
             {
-                stagedProduct.enabled = true;
+                stagedProduct.enabled = false;
                 EditorUtility.SetDirty(stagedProduct);
             }
 
@@ -133,7 +133,7 @@ namespace Margins.Editor
                 checkout.GetComponent<StagedCheckoutInteractionComponent>();
             if (stagedCheckout != null)
             {
-                stagedCheckout.enabled = true;
+                stagedCheckout.enabled = false;
                 EditorUtility.SetDirty(stagedCheckout);
             }
 
@@ -141,6 +141,7 @@ namespace Margins.Editor
                 UnityEngine.Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
             if (employeeWork != null)
             {
+                SetObject(employeeWork, "customerFlow", flow);
                 employeeWork.enabled = true;
                 EditorUtility.SetDirty(employeeWork);
             }
@@ -167,7 +168,7 @@ namespace Margins.Editor
             EditorUtility.SetDirty(root);
             EditorSceneManager.MarkSceneDirty(scene);
             Debug.Log(
-                "Configured autonomous first-store customers, physical shopping, queueing, and player checkout.");
+                "Configured autonomous customers and shared player/employee live checkout; retired staged checkout interactions.");
         }
 
         private static T Require<T>() where T : UnityEngine.Object

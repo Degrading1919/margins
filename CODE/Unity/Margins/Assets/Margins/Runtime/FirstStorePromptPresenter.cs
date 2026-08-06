@@ -244,7 +244,9 @@ namespace Margins
                 return FirstStoreObjectiveKind.OpenStore;
             }
 
-            if (!stagedCheckout.AllBasketsComplete)
+            if (customerFlow != null
+                    ? !saleComplete
+                    : !stagedCheckout.AllBasketsComplete)
             {
                 return FirstStoreObjectiveKind.CompleteCheckout;
             }
@@ -586,7 +588,8 @@ namespace Margins
                     ? "Customer waiting"
                     : $"{customerFlow.QueuedCustomerCount} customers waiting";
             }
-            else if (stagedCheckout != null &&
+            else if (customerFlow == null &&
+                     stagedCheckout != null &&
                      !stagedCheckout.AllBasketsComplete &&
                      stagedCheckout.NextAction == StagedCheckoutPrimaryAction.Begin)
             {
