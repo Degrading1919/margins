@@ -72,6 +72,11 @@ namespace Margins.Editor
                 cola,
                 chips);
 
+            ConfigureInitialFixturePlacement(fixturePlacement, requiredFixture);
+            SetBoolean(store, "continuousOperation", true);
+            SetInteger(store, "includedOperatingExpensesCents", 9_000);
+            SetBoolean(cleaning, "startsDirty", false);
+
             FirstStoreFixturePlacementModeController placementMode =
                 GetOrAdd<FirstStoreFixturePlacementModeController>(fixtureControllerObject);
             SetObject(placementMode, "stableTargetId", "target-fixture-placement-mode-01");
@@ -109,6 +114,9 @@ namespace Margins.Editor
             ConfigureDelivery(
                 deliveryObject,
                 delivery,
+                stocking,
+                playerObject.transform,
+                playerObject.GetComponentInChildren<Camera>().transform,
                 cola,
                 chips,
                 colaMaterial,
@@ -131,6 +139,57 @@ namespace Margins.Editor
             SetObject(checkoutTarget, "stableTargetId", "target-checkout-staged-01");
             SetObject(checkoutTarget, "stagedCheckout", staged);
             SetObject(checkoutTarget, "operatingController", store);
+            SetObject(checkoutTarget, "fixturePlacement", fixturePlacement);
+            SetObject(checkoutTarget, "requiredFixture", requiredFixture);
+
+            FirstStoreDiskPersistenceController diskPersistence =
+                UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
+            if (diskPersistence != null)
+            {
+                SetObject(
+                    diskPersistence,
+                    "persistenceMapper",
+                    UnityEngine.Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>());
+                SetObject(
+                    diskPersistence,
+                    "firstPersonController",
+                    playerObject.GetComponent<FirstPersonController>());
+                SetObject(diskPersistence, "interactionController", interaction);
+                SetObject(diskPersistence, "stagedCheckout", staged);
+                SetObject(diskPersistence, "stagedCheckoutWorldTarget", checkoutTarget);
+            }
+
+            GamePauseMenuController gameMenu =
+                GetOrAdd<GamePauseMenuController>(controlsObject);
+            SetObject(
+                gameMenu,
+                "firstPersonController",
+                playerObject.GetComponent<FirstPersonController>());
+            SetObject(gameMenu, "persistence", diskPersistence);
+
+            PortfolioProgressionController portfolio =
+                UnityEngine.Object.FindAnyObjectByType<PortfolioProgressionController>() ??
+                throw new InvalidOperationException(
+                    "The first-store scene requires portfolio progression.");
+            InStoreEmployeeWorkController employeeWork = ConfigureInStoreEmployees(
+                controlsObject,
+                portfolio,
+                store,
+                delivery,
+                stocking,
+                staged,
+                cleaning,
+                cola,
+                chips,
+                validMaterial,
+                fixtureMaterial,
+                chipsMaterial);
+            FirstStorePersistenceMapperComponent persistenceMapper =
+                UnityEngine.Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            if (persistenceMapper != null)
+            {
+                SetObject(persistenceMapper, "employeeWork", employeeWork);
+            }
 
             GameObject cleaningTargetObject = CreateWorldShape(
                 "World Cleaning Interaction",
@@ -162,10 +221,30 @@ namespace Margins.Editor
             SetObject(presenter, "fixturePlacement", fixturePlacement);
             SetArray(presenter, "requiredFixtures", requiredFixture);
             SetObject(presenter, "delivery", delivery);
+            SetObject(presenter, "stocking", stocking);
             SetObject(presenter, "checkout", checkout);
             SetObject(presenter, "stagedCheckout", staged);
             SetObject(presenter, "cleaning", cleaning);
             SetObject(presenter, "store", store);
+            SetObject(presenter, "portfolio", portfolio);
+            SetObject(presenter, "persistence", diskPersistence);
+            SetObject(presenter, "colaProduct", cola);
+            SetObject(presenter, "chipsProduct", chips);
+
+            FirstStoreExperienceSceneSetup.Apply(scene);
+
+            ConfigureCheckoutProductTarget(
+                requiredFixtureObject.transform.Find("Experience Checkout Cola Prop")?.gameObject,
+                "target-checkout-item-cola-01",
+                cola,
+                staged,
+                store);
+            ConfigureCheckoutProductTarget(
+                requiredFixtureObject.transform.Find("Experience Checkout Chips Prop")?.gameObject,
+                "target-checkout-item-chips-01",
+                chips,
+                staged,
+                store);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -176,16 +255,37 @@ namespace Margins.Editor
         private static void ConfigureDelivery(
             GameObject deliveryObject,
             DeliveryBoxComponent delivery,
+            StockingController stocking,
+            Transform playerBody,
+            Transform cameraTransform,
             ProductDefinition cola,
             ProductDefinition chips,
             Material colaMaterial,
             Material chipsMaterial)
         {
             GameObjectUtility.RemoveMonoBehavioursWithMissingScript(deliveryObject);
-            DeliveryOpenWorldInteractionTarget openTarget =
-                GetOrAdd<DeliveryOpenWorldInteractionTarget>(deliveryObject);
-            SetObject(openTarget, "stableTargetId", "target-delivery-open-01");
-            SetObject(openTarget, "deliveryBox", delivery);
+            DeliveryOpenWorldInteractionTarget oldOpenTarget =
+                deliveryObject.GetComponent<DeliveryOpenWorldInteractionTarget>();
+            if (oldOpenTarget != null)
+            {
+                UnityEngine.Object.DestroyImmediate(oldOpenTarget);
+            }
+
+            Transform existingCarryPoint = cameraTransform.Find("Delivery Carry Point");
+            GameObject carryPointObject = existingCarryPoint == null
+                ? new GameObject("Delivery Carry Point")
+                : existingCarryPoint.gameObject;
+            carryPointObject.transform.SetParent(cameraTransform, false);
+            carryPointObject.transform.localPosition = new Vector3(0f, -0.5f, 1.5f);
+            carryPointObject.transform.localRotation = Quaternion.identity;
+
+            DeliveryBoxWorldInteractionTarget boxTarget =
+                GetOrAdd<DeliveryBoxWorldInteractionTarget>(deliveryObject);
+            SetObject(boxTarget, "stableTargetId", "target-delivery-box-01");
+            SetObject(boxTarget, "deliveryBox", delivery);
+            SetObject(boxTarget, "stocking", stocking);
+            SetObject(boxTarget, "carryPoint", carryPointObject.transform);
+            SetObject(boxTarget, "playerBody", playerBody);
 
             GameObject colaTargetObject = CreateChildShape(
                 deliveryObject.transform,
@@ -198,6 +298,8 @@ namespace Margins.Editor
             SetObject(colaTarget, "stableTargetId", "target-delivery-cola-01");
             SetObject(colaTarget, "deliveryBox", delivery);
             SetObject(colaTarget, "productDefinition", cola);
+            SetObject(colaTarget, "stocking", stocking);
+            SetBoolean(colaTarget, "autoHoldOnTake", true);
 
             GameObject chipsTargetObject = CreateChildShape(
                 deliveryObject.transform,
@@ -210,6 +312,8 @@ namespace Margins.Editor
             SetObject(chipsTarget, "stableTargetId", "target-delivery-chips-01");
             SetObject(chipsTarget, "deliveryBox", delivery);
             SetObject(chipsTarget, "productDefinition", chips);
+            SetObject(chipsTarget, "stocking", stocking);
+            SetBoolean(chipsTarget, "autoHoldOnTake", true);
         }
 
         private static void ConfigureShelfTargets(
@@ -217,35 +321,59 @@ namespace Margins.Editor
             StockingController stocking,
             Material material)
         {
-            foreach (ShelfSnapPointDefinition snapPoint in shelf.SnapPoints)
+            foreach (ShelfSnapWorldInteractionTarget target in
+                     shelf.GetComponentsInChildren<ShelfSnapWorldInteractionTarget>(true))
             {
-                string objectName = $"Stock Target {snapPoint.StableSnapPointId}";
-                Transform existing = shelf.transform.Find(objectName);
-                if (existing != null)
+                Collider targetCollider = target.GetComponent<Collider>();
+                if (targetCollider != null)
                 {
-                    UnityEngine.Object.DestroyImmediate(existing.gameObject);
+                    targetCollider.enabled = false;
                 }
-
-                GameObject targetObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                targetObject.name = objectName;
-                targetObject.transform.SetParent(shelf.transform, false);
-                targetObject.transform.localPosition =
-                    snapPoint.LocalPosition + new Vector3(0f, 0f, -0.22f);
-                targetObject.transform.localRotation =
-                    Quaternion.Euler(snapPoint.LocalEulerAngles);
-                targetObject.transform.localScale = new Vector3(0.32f, 0.24f, 0.18f);
-                ApplyMaterial(targetObject, material);
-
-                ShelfSnapWorldInteractionTarget target =
-                    targetObject.AddComponent<ShelfSnapWorldInteractionTarget>();
-                SetObject(
-                    target,
-                    "stableTargetId",
-                    $"target-stock-{snapPoint.StableSnapPointId}");
-                SetObject(target, "stocking", stocking);
-                SetObject(target, "shelfFixture", shelf);
-                SetObject(target, "snapPointId", snapPoint.StableSnapPointId);
+                Renderer targetRenderer = target.GetComponent<Renderer>();
+                if (targetRenderer != null)
+                {
+                    targetRenderer.enabled = false;
+                }
             }
+
+            BoxCollider fixtureCollider = shelf.GetComponent<BoxCollider>() ??
+                                          shelf.gameObject.AddComponent<BoxCollider>();
+            fixtureCollider.center = new Vector3(0f, 0.95f, 0f);
+            fixtureCollider.size = new Vector3(2.4f, 1.95f, 0.95f);
+            fixtureCollider.enabled = true;
+
+            ShelfFixtureWorldInteractionTarget fixtureTarget =
+                GetOrAdd<ShelfFixtureWorldInteractionTarget>(shelf.gameObject);
+            SetObject(
+                fixtureTarget,
+                "stableTargetId",
+                $"target-stock-fixture-{shelf.StableFixtureId}");
+            SetObject(fixtureTarget, "stocking", stocking);
+            SetObject(fixtureTarget, "shelfFixture", shelf);
+        }
+
+        private static void ConfigureCheckoutProductTarget(
+            GameObject targetObject,
+            string stableTargetId,
+            ProductDefinition product,
+            StagedCheckoutInteractionComponent staged,
+            StoreOperatingController store)
+        {
+            if (targetObject == null)
+            {
+                throw new InvalidOperationException(
+                    $"Checkout product target '{stableTargetId}' is missing.");
+            }
+
+            Collider collider = targetObject.GetComponent<Collider>() ??
+                                targetObject.AddComponent<BoxCollider>();
+            collider.enabled = true;
+            CheckoutProductWorldInteractionTarget target =
+                GetOrAdd<CheckoutProductWorldInteractionTarget>(targetObject);
+            SetObject(target, "stableTargetId", stableTargetId);
+            SetObject(target, "productDefinition", product);
+            SetObject(target, "stagedCheckout", staged);
+            SetObject(target, "operatingController", store);
         }
 
         private static void ConfigureStagedBaskets(
@@ -257,7 +385,7 @@ namespace Margins.Editor
             SerializedObject serialized = new(staged);
             serialized.FindProperty("checkout").objectReferenceValue = checkout;
             SerializedProperty baskets = serialized.FindProperty("baskets");
-            baskets.arraySize = 2;
+            baskets.arraySize = 3;
             ConfigureBasket(
                 baskets.GetArrayElementAtIndex(0),
                 "staged-transaction-001",
@@ -267,8 +395,110 @@ namespace Margins.Editor
                 baskets.GetArrayElementAtIndex(1),
                 "staged-transaction-002",
                 (cola, 1));
+            ConfigureBasket(
+                baskets.GetArrayElementAtIndex(2),
+                "staged-transaction-003",
+                (chips, 1));
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(staged);
+        }
+
+        private static InStoreEmployeeWorkController ConfigureInStoreEmployees(
+            GameObject controlsObject,
+            PortfolioProgressionController portfolio,
+            StoreOperatingController store,
+            DeliveryBoxComponent delivery,
+            StockingController stocking,
+            StagedCheckoutInteractionComponent staged,
+            CleaningTaskComponent cleaning,
+            ProductDefinition cola,
+            ProductDefinition chips,
+            Material cashierMaterial,
+            Material stockerMaterial,
+            Material managerMaterial)
+        {
+            Transform cashierAvatar = CreateEmployeeAvatar(
+                "Detailed Cashier Employee",
+                new Vector3(4.2f, 0.9f, -1.1f),
+                cashierMaterial,
+                out TextMesh cashierLabel);
+            Transform stockerAvatar = CreateEmployeeAvatar(
+                "Detailed Stock Employee",
+                new Vector3(-3.45f, 0.9f, 4.62f),
+                stockerMaterial,
+                out TextMesh stockerLabel);
+            Transform managerAvatar = CreateEmployeeAvatar(
+                "Detailed Manager Employee",
+                new Vector3(-3.8f, 0.9f, -1.3f),
+                managerMaterial,
+                out TextMesh managerLabel);
+
+            Transform cashierWork = CreateWorkPoint(
+                "Cashier Work Point",
+                new Vector3(2.85f, 0.9f, -2.05f));
+            Transform deliveryWork = CreateWorkPoint(
+                "Receiving Work Point",
+                new Vector3(-3.45f, 0.9f, 4.62f));
+            Transform deliveryDrop = CreateWorkPoint(
+                "Stockroom Delivery Drop",
+                new Vector3(-0.35f, 0.48f, 2.75f));
+            Transform shelfWork = CreateWorkPoint(
+                "Shelf Stocking Work Point",
+                new Vector3(0f, 0.9f, 1.8f));
+            Transform managerWork = CreateWorkPoint(
+                "Manager Work Point",
+                new Vector3(-2.6f, 0.9f, -2.25f));
+            Transform boxCarry = CreateCarryPoint(
+                stockerAvatar,
+                "Employee Box Carry Point",
+                new Vector3(0f, -0.3f, 0.95f));
+            Transform unitCarry = CreateCarryPoint(
+                stockerAvatar,
+                "Employee Product Carry Point",
+                new Vector3(0.38f, 0.08f, 0.58f));
+
+            InStoreEmployeeWorkController controller =
+                GetOrAdd<InStoreEmployeeWorkController>(controlsObject);
+            SetObject(controller, "portfolio", portfolio);
+            SetObject(controller, "store", store);
+            SetObject(controller, "deliveryBox", delivery);
+            SetObject(controller, "stocking", stocking);
+            SetObject(controller, "stagedCheckout", staged);
+            SetObject(controller, "cleaning", cleaning);
+            SetArray(controller, "products", cola, chips);
+            SetObject(controller, "cashierAvatar", cashierAvatar);
+            SetObject(controller, "stockerAvatar", stockerAvatar);
+            SetObject(controller, "managerAvatar", managerAvatar);
+            SetObject(controller, "cashierLabel", cashierLabel);
+            SetObject(controller, "stockerLabel", stockerLabel);
+            SetObject(controller, "managerLabel", managerLabel);
+            SetObject(controller, "cashierWorkPoint", cashierWork);
+            SetObject(controller, "deliveryWorkPoint", deliveryWork);
+            SetObject(controller, "deliveryDropPoint", deliveryDrop);
+            SetObject(controller, "shelfWorkPoint", shelfWork);
+            SetObject(controller, "managerWorkPoint", managerWork);
+            SetObject(controller, "stockerBoxCarryPoint", boxCarry);
+            SetObject(controller, "stockerUnitCarryPoint", unitCarry);
+            return controller;
+        }
+
+        private static void ConfigureInitialFixturePlacement(
+            FixturePlacementController fixturePlacement,
+            PlaceableFixtureComponent checkoutFixture)
+        {
+            SerializedObject serialized = new(fixturePlacement);
+            SerializedProperty placements = serialized.FindProperty("initialPlacements") ??
+                throw new InvalidOperationException(
+                    "Fixture placement initial-placement configuration is missing.");
+            placements.arraySize = 1;
+            SerializedProperty placement = placements.GetArrayElementAtIndex(0);
+            placement.FindPropertyRelative("fixture").objectReferenceValue = checkoutFixture;
+            SerializedProperty grid = placement.FindPropertyRelative("gridPosition");
+            grid.FindPropertyRelative("x").intValue = 6;
+            grid.FindPropertyRelative("z").intValue = 1;
+            placement.FindPropertyRelative("quarterTurns").intValue = 0;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(fixturePlacement);
         }
 
         private static void ConfigureBasket(
@@ -312,6 +542,126 @@ namespace Margins.Editor
             return result;
         }
 
+        private static Transform CreateEmployeeAvatar(
+            string objectName,
+            Vector3 position,
+            Material material,
+            out TextMesh label)
+        {
+            DestroySceneObjectsNamed(objectName);
+            GameObject root = new(objectName);
+            root.transform.SetPositionAndRotation(position, Quaternion.identity);
+
+            GameObject torso = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            torso.name = $"{objectName} Torso";
+            torso.transform.SetParent(root.transform, false);
+            torso.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            torso.transform.localScale = new Vector3(0.43f, 0.62f, 0.34f);
+            Collider torsoCollider = torso.GetComponent<Collider>();
+            if (torsoCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(torsoCollider);
+            }
+            ApplyMaterial(torso, material);
+
+            GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = $"{objectName} Head";
+            head.transform.SetParent(root.transform, false);
+            head.transform.localPosition = new Vector3(0f, 0.92f, 0f);
+            head.transform.localScale = Vector3.one * 0.38f;
+            Collider headCollider = head.GetComponent<Collider>();
+            if (headCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(headCollider);
+            }
+            ApplyMaterial(head, material);
+
+            for (int index = 0; index < 2; index++)
+            {
+                GameObject leg = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                leg.name = $"{objectName} Leg {index + 1}";
+                leg.transform.SetParent(root.transform, false);
+                leg.transform.localPosition = new Vector3(
+                    index == 0 ? -0.17f : 0.17f,
+                    -0.72f,
+                    0f);
+                leg.transform.localScale = new Vector3(0.2f, 0.58f, 0.24f);
+                Collider legCollider = leg.GetComponent<Collider>();
+                if (legCollider != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(legCollider);
+                }
+                ApplyMaterial(leg, material);
+            }
+
+            GameObject badge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            badge.name = $"{objectName} Role Badge";
+            badge.transform.SetParent(root.transform, false);
+            badge.transform.localPosition = new Vector3(0f, 0.3f, -0.35f);
+            badge.transform.localScale = new Vector3(0.32f, 0.17f, 0.035f);
+            Collider badgeCollider = badge.GetComponent<Collider>();
+            if (badgeCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(badgeCollider);
+            }
+            ApplyMaterial(badge, material);
+
+            GameObject labelObject = new($"{objectName} Label");
+            labelObject.transform.SetParent(root.transform, false);
+            labelObject.transform.localPosition = new Vector3(0f, 0.3f, -0.375f);
+            labelObject.transform.localRotation = Quaternion.identity;
+            labelObject.transform.localScale = Vector3.one * 0.035f;
+            label = labelObject.AddComponent<TextMesh>();
+            label.text = string.Empty;
+            label.anchor = TextAnchor.MiddleCenter;
+            label.alignment = TextAlignment.Center;
+            label.characterSize = 0.22f;
+            label.fontSize = 48;
+            label.color = Color.white;
+
+            root.SetActive(false);
+            return root.transform;
+        }
+
+        private static Transform CreateWorkPoint(string objectName, Vector3 position)
+        {
+            DestroySceneObjectsNamed(objectName);
+            GameObject point = new(objectName);
+            point.transform.SetPositionAndRotation(position, Quaternion.identity);
+            return point.transform;
+        }
+
+        private static Transform CreateCarryPoint(
+            Transform parent,
+            string objectName,
+            Vector3 localPosition)
+        {
+            Transform existing = parent.Find(objectName);
+            if (existing != null)
+            {
+                UnityEngine.Object.DestroyImmediate(existing.gameObject);
+            }
+            GameObject point = new(objectName);
+            point.transform.SetParent(parent, false);
+            point.transform.localPosition = localPosition;
+            point.transform.localRotation = Quaternion.identity;
+            return point.transform;
+        }
+
+        private static void DestroySceneObjectsNamed(string objectName)
+        {
+            Scene activeScene = SceneManager.GetActiveScene();
+            foreach (GameObject existing in Resources
+                         .FindObjectsOfTypeAll<GameObject>()
+                         .Where(candidate =>
+                             candidate.scene == activeScene &&
+                             candidate.name == objectName)
+                         .ToArray())
+            {
+                UnityEngine.Object.DestroyImmediate(existing);
+            }
+        }
+
         private static GameObject CreateWorldShape(
             string objectName,
             PrimitiveType primitive,
@@ -320,10 +670,14 @@ namespace Margins.Editor
             Material material,
             string label)
         {
-            GameObject existing = SceneManager.GetActiveScene()
-                .GetRootGameObjects()
-                .FirstOrDefault(root => root.name == objectName);
-            if (existing != null)
+            Scene activeScene = SceneManager.GetActiveScene();
+            GameObject[] existingObjects = Resources
+                .FindObjectsOfTypeAll<GameObject>()
+                .Where(candidate =>
+                    candidate.scene == activeScene &&
+                    candidate.name == objectName)
+                .ToArray();
+            foreach (GameObject existing in existingObjects)
             {
                 UnityEngine.Object.DestroyImmediate(existing);
             }
@@ -446,6 +800,20 @@ namespace Margins.Editor
                 throw new InvalidOperationException(
                     $"Serialized property '{propertyName}' is missing on '{target.name}'.");
             property.boolValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetInteger(
+            UnityEngine.Object target,
+            string propertyName,
+            int value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.intValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }

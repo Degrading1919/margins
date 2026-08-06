@@ -13,6 +13,7 @@ namespace Margins
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private StoreOperatingController storeOperating;
         [SerializeField] private CleaningTaskComponent cleaningTask;
+        [SerializeField] private InStoreEmployeeWorkController employeeWork;
 
         public bool TryValidateConfiguration(out string error)
         {
@@ -202,6 +203,7 @@ namespace Margins
 
             foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
             {
+                deliveryBox.ResetCarriedStateAfterRestore();
                 if (!deliveryBox.TryApplyRestoredContainer(
                         restoredContainers[deliveryBox.StableContainerId],
                         out error))
@@ -210,6 +212,8 @@ namespace Margins
                         $"A preflighted delivery restore failed after physical restoration: {error}");
                 }
             }
+
+            employeeWork?.ResetTransientStateAfterRestore();
 
             if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
                 !storeOperating.TryApplySnapshot(
@@ -243,10 +247,13 @@ namespace Margins
                 return true;
             }
 
-            if (storeOperating.Stocking.HasHeldUnit)
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
             {
-                blocker = "Place or return the held product before saving.";
-                return true;
+                if (deliveryBox.IsCarried)
+                {
+                    blocker = "Set down the carried delivery box before saving.";
+                    return true;
+                }
             }
 
             if (checkout.HasActiveIncompleteSession)

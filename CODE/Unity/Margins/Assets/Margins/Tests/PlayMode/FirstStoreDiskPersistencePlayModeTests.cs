@@ -115,19 +115,12 @@ namespace Margins.Tests
             CompleteOneColaSale();
             StockOneColaUnit();
             MutateFixtureLayout();
-            CleaningTaskComponent cleaning =
-                Object.FindAnyObjectByType<CleaningTaskComponent>();
-            cleaning.TryApplyProgress(cleaning.RequiredProgressUnits);
-            Assert.That(cleaning.IsComplete, Is.True);
             StoreOperatingController store =
                 Object.FindAnyObjectByType<StoreOperatingController>();
-            Assert.That(store.TryBeginPreparation(out string error), Is.True, error);
-            Assert.That(store.TryOpenStore(out error), Is.True, error);
-            Assert.That(store.TryBeginClosing(out error), Is.True, error);
-            Assert.That(store.TryFinishClosing(out error), Is.True, error);
-            long historicalCost = store.ResultTotals.costOfGoodsSoldCents;
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            long historicalCost = store.CurrentTotals.costOfGoodsSoldCents;
             long historicalContribution =
-                store.ResultTotals.contributionAfterCostOfGoodsCents;
+                store.CurrentTotals.contributionAfterCostOfGoodsCents;
             Assert.That(historicalCost, Is.GreaterThan(0));
             Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
 
@@ -139,9 +132,9 @@ namespace Margins.Tests
                 checked((int)historicalCost + 900));
 
             Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.True, diskPersistence.LastDiagnostic);
-            Assert.That(store.ResultTotals.costOfGoodsSoldCents, Is.EqualTo(historicalCost));
+            Assert.That(store.CurrentTotals.costOfGoodsSoldCents, Is.EqualTo(historicalCost));
             Assert.That(
-                store.ResultTotals.contributionAfterCostOfGoodsCents,
+                store.CurrentTotals.contributionAfterCostOfGoodsCents,
                 Is.EqualTo(historicalContribution));
             Assert.That(
                 checkout.CompletedTransactions[0].lines[0].unitCostCents,
@@ -208,6 +201,74 @@ namespace Margins.Tests
             yield return null;
         }
 
+        [UnityTest]
+        public IEnumerator LoadDiscardsIncompleteStagedSessionAndAllowsCheckoutToRestart()
+        {
+            DeliveryBoxComponent delivery = Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            StockOneColaUnit();
+            Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
+
+            StagedCheckoutInteractionComponent stagedCheckout =
+                Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>();
+            CheckoutStationComponent checkout = stagedCheckout.Checkout;
+            Assert.That(
+                stagedCheckout.TryPrimary(out _, out CheckoutFailure failure, out error),
+                Is.True,
+                error);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.None));
+            Assert.That(stagedCheckout.TryPrimary(out _, out failure, out error), Is.True, error);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.True);
+            Assert.That(stagedCheckout.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Scan));
+
+            Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.True, diskPersistence.LastDiagnostic);
+
+            Assert.That(checkout.HasActiveIncompleteSession, Is.False);
+            Assert.That(stagedCheckout.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Begin));
+            Assert.That(
+                stagedCheckout.TryPrimary(out _, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.None));
+            Assert.That(stagedCheckout.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Scan));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator LoadCancelsFixturePreviewWithoutChangingRestoredPlacement()
+        {
+            FixturePlacementController placement =
+                Object.FindAnyObjectByType<FixturePlacementController>();
+            FirstStoreFixturePlacementModeController mode =
+                Object.FindAnyObjectByType<FirstStoreFixturePlacementModeController>();
+            PlaceableFixtureComponent fixture = Resources
+                .FindObjectsOfTypeAll<PlaceableFixtureComponent>()
+                .Single(item => item.StableFixtureInstanceId == "fixture-checkout-essential-01");
+            FixturePlacementResult accepted = placement.IsPlaced(fixture.StableFixtureInstanceId)
+                ? placement.TryMove(fixture, new GridPosition(1, 1), 0)
+                : placement.TryPlace(fixture, new GridPosition(1, 1), 0);
+            Assert.That(accepted.IsSuccess, Is.True, accepted.Failure.ToString());
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot expectedState, out string error), Is.True, error);
+            Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
+
+            Assert.That(mode.TryBegin(fixture, out error), Is.True, error);
+            Assert.That(
+                mode.TryPreviewAtWorldPoint(GridCellCenter(placement, 4, 3), out error),
+                Is.True,
+                error);
+            Assert.That(mode.IsActive, Is.True);
+            Assert.That(fixture.PreviewState, Is.EqualTo(FixturePlacementPreviewState.Valid));
+
+            Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.True, diskPersistence.LastDiagnostic);
+
+            Assert.That(mode.IsActive, Is.False);
+            Assert.That(fixture.PreviewState, Is.EqualTo(FixturePlacementPreviewState.None));
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot restoredState, out error), Is.True, error);
+            Assert.That(restoredState, Is.EqualTo(expectedState));
+            Assert.That(mode.TryConfirm(out error), Is.False);
+            yield return null;
+        }
+
         private void AssertUnchanged(
             FirstStoreSnapshot expectedState,
             FirstStorePlayerTransformSnapshot expectedPose)
@@ -238,6 +299,18 @@ namespace Margins.Tests
                 ? placement.TryMove(fixture, new GridPosition(4, 3), 1)
                 : placement.TryPlace(fixture, new GridPosition(1, 1), 0);
             Assert.That(result.IsSuccess, Is.True, result.Failure.ToString());
+        }
+
+        private static Vector3 GridCellCenter(
+            FixturePlacementController placement,
+            int x,
+            int z)
+        {
+            return placement.GridOrigin.TransformPoint(
+                new Vector3(
+                    (x + 0.5f) * placement.CellSize,
+                    0f,
+                    (z + 0.5f) * placement.CellSize));
         }
 
         private static void CompleteOneColaSale()

@@ -52,7 +52,13 @@ namespace Margins.Tests
             yield return null;
             Release(keyboard.eKey, queueEventOnly: true);
             yield return null;
-            Assert.That(mode.IsActive, Is.True);
+            Assert.That(
+                mode.IsActive,
+                Is.True,
+                $"Focused {interaction.FocusedTargetId}; feedback {interaction.LastFeedback}; " +
+                $"enabled {interaction.IsWorldInteractionEnabled}; handle active {handle.gameObject.activeInHierarchy}; " +
+                $"collider {handle.GetComponent<Collider>().enabled}; " +
+                $"camera {Camera.main.transform.position} target {handle.transform.position}");
 
             Vector3 previewPoint = GridCellCenter(placement, 1, 1);
             Assert.That(mode.TryPreviewAtWorldPoint(previewPoint, out string error), Is.True, error);
@@ -131,7 +137,13 @@ namespace Margins.Tests
             yield return null;
             Release(keyboard.backspaceKey, queueEventOnly: true);
             yield return null;
-            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
+            Assert.That(
+                placement.IsPlaced(fixture.StableFixtureInstanceId),
+                Is.False,
+                $"Focused {interaction.FocusedTargetId}; feedback {interaction.LastFeedback}; " +
+                $"enabled {interaction.IsWorldInteractionEnabled}; handle active {handle.gameObject.activeInHierarchy}; " +
+                $"collider {handle.GetComponent<Collider>().enabled}; " +
+                $"camera {Camera.main.transform.position} target {handle.transform.position}");
             Assert.That(handle.IsAvailable, Is.True);
 
             Assert.That(handle.TryPrimary(out string error), Is.True, error);
@@ -154,10 +166,15 @@ namespace Margins.Tests
             FixturePlacementWorldInteractionTarget handle =
                 Require("Essential Checkout Fixture Placement Handle")
                     .GetComponent<FixturePlacementWorldInteractionTarget>();
+            Assert.That(
+                placement.TryGetPlacement(
+                    fixture.StableFixtureInstanceId,
+                    out FixturePlacementSnapshot acceptedBefore),
+                Is.True);
             Assert.That(handle.TryPrimary(out string error), Is.True, error);
             Assert.That(mode.TryPreviewAtWorldPoint(GridCellCenter(placement, 1, 1), out error), Is.True, error);
             Assert.That(mode.IsActive, Is.True);
-            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
+            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.True);
 
             Press(keyboard.tabKey, queueEventOnly: true);
             yield return null;
@@ -165,27 +182,28 @@ namespace Margins.Tests
             yield return null;
 
             Assert.That(mode.IsActive, Is.False);
-            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.False);
-            Assert.That(fixture.gameObject.activeInHierarchy, Is.False);
+            Assert.That(
+                placement.TryGetPlacement(
+                    fixture.StableFixtureInstanceId,
+                    out FixturePlacementSnapshot acceptedAfter),
+                Is.True);
+            Assert.That(acceptedAfter, Is.EqualTo(acceptedBefore));
+            Assert.That(fixture.gameObject.activeInHierarchy, Is.True);
             Assert.That(mode.TryConfirm(out string confirmError), Is.False);
             StringAssert.Contains("Select a valid", confirmError);
         }
 
         [UnityTest]
-        public IEnumerator OpenAndClosingRejectRequiredFixtureMoveAndBackspaceWithoutMutation()
+        public IEnumerator ContinuousOperationAllowsLayoutChangesWithoutClosingTheBusiness()
         {
             yield return LoadValidationScene();
 
-            FirstStoreInteractionController interaction =
-                Object.FindAnyObjectByType<FirstStoreInteractionController>();
             FixturePlacementController placement =
                 Require("Fixture Placement").GetComponent<FixturePlacementController>();
+            FirstStoreFixturePlacementModeController mode =
+                Object.FindAnyObjectByType<FirstStoreFixturePlacementModeController>();
             StoreOperatingController store =
                 Require("Store Operating Controller").GetComponent<StoreOperatingController>();
-            DeliveryBoxComponent delivery =
-                Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
-            StockingController stocking =
-                Require("Stocking Controller").GetComponent<StockingController>();
             PlaceableFixtureComponent fixture =
                 Require("Essential Checkout Fixture").GetComponent<PlaceableFixtureComponent>();
             FixturePlacementWorldInteractionTarget placedTarget =
@@ -194,63 +212,36 @@ namespace Margins.Tests
                 Require("Essential Checkout Fixture Placement Handle")
                     .GetComponent<FixturePlacementWorldInteractionTarget>();
             PlaceFixture(placement, fixture, new GridPosition(1, 1), 0);
-            ProductDefinition cola = Resources.FindObjectsOfTypeAll<ProductDefinition>()
-                .Single(product => product.StableProductId == "prod-cola-can-355ml");
-            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+            Assert.That(placedTarget.TryPrimary(out string error), Is.True, error);
             Assert.That(
-                delivery.TryRemoveOneUnit(
-                    cola,
-                    out ProductItem loose,
-                    out _,
-                    out _,
+                mode.TryPreviewAtWorldPoint(
+                    GridCellCenter(placement, 4, 3),
                     out error),
                 Is.True,
                 error);
+            Assert.That(mode.TryConfirm(out error), Is.True, error);
             Assert.That(
-                stocking.TryPickUpLooseUnit(loose, out _, out error),
+                placement.TryGetPlacement(
+                    fixture.StableFixtureInstanceId,
+                    out FixturePlacementSnapshot moved),
+                Is.True);
+            Assert.That(moved.gridPosition, Is.EqualTo(new GridPosition(4, 3)));
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+
+            Assert.That(placement.TryRemove(fixture).IsSuccess, Is.True);
+            Assert.That(handle.IsAvailable, Is.True);
+            Assert.That(handle.TryPrimary(out error), Is.True, error);
+            Assert.That(
+                mode.TryPreviewAtWorldPoint(
+                    GridCellCenter(placement, 2, 2),
+                    out error),
                 Is.True,
                 error);
-            Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
-            Assert.That(store.TryBeginPreparation(out error), Is.True, error);
-            Assert.That(store.TryOpenStore(out error), Is.True, error);
-            yield return AssertRejectedInCurrentOperatingState(
-                interaction,
-                placement,
-                fixture,
-                placedTarget,
-                handle);
-
-            Assert.That(store.TryBeginClosing(out error), Is.True, error);
-            yield return AssertRejectedInCurrentOperatingState(
-                interaction,
-                placement,
-                fixture,
-                placedTarget,
-                handle);
-        }
-
-        private IEnumerator AssertRejectedInCurrentOperatingState(
-            FirstStoreInteractionController interaction,
-            FixturePlacementController placement,
-            PlaceableFixtureComponent fixture,
-            FixturePlacementWorldInteractionTarget placedTarget,
-            FixturePlacementWorldInteractionTarget handle)
-        {
-            Assert.That(placement.TryGetPlacement(fixture.StableFixtureInstanceId, out FixturePlacementSnapshot before), Is.True);
-            Vector3 positionBefore = fixture.transform.position;
-            Assert.That(placedTarget.TryPrimary(out string moveError), Is.False);
-            StringAssert.Contains("unavailable", moveError);
-
-            MoveTargetInFrontOfCamera(handle.transform);
-            Assert.That(interaction.RefreshFocus(), Is.True);
-            Press(keyboard.backspaceKey, queueEventOnly: true);
+            Assert.That(mode.TryConfirm(out error), Is.True, error);
+            Assert.That(placement.IsPlaced(fixture.StableFixtureInstanceId), Is.True);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
             yield return null;
-            Release(keyboard.backspaceKey, queueEventOnly: true);
-            yield return null;
-
-            Assert.That(placement.TryGetPlacement(fixture.StableFixtureInstanceId, out FixturePlacementSnapshot after), Is.True);
-            Assert.That(after, Is.EqualTo(before));
-            Assert.That(Vector3.Distance(fixture.transform.position, positionBefore), Is.LessThan(0.001f));
         }
 
         private static IEnumerator LoadValidationScene()

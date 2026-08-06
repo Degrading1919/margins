@@ -10,20 +10,24 @@ namespace Margins
         public string taskId;
         public int requiredProgressUnits;
         public int completedProgressUnits;
+        public bool isActive;
 
         public CleaningTaskSnapshot(
             string taskId,
             int requiredProgressUnits,
-            int completedProgressUnits)
+            int completedProgressUnits,
+            bool isActive = true)
         {
             this.taskId = taskId;
             this.requiredProgressUnits = requiredProgressUnits;
             this.completedProgressUnits = completedProgressUnits;
+            this.isActive = isActive;
         }
 
         public bool IsComplete =>
-            requiredProgressUnits > 0 &&
-            completedProgressUnits >= requiredProgressUnits;
+            !isActive ||
+            (requiredProgressUnits > 0 &&
+             completedProgressUnits >= requiredProgressUnits);
 
         public bool IsValid =>
             FirstStoreIdentifier.IsValid(taskId) &&
@@ -36,7 +40,8 @@ namespace Margins
             return other != null &&
                    string.Equals(taskId, other.taskId, StringComparison.Ordinal) &&
                    requiredProgressUnits == other.requiredProgressUnits &&
-                   completedProgressUnits == other.completedProgressUnits;
+                   completedProgressUnits == other.completedProgressUnits &&
+                   isActive == other.isActive;
         }
 
         public override bool Equals(object obj)
@@ -49,7 +54,8 @@ namespace Margins
             return HashCode.Combine(
                 taskId,
                 requiredProgressUnits,
-                completedProgressUnits);
+                completedProgressUnits,
+                isActive);
         }
     }
 
@@ -429,7 +435,8 @@ namespace Margins
                 : new CleaningTaskSnapshot(
                     source.taskId,
                     source.requiredProgressUnits,
-                    source.completedProgressUnits);
+                    source.completedProgressUnits,
+                    source.isActive);
         }
     }
 }

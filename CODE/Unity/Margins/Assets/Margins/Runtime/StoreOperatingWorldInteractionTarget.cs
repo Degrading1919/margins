@@ -14,7 +14,8 @@ namespace Margins
         public bool IsAvailable =>
             FirstStoreIdentifier.IsValid(stableTargetId) &&
             operatingController != null &&
-            operatingController.IsInitialized;
+            operatingController.IsInitialized &&
+            !operatingController.IsContinuousOperation;
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get

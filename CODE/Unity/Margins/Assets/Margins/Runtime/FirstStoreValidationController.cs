@@ -17,6 +17,7 @@ namespace Margins
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
         [SerializeField] private FirstPersonController firstPersonController;
+        [SerializeField] private PortfolioProgressionController portfolioProgression;
 
         private int transactionOrdinal = 1;
         private string lastCompletedTransactionId;
@@ -24,15 +25,21 @@ namespace Margins
 
         public string LastAction => lastAction;
         public bool IsHudModeActive =>
-            firstPersonController != null && !firstPersonController.IsGameplayMode;
+            !GamePauseMenuController.IsAnyMenuOpen &&
+            firstPersonController != null &&
+            !firstPersonController.IsGameplayMode &&
+            (portfolioProgression == null ||
+             !portfolioProgression.OwnsManagementDesk);
 
         private void Start()
         {
             string error = null;
             if (firstPersonController == null ||
                 diskPersistence == null ||
+                portfolioProgression == null ||
                 !delivery.TryInitialize(out error) ||
                 !store.TryInitialize(out error) ||
+                !portfolioProgression.TryValidateConfiguration(out error) ||
                 !diskPersistence.TryValidateConfiguration(out error))
             {
                 Record(
@@ -115,9 +122,6 @@ namespace Margins
         {
             if (!IsHudModeActive)
             {
-                GUI.Label(
-                    new Rect(12f, 12f, 560f, 24f),
-                    "Tab: validation HUD | E: context action | Q: cancel/correct | Wheel: rotate | Backspace: remove fixture");
                 return;
             }
 

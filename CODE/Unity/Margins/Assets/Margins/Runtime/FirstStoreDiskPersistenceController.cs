@@ -12,6 +12,7 @@ namespace Margins
         public int version = FirstStoreDiskPersistenceController.CurrentFileVersion;
         public FirstStoreSnapshot firstStore;
         public FirstStorePlayerTransformSnapshot playerTransform;
+        public PortfolioProgressionSnapshot portfolio;
     }
 
     public static class FirstStoreDiskSaveCodec
@@ -73,11 +74,20 @@ namespace Margins
     /// </summary>
     public sealed class FirstStoreDiskPersistenceController : MonoBehaviour
     {
-        public const int CurrentFileVersion = 1;
+        public const int LegacyFileVersion = 1;
+        public const int CurrentFileVersion = 2;
 
         [SerializeField] private FirstStorePersistenceMapperComponent persistenceMapper;
         [SerializeField] private FirstPersonController firstPersonController;
+        [SerializeField] private FirstStoreInteractionController interactionController;
+        [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StagedCheckoutWorldInteractionTarget stagedCheckoutWorldTarget;
+        [SerializeField] private PortfolioProgressionController portfolioProgression;
         [SerializeField] private string saveFileName = "first-store-vertical-slice.json";
+
+        private float quickLoadConfirmationUntil;
+
+        public event Action<bool, string> OperationCompleted;
 
         public string LastDiagnostic { get; private set; } =
             "No first-store disk save or load has been attempted.";
@@ -86,6 +96,7 @@ namespace Margins
             Application.persistentDataPath,
             "Margins",
             saveFileName);
+        public bool HasSaveFile => File.Exists(SavePath);
 
         private void Update()
         {
@@ -95,22 +106,47 @@ namespace Margins
                 return;
             }
 
+            if (GamePauseMenuController.IsAnyMenuOpen)
+            {
+                return;
+            }
+
             if (keyboard.f5Key.wasPressedThisFrame)
             {
+                quickLoadConfirmationUntil = 0f;
                 TrySave();
             }
             else if (keyboard.f9Key.wasPressedThisFrame)
             {
-                TryLoad();
+                if (Time.unscaledTime <= quickLoadConfirmationUntil)
+                {
+                    quickLoadConfirmationUntil = 0f;
+                    TryLoad();
+                }
+                else
+                {
+                    quickLoadConfirmationUntil = Time.unscaledTime + 3.5f;
+                    LastOperationSucceeded = true;
+                    LastDiagnostic = HasSaveFile
+                        ? "Press F9 again to reload your last save."
+                        : "No saved company is available yet.";
+                    OperationCompleted?.Invoke(
+                        LastOperationSucceeded,
+                        LastDiagnostic);
+                }
             }
         }
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (persistenceMapper == null || firstPersonController == null)
+            if (persistenceMapper == null ||
+                firstPersonController == null ||
+                interactionController == null ||
+                stagedCheckout == null ||
+                stagedCheckoutWorldTarget == null)
             {
                 error =
-                    "First-store disk persistence requires explicit mapper and player references.";
+                    "First-store disk persistence requires explicit mapper, player, interaction, and staged-checkout references.";
                 return false;
             }
 
@@ -125,6 +161,13 @@ namespace Margins
                 !firstPersonController.TryPreflightApplyTransformSnapshot(
                     firstPersonController.CaptureTransformSnapshot(),
                     out error))
+            {
+                return false;
+            }
+
+            if (portfolioProgression != null &&
+                (!portfolioProgression.TryValidateConfiguration(out error) ||
+                 !portfolioProgression.TryCaptureSnapshot(out _, out error)))
             {
                 return false;
             }
@@ -151,6 +194,12 @@ namespace Margins
                 return Reject($"Save rejected: {error}");
             }
 
+            if (portfolioProgression != null &&
+                !portfolioProgression.TrySynchronizeDetailedShift(out error))
+            {
+                return Reject($"Save rejected: company synchronization failed: {error}");
+            }
+
             if (persistenceMapper.TryGetDiskSaveBlocker(out string blocker))
             {
                 return Reject($"Save rejected: {blocker}");
@@ -172,10 +221,20 @@ namespace Margins
                 return Reject($"Save rejected: {error}");
             }
 
+            PortfolioProgressionSnapshot portfolio = null;
+            if (portfolioProgression != null &&
+                !portfolioProgression.TryCaptureSnapshot(
+                    out portfolio,
+                    out error))
+            {
+                return Reject($"Save rejected: {error}");
+            }
+
             FirstStoreDiskSaveData saveData = new()
             {
                 firstStore = firstStore,
-                playerTransform = playerTransform
+                playerTransform = playerTransform,
+                portfolio = portfolio
             };
 
             string json;
@@ -227,10 +286,11 @@ namespace Margins
                 return Reject($"Load rejected: {error}");
             }
 
-            if (saveData.version != CurrentFileVersion)
+            if (saveData.version != CurrentFileVersion &&
+                saveData.version != LegacyFileVersion)
             {
                 return Reject(
-                    $"Load rejected: unsupported first-store file version {saveData.version}; expected {CurrentFileVersion}.");
+                    $"Load rejected: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion} or {CurrentFileVersion}.");
             }
 
             if (saveData.firstStore == null ||
@@ -242,6 +302,53 @@ namespace Margins
                 return Reject($"Load rejected: {error ?? "first-store state is missing."}");
             }
 
+            PortfolioProgressionSnapshot acceptedPortfolio = null;
+            bool migratedLegacyPortfolio = false;
+            if (portfolioProgression != null)
+            {
+                if (saveData.version == LegacyFileVersion)
+                {
+                    if (!portfolioProgression.TryCreateLegacyMigrationSnapshot(
+                            saveData.firstStore,
+                            out acceptedPortfolio,
+                            out error))
+                    {
+                        return Reject($"Load rejected: legacy company migration failed: {error}");
+                    }
+                    migratedLegacyPortfolio = true;
+                }
+                else if (saveData.portfolio == null ||
+                         !portfolioProgression.TryValidateSnapshot(
+                             saveData.portfolio,
+                             out error))
+                {
+                    return Reject(
+                        $"Load rejected: {error ?? "portfolio state is missing."}");
+                }
+                else
+                {
+                    acceptedPortfolio = saveData.portfolio;
+                }
+
+                StoreOperatingSnapshot savedOperating =
+                    saveData.firstStore.storeOperating;
+                if (savedOperating?.hasResult == true &&
+                    (!acceptedPortfolio.firstShiftCompleted ||
+                     !string.Equals(
+                         acceptedPortfolio.processedDetailedSessionId,
+                         savedOperating.sessionId,
+                         StringComparison.Ordinal)))
+                {
+                    return Reject(
+                        "Load rejected: detailed first-shift result and portfolio posting disagree.");
+                }
+            }
+            else if (saveData.portfolio != null)
+            {
+                return Reject(
+                    "Load rejected: this scene has no portfolio controller for the saved company state.");
+            }
+
             if (!persistenceMapper.TryCapture(
                     out FirstStoreSnapshot previousFirstStore,
                     out error))
@@ -251,9 +358,40 @@ namespace Margins
 
             FirstStorePlayerTransformSnapshot previousPlayerTransform =
                 firstPersonController.CaptureTransformSnapshot();
+            PortfolioProgressionSnapshot previousPortfolio = null;
+            if (portfolioProgression != null &&
+                !portfolioProgression.TryCaptureSnapshot(
+                    out previousPortfolio,
+                    out error))
+            {
+                return Reject(
+                    $"Load rejected: current company state could not be protected: {error}");
+            }
             if (!persistenceMapper.TryRestore(saveData.firstStore, out error))
             {
                 return Reject($"Load rejected: {error}");
+            }
+
+            if (portfolioProgression != null &&
+                !portfolioProgression.TryRestoreSnapshot(
+                    acceptedPortfolio,
+                    out error))
+            {
+                string portfolioError = error;
+                bool stateRolledBack = persistenceMapper.TryRestore(
+                    previousFirstStore,
+                    out string rollbackError);
+                bool portfolioRolledBack = portfolioProgression.TryRestoreSnapshot(
+                    previousPortfolio,
+                    out string portfolioRollbackError);
+                if (!stateRolledBack || !portfolioRolledBack)
+                {
+                    throw new InvalidOperationException(
+                        $"Portfolio restore failed ('{portfolioError}') and live-state rollback failed " +
+                        $"(store: '{rollbackError ?? "ok"}', portfolio: '{portfolioRollbackError ?? "ok"}').");
+                }
+
+                return Reject($"Load rejected: {portfolioError}");
             }
 
             if (!firstPersonController.TryApplyTransformSnapshot(
@@ -264,20 +402,34 @@ namespace Margins
                 bool stateRolledBack = persistenceMapper.TryRestore(
                     previousFirstStore,
                     out string rollbackError);
+                string portfolioRollbackError = null;
+                bool portfolioRolledBack = portfolioProgression == null ||
+                    portfolioProgression.TryRestoreSnapshot(
+                        previousPortfolio,
+                        out portfolioRollbackError);
                 bool playerRolledBack = firstPersonController.TryApplyTransformSnapshot(
                     previousPlayerTransform,
                     out string playerRollbackError);
-                if (!stateRolledBack || !playerRolledBack)
+                if (!stateRolledBack || !portfolioRolledBack || !playerRolledBack)
                 {
                     throw new InvalidOperationException(
                         $"Player restore failed ('{playerError}') and live-state rollback failed " +
-                        $"(state: '{rollbackError ?? "ok"}', player: '{playerRollbackError ?? "ok"}').");
+                        $"(state: '{rollbackError ?? "ok"}', portfolio: " +
+                        $"'{(portfolioProgression == null ? "ok" : portfolioRollbackError ?? "ok")}', " +
+                        $"player: '{playerRollbackError ?? "ok"}').");
                 }
 
                 return Reject($"Load rejected: {playerError}");
             }
 
-            return Accept("Loaded first-store state from disk.");
+            stagedCheckout.ResetTransientStateAfterRestore();
+            stagedCheckoutWorldTarget.ResetTransientStateAfterRestore();
+            interactionController.ResetTransientStateAfterRestore();
+
+            return Accept(
+                migratedLegacyPortfolio
+                    ? "Loaded first-store state and migrated legacy company progression."
+                    : "Loaded first-store and portfolio state from disk.");
         }
 
         private static bool TryResolvePath(
@@ -395,6 +547,7 @@ namespace Margins
             LastOperationSucceeded = true;
             LastDiagnostic = diagnostic;
             Debug.Log(diagnostic, this);
+            OperationCompleted?.Invoke(true, diagnostic);
             return true;
         }
 
@@ -403,6 +556,7 @@ namespace Margins
             LastOperationSucceeded = false;
             LastDiagnostic = diagnostic;
             Debug.LogWarning(diagnostic, this);
+            OperationCompleted?.Invoke(false, diagnostic);
             return false;
         }
     }

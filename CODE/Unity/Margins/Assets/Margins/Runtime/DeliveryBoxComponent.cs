@@ -14,6 +14,10 @@ namespace Margins
         [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
         [SerializeField] private bool startsOpen;
 
+        private Transform restingParent;
+        private Vector3 restingPosition;
+        private Quaternion restingRotation;
+
         internal DeliveryContainer Container { get; private set; }
         public string StableContainerId => stableContainerId;
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
@@ -21,13 +25,67 @@ namespace Margins
         public bool IsInitialized => Container != null;
         public bool IsOpen => Container != null && Container.IsOpen;
         public bool IsSealed => Container != null && !Container.IsOpen;
+        public bool IsCarried { get; private set; }
 
         private void Start()
         {
+            CaptureRestingTransform();
             if (!TryInitialize(out string error))
             {
                 Debug.LogError($"Delivery box initialization failed: {error}", this);
             }
+        }
+
+        public bool TryPickUp(Transform carryPoint, out string error)
+        {
+            if (!IsInitialized || carryPoint == null)
+            {
+                error = "The delivery box cannot be carried right now.";
+                return false;
+            }
+
+            if (IsCarried)
+            {
+                error = null;
+                return true;
+            }
+
+            CaptureRestingTransform();
+            IsCarried = true;
+            transform.SetParent(carryPoint, false);
+            transform.localPosition = Vector3.zero;
+            transform.localRotation = Quaternion.identity;
+            error = null;
+            return true;
+        }
+
+        public bool TrySetDown(Vector3 worldPosition, Quaternion worldRotation, out string error)
+        {
+            if (!IsInitialized || !IsCarried)
+            {
+                error = "The delivery box is not being carried.";
+                return false;
+            }
+
+            transform.SetParent(restingParent, true);
+            transform.SetPositionAndRotation(worldPosition, worldRotation);
+            restingPosition = worldPosition;
+            restingRotation = worldRotation;
+            IsCarried = false;
+            error = null;
+            return true;
+        }
+
+        public void ResetCarriedStateAfterRestore()
+        {
+            if (!IsCarried)
+            {
+                return;
+            }
+
+            transform.SetParent(restingParent, true);
+            transform.SetPositionAndRotation(restingPosition, restingRotation);
+            IsCarried = false;
         }
 
         public bool TryValidateConfiguration(out string error)
@@ -292,6 +350,18 @@ namespace Margins
                 }
             }
             return null;
+        }
+
+        private void CaptureRestingTransform()
+        {
+            if (IsCarried)
+            {
+                return;
+            }
+
+            restingParent = transform.parent;
+            restingPosition = transform.position;
+            restingRotation = transform.rotation;
         }
     }
 }

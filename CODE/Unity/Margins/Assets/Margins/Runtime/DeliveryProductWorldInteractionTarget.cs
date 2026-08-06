@@ -7,10 +7,14 @@ namespace Margins
         [SerializeField] private string stableTargetId;
         [SerializeField] private DeliveryBoxComponent deliveryBox;
         [SerializeField] private ProductDefinition productDefinition;
+        [SerializeField] private StockingController stocking;
+        [SerializeField] private bool autoHoldOnTake = true;
 
         public string StableTargetId => stableTargetId;
+        public ProductDefinition ProductDefinition => productDefinition;
+        public bool AutoHoldOnTake => autoHoldOnTake;
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Delivery;
-        public bool IsAvailable => HasValidReference() && deliveryBox.IsOpen;
+        public bool IsAvailable => HasValidReference() && !deliveryBox.IsCarried;
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get
@@ -26,7 +30,14 @@ namespace Margins
 
                 string state = deliveryBox != null && !deliveryBox.IsOpen
                     ? $"delivery sealed; {remainingUnits} left"
-                    : $"{remainingUnits} left";
+                    : remainingUnits <= 0
+                        ? "delivery case empty"
+                        : autoHoldOnTake && stocking != null && stocking.PlayerHasHeldUnit
+                            ? $"hands full; stock {GetHeldProductName()} first"
+                            : autoHoldOnTake && stocking != null &&
+                              stocking.IsAnotherCarrierUsingHeldInventory
+                                ? "team member is moving stock"
+                            : $"{remainingUnits} left; take to hand";
                 return new FirstStoreWorldInteractionPrompt(
                     "E",
                     $"Take {productName}",
@@ -49,6 +60,12 @@ namespace Margins
                 return false;
             }
 
+            if (deliveryBox.IsCarried)
+            {
+                error = "Set the delivery box down before removing its contents.";
+                return false;
+            }
+
             if (!TryGetRemaining(out int remainingUnits))
             {
                 error = $"{productName} is unavailable from this delivery.";
@@ -61,15 +78,34 @@ namespace Margins
                 return false;
             }
 
+            if (autoHoldOnTake && stocking != null && stocking.HasHeldUnit)
+            {
+                error = stocking.PlayerHasHeldUnit
+                    ? $"Stock or put down {GetHeldProductName()} before taking another item."
+                    : "A team member is moving stock. Try again in a moment.";
+                return false;
+            }
+
             if (!deliveryBox.TryRemoveOneUnit(
                     productDefinition,
-                    out _,
+                    out ProductItem physicalUnit,
                     out _,
                     out _,
                     out _))
             {
                 error = $"{productName} could not be removed from this delivery.";
                 return false;
+            }
+
+            if (autoHoldOnTake && stocking != null &&
+                !stocking.TryPickUpLooseUnit(
+                    physicalUnit,
+                    out _,
+                    out string pickupError))
+            {
+                error =
+                    $"{productName} was moved to the receiving table: {pickupError}";
+                return true;
             }
 
             error = null;
@@ -88,7 +124,8 @@ namespace Margins
                    deliveryBox != null &&
                    deliveryBox.IsInitialized &&
                    productDefinition != null &&
-                   FirstStoreIdentifier.IsValid(productDefinition.StableProductId);
+                   FirstStoreIdentifier.IsValid(productDefinition.StableProductId) &&
+                   (!autoHoldOnTake || stocking != null);
         }
 
         private string GetProductName()
@@ -101,6 +138,14 @@ namespace Margins
             return string.IsNullOrWhiteSpace(productDefinition.DisplayName)
                 ? "product"
                 : productDefinition.DisplayName;
+        }
+
+        private string GetHeldProductName()
+        {
+            ProductDefinition held = stocking?.HeldPhysicalUnit?.Definition;
+            return held == null || string.IsNullOrWhiteSpace(held.DisplayName)
+                ? "the held product"
+                : held.DisplayName;
         }
 
         private bool TryGetRemaining(out int remainingUnits)

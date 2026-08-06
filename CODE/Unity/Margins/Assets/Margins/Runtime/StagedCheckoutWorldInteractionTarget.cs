@@ -9,6 +9,8 @@ namespace Margins
         [SerializeField] private string stableTargetId;
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
         [SerializeField] private StoreOperatingController operatingController;
+        [SerializeField] private FixturePlacementController fixturePlacement;
+        [SerializeField] private PlaceableFixtureComponent requiredFixture;
 
         private bool replayAcknowledged;
 
@@ -18,7 +20,9 @@ namespace Margins
         public bool IsAvailable =>
             FirstStoreIdentifier.IsValid(stableTargetId) &&
             stagedCheckout != null &&
-            operatingController != null;
+            operatingController != null &&
+            (fixturePlacement == null || requiredFixture == null ||
+             fixturePlacement.IsPlaced(requiredFixture.StableFixtureInstanceId));
 
         public FirstStoreWorldInteractionPrompt Prompt
         {
@@ -59,44 +63,40 @@ namespace Margins
                     case StagedCheckoutPrimaryAction.Begin:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Begin staged checkout",
+                            "Start checkout",
                             blocker ?? basket);
 
                     case StagedCheckoutPrimaryAction.Scan:
-                        string productName =
-                            string.IsNullOrWhiteSpace(stagedCheckout.ActiveProductDisplayName)
-                                ? "product"
-                                : stagedCheckout.ActiveProductDisplayName;
                         string line =
                             $"{stagedCheckout.ActiveLineScannedQuantity}/{stagedCheckout.ActiveLineQuantity}; " +
                             $"subtotal {subtotal}; Q corrects recent scan";
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            $"Scan {productName}",
-                            blocker ?? line);
+                            "Use customer items",
+                            blocker ?? $"aim at the visible product; {line}");
 
                     case StagedCheckoutPrimaryAction.Complete:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Complete transaction",
+                            "Take payment",
                             blocker ?? $"subtotal {subtotal}");
 
                     case StagedCheckoutPrimaryAction.Replay when !replayAcknowledged:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Verify completed transaction",
+                            "Clear completed basket",
                             $"already completed; subtotal {subtotal}");
 
                     case StagedCheckoutPrimaryAction.Replay:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Continue staged checkout",
+                            "Serve next basket",
                             $"{basket} completed");
 
                     default:
                         return new FirstStoreWorldInteractionPrompt(
                             "E",
-                            "Use checkout",
+                            "Use register",
                             blocker ?? "no staged action available");
                 }
             }
@@ -116,26 +116,45 @@ namespace Margins
             }
 
             StagedCheckoutPrimaryAction actionBefore = stagedCheckout.NextAction;
-            if (actionBefore == StagedCheckoutPrimaryAction.Replay &&
-                replayAcknowledged)
+            if (actionBefore == StagedCheckoutPrimaryAction.Begin)
             {
-                bool continued = stagedCheckout.TryContinue(out error);
-                if (continued)
+                return stagedCheckout.TryBeginCustomer(out error);
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Scan)
+            {
+                error = "Aim at the customer's visible product to scan it.";
+                return false;
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Complete)
+            {
+                bool paid = stagedCheckout.TryTakePayment(
+                    out _,
+                    out _,
+                    out error);
+                return paid && stagedCheckout.TryContinue(out error);
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Replay)
+            {
+                bool replayed = stagedCheckout.TryPrimary(
+                    out _,
+                    out _,
+                    out error);
+                if (!replayed)
                 {
-                    replayAcknowledged = false;
+                    return false;
                 }
+
+                replayAcknowledged = true;
+                bool continued = stagedCheckout.TryContinue(out error);
+                replayAcknowledged = false;
                 return continued;
             }
 
-            bool success = stagedCheckout.TryPrimary(
-                out _,
-                out _,
-                out error);
-            if (success && actionBefore == StagedCheckoutPrimaryAction.Replay)
-            {
-                replayAcknowledged = true;
-            }
-            return success;
+            error = "No checkout action is available.";
+            return false;
         }
 
         public bool TryCancel(out string error)
@@ -147,6 +166,11 @@ namespace Margins
             }
 
             return stagedCheckout.TryCorrect(out _, out error);
+        }
+
+        public void ResetTransientStateAfterRestore()
+        {
+            replayAcknowledged = false;
         }
 
         private bool CanUseCheckout(out string blocker)

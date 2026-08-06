@@ -586,7 +586,7 @@ namespace Margins.Tests
 
         [Test]
         [Category("FirstStoreDiskPersistence")]
-        public void DiskSaveRejectsHeldPhysicalUnitWithoutCreatingAcceptedFile()
+        public void DiskSavePersistsHeldPhysicalUnitWithoutInventoryLoss()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
             Assert.That(rig.Delivery.TryOpen(out _, out string error), Is.True, error);
@@ -608,9 +608,15 @@ namespace Margins.Tests
                 CreateDiskPersistenceController(rig);
             string acceptedPath = Path.Combine(CreateTemporaryDirectory(), "held.json");
 
-            Assert.That(disk.TrySaveToPath(acceptedPath), Is.False);
-            StringAssert.Contains("held product", disk.LastDiagnostic);
-            Assert.That(File.Exists(acceptedPath), Is.False);
+            FirstStoreInventorySnapshot before =
+                rig.Inventory.Inventory.CreateSnapshot();
+            Assert.That(disk.TrySaveToPath(acceptedPath), Is.True, disk.LastDiagnostic);
+            Assert.That(File.Exists(acceptedPath), Is.True);
+            Assert.That(rig.Stocking.HeldPhysicalUnit, Is.Not.Null);
+            Assert.That(
+                rig.Inventory.Inventory.CreateSnapshot(),
+                Is.EqualTo(before),
+                "Saving a carried product must not move or duplicate inventory.");
         }
 
         [Test]
@@ -968,6 +974,23 @@ namespace Margins.Tests
             playerSerialized.FindProperty("cameraPivot").objectReferenceValue = cameraPivot;
             playerSerialized.ApplyModifiedPropertiesWithoutUndo();
 
+            FirstStoreFixturePlacementModeController fixturePlacementMode =
+                CreateGameObject("Persistence Fixture Placement Mode")
+                    .AddComponent<FirstStoreFixturePlacementModeController>();
+            FirstStoreInteractionController interactionController =
+                CreateGameObject("Persistence Interaction")
+                    .AddComponent<FirstStoreInteractionController>();
+            SerializedObject interactionSerialized = new(interactionController);
+            interactionSerialized.FindProperty("fixturePlacementMode").objectReferenceValue =
+                fixturePlacementMode;
+            interactionSerialized.ApplyModifiedPropertiesWithoutUndo();
+            StagedCheckoutInteractionComponent stagedCheckout =
+                CreateGameObject("Persistence Staged Checkout")
+                    .AddComponent<StagedCheckoutInteractionComponent>();
+            StagedCheckoutWorldInteractionTarget stagedCheckoutWorldTarget =
+                CreateGameObject("Persistence Staged Checkout Target")
+                    .AddComponent<StagedCheckoutWorldInteractionTarget>();
+
             FirstStoreDiskPersistenceController disk =
                 CreateGameObject("Disk Persistence")
                     .AddComponent<FirstStoreDiskPersistenceController>();
@@ -975,6 +998,12 @@ namespace Margins.Tests
             diskSerialized.FindProperty("persistenceMapper").objectReferenceValue = mapper;
             diskSerialized.FindProperty("firstPersonController").objectReferenceValue =
                 firstPerson;
+            diskSerialized.FindProperty("interactionController").objectReferenceValue =
+                interactionController;
+            diskSerialized.FindProperty("stagedCheckout").objectReferenceValue =
+                stagedCheckout;
+            diskSerialized.FindProperty("stagedCheckoutWorldTarget").objectReferenceValue =
+                stagedCheckoutWorldTarget;
             diskSerialized.FindProperty("saveFileName").stringValue =
                 "first-store-adapter-test.json";
             diskSerialized.ApplyModifiedPropertiesWithoutUndo();

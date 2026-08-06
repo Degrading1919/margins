@@ -49,6 +49,47 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void VisibleProductsAreRequiredBeforePaymentCanComplete()
+        {
+            CheckoutRig rig = CreateRig();
+
+            Assert.That(
+                rig.Staged.TryBeginCustomer(out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryTakePayment(out _, out CheckoutFailure failure, out error),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.InvalidSession));
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Chips, out failure, out error),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.InvalidProduct));
+
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Cola, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Cola, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryScanVisibleProduct(rig.Chips, out failure, out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Staged.TryTakePayment(
+                    out CheckoutTransactionSummary summary,
+                    out failure,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(summary.subtotalCents, Is.EqualTo(497));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+        }
+
+        [Test]
         public void CorrectionRemovesOneMostRecentCorrectableScanWithoutUnderflow()
         {
             CheckoutRig rig = CreateRig();
@@ -119,6 +160,29 @@ namespace Margins.Tests
             Assert.That(rig.Staged.AllBasketsComplete, Is.True);
             Assert.That(rig.Staged.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.None));
             Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void RestoreResetDerivesFirstIncompleteBasketFromCompletedLedger()
+        {
+            CheckoutRig rig = CreateRig();
+            Begin(rig.Staged);
+            Scan(rig.Staged);
+            Scan(rig.Staged);
+            Scan(rig.Staged);
+            Assert.That(
+                rig.Staged.TryPrimary(out _, out CheckoutFailure failure, out string error),
+                Is.True,
+                error);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.None));
+            Assert.That(rig.Staged.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Replay));
+
+            rig.Staged.ResetTransientStateAfterRestore();
+
+            Assert.That(rig.Staged.CurrentBasketNumber, Is.EqualTo(2));
+            Assert.That(rig.Staged.NextAction, Is.EqualTo(StagedCheckoutPrimaryAction.Begin));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Begin(rig.Staged);
         }
 
         private static void Begin(StagedCheckoutInteractionComponent staged)
