@@ -5,7 +5,7 @@
 - **Status:** Proposed visual and UI prototype direction for project-owner review
 - **Scope:** The smallest presentation pass intended to establish a recognizable Margins identity without broad production-art expansion
 - **Implementation basis reviewed:** Draft stacked branch `agent/validate-first-store-playable-loop`, head `dc2395c1220a272aa283120a7adc7f4610f6343f`
-- **Authority boundary:** This brief applies the approved Stylized Contemporary Americana foundation but does not approve Mile 7 as permanent canon, individual assets, licenses, paid purchases, final UI technology, or production art budgets.
+- **Authority boundary:** This brief applies the approved Stylized Contemporary Americana foundation and approved 3D asset technical ceilings. It does not approve Mile 7 as permanent canon, individual assets, licenses, paid purchases, final UI technology, or production acceptance of a generated or sourced model.
 
 ## Purpose
 
@@ -31,6 +31,14 @@ This is not a general polish pass. It is a bounded identity and production-pipel
 - Tactile but assisted stocking and scanning
 - Consistency over raw fidelity
 - Controlled hybrid asset sourcing with provenance and human acceptance
+
+### Approved production constraint
+
+Every 3D asset created, generated, sourced, or normalized for this slice must follow:
+
+`01_PRE-PRODUCTION/1.7 Art Audio & Presentation/Margins_3D_Asset_Technical_Budgets_v1.0.md`
+
+Its triangle figures are maximum LOD0 ceilings rather than targets. The document also governs LOD starting ratios, collider types, character assembly limits, vehicle reuse, repeated-product meshes, vegetation overdraw controls, and the technical fields required before asset acceptance.
 
 ### Owner-stated interaction and presentation direction
 
@@ -178,6 +186,8 @@ These motifs should add identity without turning the interface into literal pape
 
 ## 3D complexity and modularity targets
 
+All model ceilings and category constraints in this section are subordinate to the approved technical-budget document. Staying below a triangle ceiling does not by itself establish acceptance; material count, texture use, collision, visible instances, skinning, alpha overdraw, provenance, and gameplay readability also require review.
+
 ### Characters
 
 Prototype one shared humanoid rig with:
@@ -189,6 +199,8 @@ Prototype one shared humanoid rig with:
 - shirt, pants, shoes, apron or vest, and name badge;
 - walk, idle, box carry, item carry, shelf stocking, register idle, and cleaning animations.
 
+The complete visible LOD0 character has an approved starting ceiling of 18,000 triangles including body, current clothing, hair, shoes, and visible accessories. Clothing, hair, hat, shoe, and accessory module ceilings are contained within that total rather than added on top. The ceiling remains provisional pending measurement of the helper-stripped MPFB2 export.
+
 The prototype succeeds when three persistent employees can look distinct through modular combinations without requiring three separately authored character pipelines.
 
 ### Environments and fixtures
@@ -197,6 +209,7 @@ The prototype succeeds when three persistent employees can look distinct through
 - Use believable construction logic and functional scale.
 - Reuse trim, materials, sign sockets, shelf spacing, feet, handles, and edge treatment.
 - Support future wear, renovation, and prestige states without unique replacement meshes for every condition.
+- Default to primitive or compound-primitive colliders; detailed mesh collision requires explicit justification.
 
 ### Products
 
@@ -209,11 +222,15 @@ Create a shared product-family system rather than isolated hero packages:
 - grocery container;
 - household bottle or pack.
 
-The identity slice implements only cola and chips, but their mesh, label, and material organization should prove the reusable system.
+The identity slice implements only cola and chips, but their mesh, label, and material organization should prove the reusable system. Product diversity should come primarily from texture, dimension, and material variants rather than one unique mesh per fictional product.
 
 ### Vehicles and secondary props
 
 Vehicles, vegetation, street furniture, and low-priority incidental props should be sourced or purchased and then normalized. They should not define the identity slice or trigger a driving-system commitment.
+
+A 12,000-triangle vehicle should normally serve as the LOD1 of a close-view vehicle or as a genuinely different low-cost background silhouette. Do not create a nearly identical standalone background copy without sufficient visual variation.
+
+Vegetation requires alpha-overdraw review and a billboard, impostor, or other approved final-distance representation in addition to triangle review.
 
 ## Asset-source strategy
 
@@ -232,14 +249,14 @@ Do not purchase a large retail or low-poly environment megapack merely to fill t
 
 ## Solo-developer pipeline experiment
 
-1. Define the target with a compact style sheet before sourcing.
+1. Define the target with a compact style sheet and applicable technical ceiling before sourcing.
 2. Place every external or generated asset in an intake quarantine.
-3. Record provenance, license, attribution, AI involvement, and restrictions.
-4. Normalize scale, pivots, naming, UVs, material slots, sockets, colliders, and LODs outside Unity where practical.
+3. Record provenance, license, attribution, AI involvement, restrictions, LOD ceilings, collider type, material limit, texture limit, visible-instance assumption, and applicable character or vegetation fields.
+4. Measure the source mesh, then normalize topology, scale, pivots, naming, UVs, material slots, sockets, colliders, and LODs outside Unity where practical.
 5. Import through class-specific presets.
-6. Review every candidate under actual store lighting and interaction distance.
+6. Review every candidate under actual store lighting, interaction distance, and expected repetition.
 7. Accept, revise, or quarantine after visual, legal, technical, and gameplay review.
-8. Preserve source files and modification notes for accepted assets.
+8. Preserve source files, measurements, and modification notes for accepted assets.
 
 ## Prototype play sequence
 
@@ -267,6 +284,7 @@ The identity slice passes when:
 - checkout reads as item-based scanning;
 - delivery contents remain physically represented;
 - the shift report is available without interrupting movement;
+- every accepted 3D asset complies with its recorded technical ceilings or has a separately approved exception;
 - asset provenance is complete for every non-original or AI-assisted accepted asset;
 - the work is reusable production foundation rather than a marketing-only diorama.
 
@@ -295,7 +313,8 @@ The identity slice passes when:
 - Final typography, iconography, and input-prompt presentation.
 - Which character and animation foundation may be licensed.
 - Initial paid-asset budget allocation.
-- Final technical budgets and UI implementation framework.
+- UI implementation framework.
+- Whether the measured helper-stripped MPFB2 export justifies revising the provisional 18,000-triangle complete-character ceiling.
 
 ## Required follow-up
 
