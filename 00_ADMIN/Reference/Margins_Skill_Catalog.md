@@ -28,6 +28,12 @@ Decides whether a recurring Margins behavior belongs as a skill, role, repositor
 
 Path: `.agents/skills/margins-skill-builder/`
 
+### `$tripo-3d-prompting`
+
+Writes fact-checked Tripo prompts and reference-image briefs for Margins props, architecture, vehicles, vegetation, products, and rig-ready base characters while applying current art direction and technical ceilings. Use before Tripo generation; not for final asset acceptance, cleanup, rig repair, or guarantees about topology, polygon count, or correction time.
+
+Path: `.agents/skills/tripo-3d-prompting/`
+
 ### `$margins-business-type-designer`
 
 Designs or substantially revises one business category while mapping shared systems, bounding unique engineering, defining detailed and off-site simulation, and tracing delegation. Use when proposing businesses such as convenience stores, gas stations, coffee shops, laundromats, arcades, or hobby shops; not for minor product or balance edits.
