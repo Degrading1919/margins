@@ -49,11 +49,21 @@ Characters should be intentionally simplified and modular enough to support solo
 
 The exact character proportions, facial system, body types, customization depth, animation set, dialogue presentation, and crowd-variation strategy remain unresolved.
 
+The approved starting technical ceiling is 18,000 LOD0 triangles for one complete visible character, including body, current clothing, hair, shoes, and visible accessories. Module ceilings are contained within that assembled total rather than added on top. The ceiling remains provisional pending measurement of the helper-stripped MPFB2 export and may change only through project-owner approval.
+
 ## Environment direction boundary
 
 The city is one fictional contemporary American city composed of expanding handcrafted districts built from reusable modules.
 
 The vertical slice requires one compact commercial block and two convenience-store locations with different market conditions. Exact architecture, district palettes, weather, time-of-day presentation, vegetation, vehicles, signage systems, and environmental density remain unresolved.
+
+## Approved 3D asset technical budgets
+
+The approved initial 3D model catalogs, maximum LOD0 triangle ceilings, LOD starting ratios, collider policy, character limits, vehicle reuse rule, product-mesh strategy, vegetation constraints, and required asset-record fields are defined in:
+
+`01_PRE-PRODUCTION/1.7 Art Audio & Presentation/Margins_3D_Asset_Technical_Budgets_v1.0.md`
+
+Those figures are ceilings, not targets. Generated, sourced, or manually created assets must be measured and normalized before acceptance. Repetition frequency, closest viewing distance, screen importance, interaction requirements, material cost, skinning cost, and alpha overdraw remain part of technical review even when a mesh is below its triangle ceiling.
 
 ## Interface and presentation relationship
 
@@ -82,10 +92,11 @@ Margins uses a controlled hybrid asset pipeline:
 
 - prefer self-created, properly licensed, open-source, Creative Commons, or affordable commercial assets;
 - use generative AI extensively for concepts, references, drafts, variations, automation, and bounded production;
+- treat raw Tripo, MPFB2, Blender, purchased, open-source, and other generated outputs as intake material until normalized and accepted;
 - ship generated material only when provenance and tool terms are documented;
 - require human review and intentional acceptance for every shipped asset;
-- maintain an asset ledger covering source, license, attribution, modifications, and AI involvement;
-- quarantine or replace assets whose ownership or usage rights cannot be established;
+- maintain an asset ledger covering source, license, attribution, modifications, AI involvement, technical ceilings, collider type, LODs, visible-instance assumptions, and category-specific constraints;
+- quarantine or replace assets whose ownership, usage rights, or technical compliance cannot be established;
 - avoid direct imitation of living artists or protected franchise styles.
 
 No asset class is automatically approved for generated final content.
@@ -93,15 +104,16 @@ No asset class is automatically approved for generated final content.
 ## Explicitly unresolved
 
 - detailed art bible and shape language;
-- palettes, shaders, materials, textures, and lighting implementation;
-- polygon, texture, rig, animation, and performance budgets;
+- final palettes, shaders, materials, textures, and lighting implementation;
+- texture, rig, animation, memory, draw-call, and performance budgets not covered by the approved initial 3D asset ceilings;
+- measured final MPFB2 character cost and any resulting owner-approved ceiling revision;
 - character creator and customization scope;
 - product-packaging and fictional-brand standards;
-- city, district, architecture, prop, vehicle, weather, and vegetation standards;
+- city, district, architecture, weather, and environmental-density standards beyond the approved initial model catalog;
 - UI presentation and accessibility requirements;
 - audio identity, dialogue, voice, music, and mix scope;
 - asset sources and specific licenses;
 - marketing-image, trailer, and storefront-art requirements;
 - engine-specific art pipeline and tools.
 
-Every asset remains subject to project-owner acceptance, technical feasibility, gameplay readability, provenance, and licensing review.
+Every asset remains subject to project-owner acceptance, technical feasibility, gameplay readability, provenance, licensing review, and the approved technical ceilings.

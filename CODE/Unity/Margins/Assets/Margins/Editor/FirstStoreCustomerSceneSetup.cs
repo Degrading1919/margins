@@ -1,0 +1,273 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+namespace Margins.Editor
+{
+    public static class FirstStoreCustomerSceneSetup
+    {
+        private const string ScenePath =
+            "Assets/Margins/Scenes/FirstStoreValidation.unity";
+        private const string RootName = "Autonomous Customer Flow";
+
+        public static void Apply()
+        {
+            Scene scene = EditorSceneManager.OpenScene(
+                ScenePath,
+                OpenSceneMode.Single);
+            Configure(scene);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+        }
+
+        internal static void Configure(Scene scene)
+        {
+            if (!scene.IsValid() || scene.path != ScenePath)
+            {
+                throw new InvalidOperationException(
+                    "Autonomous customer setup requires the first-store validation scene.");
+            }
+
+            DestroySceneObjectsNamed(RootName, scene);
+            GameObject root = new(RootName);
+            SceneManager.MoveGameObjectToScene(root, scene);
+
+            Transform entrance = CreatePoint(root.transform, "Customer Entrance", new Vector3(0f, 0f, -5.4f));
+            Transform exit = CreatePoint(root.transform, "Customer Exit", new Vector3(-1.25f, 0f, -5.4f));
+            Transform checkoutCustomer = CreatePoint(root.transform, "Customer Checkout Position", new Vector3(2.95f, 0f, 0.45f));
+            Transform[] browsePoints =
+            {
+                CreatePoint(root.transform, "Customer Browse Cola", new Vector3(-1.55f, 0f, 0.65f)),
+                CreatePoint(root.transform, "Customer Browse Chips", new Vector3(1.55f, 0f, 0.65f))
+            };
+            Transform[] queuePoints =
+            {
+                CreatePoint(root.transform, "Customer Queue 1", new Vector3(2.95f, 0f, 1.45f)),
+                CreatePoint(root.transform, "Customer Queue 2", new Vector3(2.95f, 0f, 2.45f)),
+                CreatePoint(root.transform, "Customer Queue 3", new Vector3(1.85f, 0f, 3.25f)),
+                CreatePoint(root.transform, "Customer Queue 4", new Vector3(0.7f, 0f, 3.25f))
+            };
+            Transform[] checkoutItems =
+            {
+                CreatePoint(root.transform, "Customer Checkout Item 1", new Vector3(2.72f, 1.12f, -0.48f)),
+                CreatePoint(root.transform, "Customer Checkout Item 2", new Vector3(3.18f, 1.12f, -0.48f))
+            };
+
+            StoreOperatingController store = Require<StoreOperatingController>();
+            CheckoutStationComponent checkout = Require<CheckoutStationComponent>();
+            PhysicalProductUnitRegistry physicalUnits = Require<PhysicalProductUnitRegistry>();
+            FixturePlacementController fixturePlacement = Require<FixturePlacementController>();
+            PlaceableFixtureComponent requiredFixture =
+                GameObject.Find("Essential Checkout Fixture")
+                    ?.GetComponent<PlaceableFixtureComponent>() ??
+                throw new InvalidOperationException(
+                    "Autonomous customer setup requires the checkout fixture.");
+
+            StoreCustomerFlowController flow =
+                root.AddComponent<StoreCustomerFlowController>();
+            SetObject(flow, "storeOperating", store);
+            SetObject(flow, "checkout", checkout);
+            SetObject(flow, "physicalUnits", physicalUnits);
+            SetObject(flow, "entrancePoint", entrance);
+            SetObject(flow, "exitPoint", exit);
+            SetObject(flow, "checkoutCustomerPoint", checkoutCustomer);
+            SetObjectArray(flow, "browsePoints", browsePoints);
+            SetObjectArray(flow, "queuePoints", queuePoints);
+            SetObjectArray(flow, "checkoutItemPoints", checkoutItems);
+            SetObjectArray(
+                flow,
+                "customerMaterials",
+                new[]
+                {
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        "Assets/Margins/Content/FirstStoreValidation/ValidationValid.mat"),
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        "Assets/Margins/Content/FirstStoreValidation/ValidationFixture.mat"),
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        "Assets/Margins/Content/FirstStoreValidation/ValidationChips.mat")
+                });
+            SetInteger(flow, "maximumActiveCustomers", 5);
+            SetFloat(flow, "arrivalIntervalSeconds", 5f);
+            SetFloat(flow, "initialArrivalDelaySeconds", 0.75f);
+            SetFloat(flow, "movementSpeed", 1.85f);
+            SetFloat(flow, "shoppingSeconds", 1.5f);
+            SetFloat(flow, "queuePatienceSeconds", 35f);
+            SetFloat(flow, "checkoutPatienceSeconds", 45f);
+
+            GameObject checkoutTargetObject = GameObject.Find("World Checkout Interaction") ??
+                throw new InvalidOperationException(
+                    "Autonomous customer setup requires the world checkout target.");
+            StagedCheckoutWorldInteractionTarget stagedTarget =
+                checkoutTargetObject.GetComponent<StagedCheckoutWorldInteractionTarget>();
+            if (stagedTarget != null)
+            {
+                stagedTarget.enabled = true;
+                EditorUtility.SetDirty(stagedTarget);
+            }
+
+            CustomerCheckoutWorldInteractionTarget customerTarget =
+                checkoutTargetObject.GetComponent<CustomerCheckoutWorldInteractionTarget>() ??
+                checkoutTargetObject.AddComponent<CustomerCheckoutWorldInteractionTarget>();
+            SetString(customerTarget, "stableTargetId", "target-checkout-customers-01");
+            SetObject(customerTarget, "customerFlow", flow);
+            SetObject(customerTarget, "operatingController", store);
+            SetObject(customerTarget, "fixturePlacement", fixturePlacement);
+            SetObject(customerTarget, "requiredFixture", requiredFixture);
+            customerTarget.enabled = true;
+
+            foreach (CheckoutProductWorldInteractionTarget stagedProduct in
+                     UnityEngine.Object.FindObjectsByType<CheckoutProductWorldInteractionTarget>(
+                         FindObjectsInactive.Include,
+                         FindObjectsSortMode.None))
+            {
+                stagedProduct.enabled = true;
+                EditorUtility.SetDirty(stagedProduct);
+            }
+
+            StagedCheckoutInteractionComponent stagedCheckout =
+                checkout.GetComponent<StagedCheckoutInteractionComponent>();
+            if (stagedCheckout != null)
+            {
+                stagedCheckout.enabled = true;
+                EditorUtility.SetDirty(stagedCheckout);
+            }
+
+            InStoreEmployeeWorkController employeeWork =
+                UnityEngine.Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            if (employeeWork != null)
+            {
+                employeeWork.enabled = true;
+                EditorUtility.SetDirty(employeeWork);
+            }
+
+            SetObject(store, "customerFlow", flow);
+            FirstStorePersistenceMapperComponent mapper =
+                Require<FirstStorePersistenceMapperComponent>();
+            SetObject(mapper, "customerFlow", flow);
+
+            FirstStoreExperienceController experience =
+                UnityEngine.Object.FindAnyObjectByType<FirstStoreExperienceController>();
+            if (experience != null)
+            {
+                SetObject(experience, "customerFlow", flow);
+            }
+
+            FirstStorePromptPresenter presenter =
+                UnityEngine.Object.FindAnyObjectByType<FirstStorePromptPresenter>();
+            if (presenter != null)
+            {
+                SetObject(presenter, "customerFlow", flow);
+            }
+
+            EditorUtility.SetDirty(root);
+            EditorSceneManager.MarkSceneDirty(scene);
+            Debug.Log(
+                "Configured autonomous first-store customers, physical shopping, queueing, and player checkout.");
+        }
+
+        private static T Require<T>() where T : UnityEngine.Object
+        {
+            return UnityEngine.Object.FindAnyObjectByType<T>() ??
+                   throw new InvalidOperationException(
+                       $"Autonomous customer setup requires '{typeof(T).Name}'.");
+        }
+
+        private static Transform CreatePoint(
+            Transform parent,
+            string name,
+            Vector3 position)
+        {
+            GameObject point = new(name);
+            point.transform.SetParent(parent, false);
+            point.transform.position = position;
+            return point.transform;
+        }
+
+        private static void DestroySceneObjectsNamed(string name, Scene scene)
+        {
+            foreach (GameObject existing in Resources
+                         .FindObjectsOfTypeAll<GameObject>()
+                         .Where(candidate =>
+                             candidate.scene == scene && candidate.name == name)
+                         .ToArray())
+            {
+                UnityEngine.Object.DestroyImmediate(existing);
+            }
+        }
+
+        private static void SetObject(
+            UnityEngine.Object target,
+            string propertyName,
+            UnityEngine.Object value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetObjectArray<T>(
+            UnityEngine.Object target,
+            string propertyName,
+            IReadOnlyList<T> values) where T : UnityEngine.Object
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.arraySize = values.Count;
+            for (int index = 0; index < values.Count; index++)
+            {
+                if (values[index] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Serialized property '{propertyName}' contains a missing reference.");
+                }
+                property.GetArrayElementAtIndex(index).objectReferenceValue = values[index];
+            }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetString(
+            UnityEngine.Object target,
+            string propertyName,
+            string value)
+        {
+            SerializedObject serialized = new(target);
+            serialized.FindProperty(propertyName).stringValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetInteger(
+            UnityEngine.Object target,
+            string propertyName,
+            int value)
+        {
+            SerializedObject serialized = new(target);
+            serialized.FindProperty(propertyName).intValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetFloat(
+            UnityEngine.Object target,
+            string propertyName,
+            float value)
+        {
+            SerializedObject serialized = new(target);
+            serialized.FindProperty(propertyName).floatValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+    }
+}

@@ -1,0 +1,430 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Margins
+{
+    public sealed class FirstStorePersistenceMapperComponent : MonoBehaviour
+    {
+        [SerializeField] private FixturePlacementController fixturePlacement;
+        [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
+        [SerializeField] private DeliveryBoxComponent[] deliveryBoxes;
+        [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
+        [SerializeField] private CheckoutStationComponent checkout;
+        [SerializeField] private StoreOperatingController storeOperating;
+        [SerializeField] private CleaningTaskComponent cleaningTask;
+        [SerializeField] private InStoreEmployeeWorkController employeeWork;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
+
+        public bool TryValidateConfiguration(out string error)
+        {
+            if (fixturePlacement == null ||
+                inventoryComponent == null ||
+                physicalUnits == null ||
+                checkout == null ||
+                storeOperating == null ||
+                cleaningTask == null)
+            {
+                error =
+                    "First-store persistence requires explicit fixture, inventory, physical-unit, checkout, operating, and cleaning references.";
+                return false;
+            }
+
+            if (!fixturePlacement.IsInitialized ||
+                !inventoryComponent.IsInitialized ||
+                !storeOperating.IsInitialized ||
+                checkout.TransactionLedger == null)
+            {
+                error = "First-store persistence references are not initialized.";
+                return false;
+            }
+
+            if (checkout.InventoryComponent != inventoryComponent ||
+                checkout.PhysicalUnits != physicalUnits ||
+                storeOperating.Stocking.PhysicalUnits != physicalUnits)
+            {
+                error =
+                    "First-store persistence checkout and physical units do not use the configured inventory path.";
+                return false;
+            }
+
+            if (storeOperating.FixturePlacement != fixturePlacement ||
+                storeOperating.Checkout != checkout ||
+                storeOperating.CleaningTask != cleaningTask)
+            {
+                error =
+                    "First-store persistence references do not match the operating controller.";
+                return false;
+            }
+
+            if (deliveryBoxes == null)
+            {
+                error = "First-store persistence delivery-box array is missing.";
+                return false;
+            }
+
+            HashSet<string> containerIds = new(StringComparer.Ordinal);
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                if (deliveryBox == null || !deliveryBox.IsInitialized)
+                {
+                    error =
+                        "First-store persistence contains a missing or uninitialized delivery box.";
+                    return false;
+                }
+
+                if (deliveryBox.InventoryComponent != inventoryComponent ||
+                    deliveryBox.PhysicalUnits != physicalUnits)
+                {
+                    error =
+                        $"Delivery box '{deliveryBox.StableContainerId}' does not use the configured inventory and physical units.";
+                    return false;
+                }
+
+                if (!containerIds.Add(deliveryBox.StableContainerId))
+                {
+                    error =
+                        $"First-store persistence contains duplicate delivery id '{deliveryBox.StableContainerId}'.";
+                    return false;
+                }
+            }
+
+            if (!physicalUnits.TryValidateConfiguration(out error) ||
+                !checkout.TryValidateConfiguration(out error) ||
+                !cleaningTask.TryValidateConfiguration(out error))
+            {
+                return false;
+            }
+
+            if (customerFlow != null &&
+                (!customerFlow.TryValidateConfiguration(out error) ||
+                 customerFlow.StoreOperating != storeOperating ||
+                 customerFlow.Checkout != checkout ||
+                 customerFlow.PhysicalUnits != physicalUnits))
+            {
+                error ??=
+                    "First-store persistence customer flow does not match the configured store authorities.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool TryCapture(
+            out FirstStoreSnapshot snapshot,
+            out string error)
+        {
+            snapshot = null;
+            if (!TryValidateConfiguration(out error))
+            {
+                return false;
+            }
+
+            List<DeliveryContainer> containers = new();
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                containers.Add(deliveryBox.Container);
+            }
+
+            if (!physicalUnits.TryCapture(
+                    inventoryComponent.Inventory,
+                    out List<PhysicalProductUnitSnapshot> physicalSnapshots,
+                    out int nextPhysicalUnitOrdinal,
+                    out error))
+            {
+                return false;
+            }
+
+            StoreCustomerFlowSnapshot customerSnapshot = null;
+            if (customerFlow != null &&
+                !customerFlow.TryCaptureSnapshot(
+                    out customerSnapshot,
+                    out error))
+            {
+                return false;
+            }
+
+            try
+            {
+                snapshot = FirstStoreSnapshotMapper.Create(
+                    fixturePlacement.Layout,
+                    inventoryComponent.Inventory,
+                    containers,
+                    checkout.TransactionLedger,
+                    storeOperating.Session,
+                    cleaningTask.CreateSnapshot());
+                snapshot.physicalProductUnits = physicalSnapshots;
+                snapshot.nextPhysicalUnitOrdinal = nextPhysicalUnitOrdinal;
+                snapshot.customerFlow = customerSnapshot;
+                error = null;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = $"First-store snapshot capture failed: {exception.Message}";
+                return false;
+            }
+        }
+
+        public bool TryRestore(
+            FirstStoreSnapshot snapshot,
+            out string error)
+        {
+            if (customerFlow != null &&
+                customerFlow.TryGetRestoreBlocker(out error))
+            {
+                return false;
+            }
+
+            if (!TryPrepareRestore(
+                    snapshot,
+                    out RestoredFirstStoreState restored,
+                    out Dictionary<string, DeliveryContainer> restoredContainers,
+                    out error))
+            {
+                return false;
+            }
+
+            StoreCustomerFlowSnapshot previousCustomers = null;
+            if (customerFlow != null &&
+                !customerFlow.TryCaptureSnapshot(
+                    out previousCustomers,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!physicalUnits.TryCapture(
+                    inventoryComponent.Inventory,
+                    out List<PhysicalProductUnitSnapshot> previousPhysicalUnits,
+                    out int previousPhysicalUnitOrdinal,
+                    out error))
+            {
+                return false;
+            }
+
+            customerFlow?.ResetTransientStateForRestore();
+
+            if (!physicalUnits.TryApplySnapshot(
+                    restored.Inventory,
+                    snapshot.physicalProductUnits,
+                    snapshot.nextPhysicalUnitOrdinal,
+                    storeOperating.Stocking,
+                    out error))
+            {
+                string applyError = error;
+                if (!physicalUnits.TryApplySnapshot(
+                        inventoryComponent.Inventory,
+                        previousPhysicalUnits,
+                        previousPhysicalUnitOrdinal,
+                        storeOperating.Stocking,
+                        out string rollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"First-store physical restore failed ('{applyError}') and rollback failed ('{rollbackError}').");
+                }
+
+                if (customerFlow != null &&
+                    !customerFlow.TryApplySnapshot(
+                        previousCustomers,
+                        previousPhysicalUnits,
+                        storeOperating.Session.CreateSnapshot(),
+                        out string customerRollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"First-store physical restore failed ('{applyError}'); physical rollback succeeded but customer rollback failed ('{customerRollbackError}').");
+                }
+
+                error = applyError;
+                return false;
+            }
+
+            if (!inventoryComponent.TryApplyRestoredInventory(
+                    restored.Inventory,
+                    out error) ||
+                !fixturePlacement.TryApplyRestoredLayout(
+                    restored.FixtureLayout,
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted first-store layout restore failed after physical restoration: {error}");
+            }
+
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                deliveryBox.ResetCarriedStateAfterRestore();
+                if (!deliveryBox.TryApplyRestoredContainer(
+                        restoredContainers[deliveryBox.StableContainerId],
+                        out error))
+                {
+                    throw new InvalidOperationException(
+                        $"A preflighted delivery restore failed after physical restoration: {error}");
+                }
+            }
+
+            employeeWork?.ResetTransientStateAfterRestore();
+
+            if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
+                !storeOperating.TryApplySnapshot(
+                    restored.StoreOperating.CreateSnapshot(),
+                    restored.TransactionLedger,
+                    out error) ||
+                !cleaningTask.TryApplySnapshot(
+                    restored.CleaningTask,
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted first-store domain restore failed after physical restoration: {error}");
+            }
+
+            if (customerFlow != null &&
+                !customerFlow.TryApplySnapshot(
+                    snapshot.customerFlow,
+                    snapshot.physicalProductUnits,
+                    restored.StoreOperating.CreateSnapshot(),
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted customer-flow restore failed after physical restoration: {error}");
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool TryValidateSnapshot(
+            FirstStoreSnapshot snapshot,
+            out string error)
+        {
+            return TryPrepareRestore(snapshot, out _, out _, out error);
+        }
+
+        public bool TryGetDiskSaveBlocker(out string blocker)
+        {
+            if (!TryValidateConfiguration(out string configurationError))
+            {
+                blocker = configurationError;
+                return true;
+            }
+
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                if (deliveryBox.IsCarried)
+                {
+                    blocker = "Set down the carried delivery box before saving.";
+                    return true;
+                }
+            }
+
+            if (checkout.HasActiveIncompleteSession)
+            {
+                blocker = "Complete the active checkout before saving.";
+                return true;
+            }
+
+            if (customerFlow != null &&
+                customerFlow.TryGetDiskSaveBlocker(out blocker))
+            {
+                return true;
+            }
+
+            blocker = null;
+            return false;
+        }
+
+        private bool TryPrepareRestore(
+            FirstStoreSnapshot snapshot,
+            out RestoredFirstStoreState restored,
+            out Dictionary<string, DeliveryContainer> restoredContainers,
+            out string error)
+        {
+            restored = null;
+            restoredContainers = null;
+            if (!TryValidateConfiguration(out error) ||
+                !FirstStoreSnapshotMapper.TryRestore(
+                    snapshot,
+                    out restored,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!inventoryComponent.CanApplyRestoredInventory(
+                    restored.Inventory,
+                    out error) ||
+                !fixturePlacement.CanApplyRestoredLayout(
+                    restored.FixtureLayout,
+                    out error) ||
+                !checkout.CanApplyLedger(
+                    restored.TransactionLedger,
+                    out error) ||
+                !storeOperating.CanApplySnapshot(
+                    restored.StoreOperating.CreateSnapshot(),
+                    restored.TransactionLedger,
+                    out error) ||
+                !cleaningTask.CanApplySnapshot(
+                    restored.CleaningTask,
+                    out error) ||
+                !physicalUnits.CanApplySnapshot(
+                    restored.Inventory,
+                    snapshot.physicalProductUnits,
+                    snapshot.nextPhysicalUnitOrdinal,
+                    storeOperating.Stocking,
+                    out error))
+            {
+                return false;
+            }
+
+            if (customerFlow != null)
+            {
+                if (!customerFlow.CanApplySnapshot(
+                        snapshot.customerFlow,
+                        snapshot.physicalProductUnits,
+                        restored.StoreOperating.CreateSnapshot(),
+                        out error))
+                {
+                    return false;
+                }
+            }
+            else if (snapshot.customerFlow?.customers != null &&
+                     snapshot.customerFlow.customers.Count > 0)
+            {
+                error =
+                    "This scene has no customer-flow controller for the saved active customers.";
+                return false;
+            }
+
+            restoredContainers = new Dictionary<string, DeliveryContainer>(
+                StringComparer.Ordinal);
+            foreach (DeliveryContainer container in restored.DeliveryContainers)
+            {
+                restoredContainers.Add(container.ContainerId, container);
+            }
+
+            if (restoredContainers.Count != deliveryBoxes.Length)
+            {
+                error = "Restored delivery-container count does not match inspector references.";
+                return false;
+            }
+
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                if (!restoredContainers.TryGetValue(
+                        deliveryBox.StableContainerId,
+                        out DeliveryContainer restoredContainer) ||
+                    !deliveryBox.CanApplyRestoredContainer(
+                        restoredContainer,
+                        out error))
+                {
+                    error ??=
+                        $"No restored delivery container matches '{deliveryBox.StableContainerId}'.";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+    }
+}

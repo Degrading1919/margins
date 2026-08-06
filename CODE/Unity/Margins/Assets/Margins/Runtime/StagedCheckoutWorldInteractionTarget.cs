@@ -1,0 +1,215 @@
+using UnityEngine;
+
+namespace Margins
+{
+    public sealed class StagedCheckoutWorldInteractionTarget :
+        MonoBehaviour,
+        IFirstStoreWorldInteractionTarget
+    {
+        [SerializeField] private string stableTargetId;
+        [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StoreOperatingController operatingController;
+        [SerializeField] private FixturePlacementController fixturePlacement;
+        [SerializeField] private PlaceableFixtureComponent requiredFixture;
+
+        private bool replayAcknowledged;
+
+        public string StableTargetId => stableTargetId;
+        public FirstStoreWorldInteractionPriority Priority =>
+            FirstStoreWorldInteractionPriority.Checkout;
+        public bool IsAvailable =>
+            FirstStoreIdentifier.IsValid(stableTargetId) &&
+            stagedCheckout != null &&
+            operatingController != null &&
+            (fixturePlacement == null || requiredFixture == null ||
+             fixturePlacement.IsPlaced(requiredFixture.StableFixtureInstanceId));
+
+        public FirstStoreWorldInteractionPrompt Prompt
+        {
+            get
+            {
+                if (!IsAvailable || !stagedCheckout.TryValidateConfiguration(out _))
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        "Use checkout",
+                        "checkout unavailable");
+                }
+
+                if (!CanUseCheckout(out string operatingBlocker))
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        "Use checkout",
+                        operatingBlocker);
+                }
+
+                string blocker = stagedCheckout.FirstBlocker;
+                string basket = stagedCheckout.BasketCount > 0
+                    ? $"basket {stagedCheckout.CurrentBasketNumber}/{stagedCheckout.BasketCount}"
+                    : "staged basket";
+                string subtotal = FormatCents(stagedCheckout.SubtotalCents);
+
+                if (stagedCheckout.AllBasketsComplete)
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        "Checkout complete",
+                        "all staged baskets completed");
+                }
+
+                switch (stagedCheckout.NextAction)
+                {
+                    case StagedCheckoutPrimaryAction.Begin:
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Start checkout",
+                            blocker ?? basket);
+
+                    case StagedCheckoutPrimaryAction.Scan:
+                        string line =
+                            $"{stagedCheckout.ActiveLineScannedQuantity}/{stagedCheckout.ActiveLineQuantity}; " +
+                            $"subtotal {subtotal}; Q corrects recent scan";
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Use customer items",
+                            blocker ?? $"aim at the visible product; {line}");
+
+                    case StagedCheckoutPrimaryAction.Complete:
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Take payment",
+                            blocker ?? $"subtotal {subtotal}");
+
+                    case StagedCheckoutPrimaryAction.Replay when !replayAcknowledged:
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Clear completed basket",
+                            $"already completed; subtotal {subtotal}");
+
+                    case StagedCheckoutPrimaryAction.Replay:
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Serve next basket",
+                            $"{basket} completed");
+
+                    default:
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Use register",
+                            blocker ?? "no staged action available");
+                }
+            }
+        }
+
+        public bool TryPrimary(out string error)
+        {
+            if (!IsAvailable)
+            {
+                error = "Checkout is unavailable.";
+                return false;
+            }
+
+            if (!CanUseCheckout(out error))
+            {
+                return false;
+            }
+
+            StagedCheckoutPrimaryAction actionBefore = stagedCheckout.NextAction;
+            if (actionBefore == StagedCheckoutPrimaryAction.Begin)
+            {
+                return stagedCheckout.TryBeginCustomer(out error);
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Scan)
+            {
+                error = "Aim at the customer's visible product to scan it.";
+                return false;
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Complete)
+            {
+                bool paid = stagedCheckout.TryTakePayment(
+                    out _,
+                    out _,
+                    out error);
+                return paid && stagedCheckout.TryContinue(out error);
+            }
+
+            if (actionBefore == StagedCheckoutPrimaryAction.Replay)
+            {
+                bool replayed = stagedCheckout.TryPrimary(
+                    out _,
+                    out _,
+                    out error);
+                if (!replayed)
+                {
+                    return false;
+                }
+
+                replayAcknowledged = true;
+                bool continued = stagedCheckout.TryContinue(out error);
+                replayAcknowledged = false;
+                return continued;
+            }
+
+            error = "No checkout action is available.";
+            return false;
+        }
+
+        public bool TryCancel(out string error)
+        {
+            if (!IsAvailable || stagedCheckout.AllBasketsComplete)
+            {
+                error = "No checkout scan can be corrected.";
+                return false;
+            }
+
+            return stagedCheckout.TryCorrect(out _, out error);
+        }
+
+        public void ResetTransientStateAfterRestore()
+        {
+            replayAcknowledged = false;
+        }
+
+        private bool CanUseCheckout(out string blocker)
+        {
+            if (operatingController == null || !operatingController.IsInitialized)
+            {
+                blocker = "store controls are not ready";
+                return false;
+            }
+
+            if (operatingController.State == StoreOperatingState.Open)
+            {
+                blocker = null;
+                return true;
+            }
+
+            if (operatingController.State == StoreOperatingState.Closing &&
+                stagedCheckout.Checkout != null &&
+                stagedCheckout.Checkout.HasActiveIncompleteSession)
+            {
+                blocker = null;
+                return true;
+            }
+
+            blocker = operatingController.State == StoreOperatingState.Closing
+                ? "checkout is closed to new staged baskets"
+                : "open the store before using checkout";
+            return false;
+        }
+
+        private static string FormatCents(long cents)
+        {
+            bool negative = cents < 0;
+            ulong absolute = negative
+                ? (ulong)(-(cents + 1)) + 1UL
+                : (ulong)cents;
+            return negative
+                ? $"-${absolute / 100}.{absolute % 100:00}"
+                : $"${absolute / 100}.{absolute % 100:00}";
+        }
+    }
+}

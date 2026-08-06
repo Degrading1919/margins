@@ -1,0 +1,2 @@
+status,supplier_id,delivery_fixture_id,delivery_container_definition_id,display_name,delivery_fee_min_cents,delivery_fee_max_cents,lead_time_scope,contents_rule,scope_note
+Proposed for project-owner review,supplier-regional-wholesale-alpha,fixture-delivery-drop-zone-100,container-mixed-case-small,Regional Wholesale Alpha Starter Delivery,4500,9000,Preconfigured arrival only,Uses approved starter-product IDs and integer unit quantities,No ordering routing invoice substitution damage or supplier simulation
