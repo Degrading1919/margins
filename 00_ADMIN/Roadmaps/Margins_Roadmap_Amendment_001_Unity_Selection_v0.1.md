@@ -2,16 +2,17 @@
 
 ## Status and authority
 
-- **Status:** Current amendment to `Margins_Master_Roadmap_v0.1.md`
+- **Status:** Current engine-selection amendment to `Margins_Master_Roadmap_v0.1.md`
 - **Effective date:** July 27, 2026
-- **Authority:** Applies `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` and `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md` to the proposed roadmap baseline.
+- **Progress synchronized:** August 6, 2026
+- **Authority:** Applies `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` and `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md` to the roadmap baseline.
 - **Scope:** This amendment changes the engine-selection path only. It does not approve a new full-project schedule.
 
 ## Reason for amendment
 
-The master roadmap assumed that engine selection would require a formal multi-candidate prototype phase. The project owner has now selected Unity and rejected the proposed 230–390-hour three-engine comparison as disproportionate to the decision.
+The master roadmap originally assumed that engine selection would require a formal multi-candidate prototype phase. The project owner selected Unity and rejected the proposed 230–390-hour three-engine comparison as disproportionate to the decision.
 
-The roadmap must therefore stop treating engine comparison as the critical path.
+The roadmap therefore stopped treating engine comparison as the critical path.
 
 ## Superseded roadmap direction
 
@@ -31,77 +32,71 @@ The research package remains historical evidence, but its comparison plan is not
 
 **Status:** Complete
 
-Exit evidence:
+Completed evidence:
 
-- Unity recorded as the approved engine;
-- current project brief, scope boundaries, and technical direction synchronized;
-- the engine-evaluation package explicitly superseded as an execution plan;
-- unresolved Unity baseline choices clearly listed.
+- [x] Unity recorded as the approved engine
+- [x] Project brief, scope boundaries, and technical direction synchronized
+- [x] Engine-evaluation package explicitly superseded as an execution plan
+- [x] Unresolved Unity baseline choices clearly listed before selection
 
 ### Amended Stage 2 — Unity technical baseline
 
 **Status:** Complete
 
-**Computer access required:** No
-
 Approved outputs:
 
-- `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md`;
-- `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Technical_Baseline_v0.1.md`;
-- `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Bootstrap_Standard_v0.1.md`;
-- `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_v0.1.md`; and
-- `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_Agent_Prompt.md`.
+- [x] `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md`
+- [x] `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Technical_Baseline_v0.1.md`
+- [x] `01_PRE-PRODUCTION/1.4 Technical Foundation/Margins_Unity_Bootstrap_Standard_v0.1.md`
+- [x] `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_v0.1.md`
+- [x] `02_VERTICAL_SLICE/Business Prototype/Margins_Unity_First_Foundation_Spike_Agent_Prompt.md`
 
-This stage approves only the decisions required to create and evaluate the first clean Unity project. It does not establish full production architecture.
+This stage approved only the decisions required to create and evaluate the first clean Unity project. It did not establish full production architecture by itself.
 
 ### Amended Stage 3 — Unity foundation spike
 
-**Status:** Ready after required local installation and licensing confirmation
+**Status:** Complete
 
-**Computer access required:** Yes
+Completed proof:
 
-Create the smallest runnable Unity project proving:
+- [x] First-person movement and mouse look
+- [x] One data-defined product
+- [x] Product pickup, rotation, and deterministic shelf snapping
+- [x] Valid and invalid placement feedback
+- [x] Save and restore of product placement
+- [x] One placeholder navigation agent in a graybox store
+- [x] Reproducible repository project structure
+- [x] Focused EditMode and PlayMode tests
+- [x] Runnable Windows x64 build
+- [x] No project-blocking Unity limitation identified
 
-1. first-person movement and look;
-2. one data-defined product;
-3. product pickup and deterministic shelf snapping;
-4. valid and invalid placement feedback;
-5. save and restore of product placement;
-6. one placeholder navigation agent in a graybox store;
-7. a reproducible repository checkout; and
-8. a runnable desktop PC build.
-
-Do not add final art, economy, customer simulation, employee behavior, generalized framework code, or the complete convenience-store loop.
+PR #12 merged this foundation spike. Later merged work expanded it into the first-store interaction, customer, employee, persistence, delegation, reporting, and reusable business-operation systems now reflected in the master roadmap progress checklist.
 
 ### Stage 3 exit gate
 
-Continue with Unity when:
+**Passed for continued Unity development:**
 
-- the project opens and runs reproducibly;
-- the build launches;
-- generated and human-written changes remain understandable;
-- the interaction and navigation proof works without a project-blocking Unity limitation;
-- the project owner accepts the editor and iteration workflow.
+- the project opens, tests, and builds reproducibly;
+- generated and human-reviewed changes remain understandable;
+- the interaction and navigation foundation works without a project-blocking Unity limitation;
+- the project owner continued development and merged the foundation into `main`.
 
-A failed implementation attempt triggers diagnosis and bounded correction before any engine reconsideration.
+Continued playtesting may reveal defects or feel problems, but those are handled through subsequent fixes rather than by reopening engine selection without a concrete Unity blocker.
 
 ## Schedule disposition
 
-The dates in `Margins_Master_Roadmap_v0.1.md` remain proposals and were already identified by the project owner as substantially inaccurate.
+The dates in the original `Margins_Master_Roadmap_v0.1.md` remain historical proposals and were already identified as substantially inaccurate. The August 6 progress synchronization records completed work but does not establish a new full-project forecast.
 
-Do not issue another full-project forecast until the Unity foundation spike provides measured setup, implementation, debugging, agent-review, and build velocity.
+Do not issue a new release schedule without recording:
 
-The next useful timing evidence is:
+- actual implementation and review hours where available;
+- local test and build velocity;
+- owner playtest and bug-fix burden;
+- asset-production and integration throughput;
+- remaining Stage 5–8 dependencies;
+- revised aggressive, planning, and conservative scenarios;
+- project-owner approval.
 
-- hours to install and verify the Unity baseline;
-- hours to create and commit the project;
-- hours to achieve the first snapped product;
-- hours to save and restore it;
-- hours to produce the first runnable build;
-- human review burden for agent-generated code.
+## Current disposition
 
-Use those measurements to replace speculation with project-specific velocity.
-
-## Immediate next task
-
-Complete the local Unity 6.5 Supported installation, confirm the applicable Unity licensing case, then execute `Margins_Unity_First_Foundation_Spike_Agent_Prompt.md` from current `main` and measure the result.
+The Unity selection and foundation-spike sequence is complete. Current execution should continue from the merged first-store and portfolio foundation, close remaining gameplay gaps, integrate production presentation, and perform bounded playtest-driven fixes. Engine reconsideration requires a concrete project-blocking Unity limitation or a new project-owner decision.
