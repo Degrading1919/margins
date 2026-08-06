@@ -1,0 +1,13 @@
+status,tuning_id,unit,low_test,planning_test,high_pressure_test,relationship_or_purpose
+Proposed for project-owner review,econ-startup-capital,cents,800000,1000000,1400000,Liquidity before lease setup fixtures inventory and session expenses
+Proposed for project-owner review,econ-deposit-initial-lease,cents,200000,300000,450000,Initial leased-store commitment
+Proposed for project-owner review,econ-essential-fixtures,cents,150000,225000,325000,Minimum physical operating capacity
+Proposed for project-owner review,econ-opening-inventory,cents,70000,110000,180000,Cash converted into product units
+Proposed for project-owner review,econ-daily-rent-allocation,cents,7000,9000,12000,Session-level fixed pressure representation
+Proposed for project-owner review,econ-delivery-fee,cents,4500,6500,9000,Cost per preconfigured delivery
+Proposed for project-owner review,econ-utility-proxy,cents,2000,3000,4500,Simple operating expense
+Proposed for project-owner review,econ-cleaning-maintenance,cents,1000,2000,3500,One bounded task expense
+Proposed for project-owner review,econ-opening-revenue-target,cents,35000,50000,70000,Scripted gross sales scenario target
+Proposed for project-owner review,econ-minimum-cash-reserve,cents,200000,275000,400000,Recovery capacity after setup and operation
+Proposed for project-owner review,econ-target-gross-margin,percent,30,42,55,Product mix hypothesis not final balance
+Proposed for project-owner review,econ-weak-session-capital-pressure,percent,5,8,10,Maximum desired startup-capital loss from one weak proof session

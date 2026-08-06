@@ -1,0 +1,9 @@
+status,fixture_definition_id,display_name,kind,essential_for_open,footprint_width_cells,footprint_depth_cells,capacity_units,placement_notes,interaction_notes
+Proposed for project-owner review,fixture-checkout-counter-120,Checkout Counter 120,checkout,true,3,2,0,Place near entry without blocking circulation,Holds scanner and staged checkout basket
+Proposed for project-owner review,fixture-wall-shelf-090,Wall Shelf 090,shelf,true,2,1,12,Back to wall with front access,Supports shelf-small products
+Proposed for project-owner review,fixture-gondola-shelf-090,Gondola Shelf 090,shelf,false,2,2,16,Requires clear access on long sides,Optional additional starter capacity
+Proposed for project-owner review,fixture-backroom-stock-rack-090,Backroom Stock Rack 090,storage,true,2,1,36,Backroom only,Owns loose_backroom inventory location
+Proposed for project-owner review,fixture-delivery-drop-zone-100,Delivery Drop Zone 100,delivery,true,2,2,1,Rear or side receiving zone,Accepts one proposed delivery container
+Proposed for project-owner review,equipment-hand-scanner-basic,Hand Scanner Basic,checkout_equipment,true,1,1,0,Explicit checkout-counter reference,Confirms item scans only
+Proposed for project-owner review,equipment-mop-bucket-basic,Mop and Bucket Basic,cleaning_equipment,true,1,1,0,Task zone or backroom,Supports one bounded cleaning task
+Proposed for project-owner review,fixture-open-closed-control,Open Closed Control,store_control,true,1,1,0,Entry or checkout sightline,Requests operating-state transitions

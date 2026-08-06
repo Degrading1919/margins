@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Margins/Scenes/FirstStoreValidation.unity
+    guid: bfe215e883f835e41891dd915f5eba85
+  - enabled: 1
     path: Assets/Margins/Scenes/FoundationSpike.unity
     guid: efb2bb5ddfac0b241bdf21dc52bc4ce2
   m_configObjects:
