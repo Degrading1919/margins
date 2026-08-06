@@ -130,7 +130,7 @@ namespace Margins.Editor
                 new Vector3(2.1f, 0.75f, -2.1f),
                 new Vector3(1.4f, 1.2f, 0.7f),
                 fixtureMaterial,
-                "STAGED CHECKOUT");
+                "CHECKOUT");
             StagedCheckoutInteractionComponent staged =
                 GetOrAdd<StagedCheckoutInteractionComponent>(checkoutObject);
             ConfigureStagedBaskets(staged, checkout, cola, chips);
@@ -177,7 +177,6 @@ namespace Margins.Editor
                 store,
                 delivery,
                 stocking,
-                staged,
                 cleaning,
                 cola,
                 chips,
@@ -411,7 +410,6 @@ namespace Margins.Editor
             StoreOperatingController store,
             DeliveryBoxComponent delivery,
             StockingController stocking,
-            StagedCheckoutInteractionComponent staged,
             CleaningTaskComponent cleaning,
             ProductDefinition cola,
             ProductDefinition chips,
@@ -465,7 +463,6 @@ namespace Margins.Editor
             SetObject(controller, "store", store);
             SetObject(controller, "deliveryBox", delivery);
             SetObject(controller, "stocking", stocking);
-            SetObject(controller, "stagedCheckout", staged);
             SetObject(controller, "cleaning", cleaning);
             SetArray(controller, "products", cola, chips);
             SetObject(controller, "cashierAvatar", cashierAvatar);

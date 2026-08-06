@@ -14,6 +14,46 @@ namespace Margins.Tests.EditMode
             transactionCount: 1);
 
         [Test]
+        public void DetailedEmployeePacingUsesCompetenceFocusAndManagerPresence()
+        {
+            PortfolioEmployeeSnapshot strongCashier = new()
+            {
+                skill = 90,
+                reliability = 95,
+                taskFocus = PortfolioTaskFocus.Service
+            };
+            PortfolioEmployeeSnapshot weakCashier = new()
+            {
+                skill = 30,
+                reliability = 35,
+                taskFocus = PortfolioTaskFocus.Inventory
+            };
+            PortfolioEmployeeSnapshot manager = new()
+            {
+                skill = 80,
+                reliability = 90,
+                taskFocus = PortfolioTaskFocus.Balanced
+            };
+
+            float strongAlone =
+                EmployeeWorkPerformance.CalculateDetailedActionSeconds(
+                    strongCashier.CreateWorkProfile(),
+                    BusinessWorkCategory.CustomerService);
+            float weakAlone =
+                EmployeeWorkPerformance.CalculateDetailedActionSeconds(
+                    weakCashier.CreateWorkProfile(),
+                    BusinessWorkCategory.CustomerService);
+            float strongManaged =
+                EmployeeWorkPerformance.CalculateDetailedActionSeconds(
+                    strongCashier.CreateWorkProfile(),
+                    BusinessWorkCategory.CustomerService,
+                    manager.CreateWorkProfile());
+
+            Assert.That(strongAlone, Is.LessThan(weakAlone));
+            Assert.That(strongManaged, Is.LessThan(strongAlone));
+        }
+
+        [Test]
         public void DetailedShiftPostsCashBasisExactlyOnce()
         {
             PortfolioProgression progression = PortfolioProgression.CreateInitial();
@@ -587,5 +627,6 @@ namespace Margins.Tests.EditMode
                 Is.True,
                 error);
         }
+
     }
 }

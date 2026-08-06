@@ -17,21 +17,27 @@ namespace Margins
         [SerializeField, Min(1)] private int requiredProgressUnits = 4;
         [SerializeField] private bool startsDirty = true;
 
-        private bool isActive;
-        private bool hasInitializedState;
+        private BusinessTaskProgress progress;
 
         public string StableTaskId => stableTaskId;
         public string DisplayName => string.IsNullOrWhiteSpace(name)
             ? "Cleaning task"
             : name;
         public int RequiredProgressUnits => requiredProgressUnits;
-        public int CompletedProgressUnits { get; private set; }
+        public int CompletedProgressUnits
+        {
+            get
+            {
+                EnsureRuntimeState();
+                return progress.CompletedWorkUnits;
+            }
+        }
         public bool IsActive
         {
             get
             {
                 EnsureRuntimeState();
-                return isActive;
+                return progress.IsActive;
             }
         }
         public bool NeedsCleaning
@@ -39,11 +45,17 @@ namespace Margins
             get
             {
                 EnsureRuntimeState();
-                return isActive && !IsComplete;
+                return progress.IsActive && !progress.IsComplete;
             }
         }
-        public bool IsComplete =>
-            GetIsComplete();
+        public bool IsComplete
+        {
+            get
+            {
+                EnsureRuntimeState();
+                return progress.IsComplete;
+            }
+        }
 
         private void Awake()
         {
@@ -72,21 +84,18 @@ namespace Margins
                 return CleaningProgressResult.InvalidConfiguration;
             }
 
-            if (IsComplete)
+            BusinessTaskProgressResult result =
+                progress.TryApplyWork(progressUnits);
+            return result switch
             {
-                return CleaningProgressResult.AlreadyComplete;
-            }
-
-            if (progressUnits <= 0)
-            {
-                return CleaningProgressResult.InvalidAmount;
-            }
-
-            int remaining = requiredProgressUnits - CompletedProgressUnits;
-            CompletedProgressUnits += Mathf.Min(remaining, progressUnits);
-            return IsComplete
-                ? CleaningProgressResult.Completed
-                : CleaningProgressResult.Progressed;
+                BusinessTaskProgressResult.Progressed =>
+                    CleaningProgressResult.Progressed,
+                BusinessTaskProgressResult.Completed =>
+                    CleaningProgressResult.Completed,
+                BusinessTaskProgressResult.AlreadyComplete =>
+                    CleaningProgressResult.AlreadyComplete,
+                _ => CleaningProgressResult.InvalidAmount
+            };
         }
 
         public bool TryCreateMess()
@@ -97,9 +106,7 @@ namespace Margins
                 return false;
             }
 
-            isActive = true;
-            CompletedProgressUnits = 0;
-            return true;
+            return progress.TryActivate();
         }
 
         public CleaningTaskSnapshot CreateSnapshot()
@@ -109,7 +116,7 @@ namespace Margins
                 stableTaskId,
                 requiredProgressUnits,
                 CompletedProgressUnits,
-                isActive);
+                IsActive);
         }
 
         public bool CanApplySnapshot(
@@ -142,30 +149,31 @@ namespace Margins
                 return false;
             }
 
-            CompletedProgressUnits = snapshot.completedProgressUnits;
-            isActive = snapshot.isActive;
-            hasInitializedState = true;
-            return true;
-        }
+            BusinessTaskProgress restored = new(
+                requiredProgressUnits,
+                snapshot.isActive);
+            if (!restored.TryRestore(
+                    snapshot.completedProgressUnits,
+                    snapshot.isActive))
+            {
+                error = "Cleaning task progress could not be restored.";
+                return false;
+            }
 
-        private bool GetIsComplete()
-        {
-            EnsureRuntimeState();
-            return !isActive ||
-                   (requiredProgressUnits > 0 &&
-                    CompletedProgressUnits >= requiredProgressUnits);
+            progress = restored;
+            return true;
         }
 
         private void EnsureRuntimeState()
         {
-            if (hasInitializedState)
+            if (progress != null)
             {
                 return;
             }
 
-            isActive = startsDirty;
-            CompletedProgressUnits = 0;
-            hasInitializedState = true;
+            progress = new BusinessTaskProgress(
+                Mathf.Max(1, requiredProgressUnits),
+                startsDirty);
         }
     }
 }
