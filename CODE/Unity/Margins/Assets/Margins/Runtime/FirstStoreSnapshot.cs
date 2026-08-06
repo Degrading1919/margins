@@ -62,7 +62,8 @@ namespace Margins
     [Serializable]
     public sealed class FirstStoreSnapshot : IEquatable<FirstStoreSnapshot>
     {
-        public const int CurrentVersion = 2;
+        public const int LegacyVersion = 2;
+        public const int CurrentVersion = 3;
 
         public int version = CurrentVersion;
         public int fixtureGridWidth;
@@ -75,6 +76,7 @@ namespace Margins
         public CleaningTaskSnapshot cleaningTask;
         public int nextPhysicalUnitOrdinal = 1;
         public List<PhysicalProductUnitSnapshot> physicalProductUnits = new();
+        public StoreCustomerFlowSnapshot customerFlow;
 
         public bool Equals(FirstStoreSnapshot other)
         {
@@ -86,6 +88,7 @@ namespace Margins
                 !FirstStoreEquality.AreEqual(transactionLedger, other.transactionLedger) ||
                 !FirstStoreEquality.AreEqual(storeOperating, other.storeOperating) ||
                 !FirstStoreEquality.AreEqual(cleaningTask, other.cleaningTask) ||
+                !FirstStoreEquality.AreEqual(customerFlow, other.customerFlow) ||
                 fixturePlacements == null ||
                 other.fixturePlacements == null ||
                 deliveryContainers == null ||
@@ -144,6 +147,7 @@ namespace Margins
             hash.Add(storeOperating);
             hash.Add(cleaningTask);
             hash.Add(nextPhysicalUnitOrdinal);
+            hash.Add(customerFlow);
             if (fixturePlacements != null)
             {
                 foreach (FixturePlacementSnapshot placement in fixturePlacements)
@@ -309,10 +313,11 @@ namespace Margins
                 return false;
             }
 
-            if (snapshot.version != FirstStoreSnapshot.CurrentVersion)
+            if (snapshot.version != FirstStoreSnapshot.CurrentVersion &&
+                snapshot.version != FirstStoreSnapshot.LegacyVersion)
             {
                 error =
-                    $"Unsupported first-store snapshot version {snapshot.version}; expected {FirstStoreSnapshot.CurrentVersion}.";
+                    $"Unsupported first-store snapshot version {snapshot.version}; expected {FirstStoreSnapshot.LegacyVersion} or {FirstStoreSnapshot.CurrentVersion}.";
                 return false;
             }
 

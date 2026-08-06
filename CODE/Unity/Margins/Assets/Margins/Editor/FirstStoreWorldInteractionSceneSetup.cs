@@ -246,6 +246,8 @@ namespace Margins.Editor
                 staged,
                 store);
 
+            FirstStoreCustomerSceneSetup.Configure(scene);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();

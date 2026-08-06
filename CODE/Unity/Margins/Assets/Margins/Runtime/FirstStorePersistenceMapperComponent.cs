@@ -14,6 +14,7 @@ namespace Margins
         [SerializeField] private StoreOperatingController storeOperating;
         [SerializeField] private CleaningTaskComponent cleaningTask;
         [SerializeField] private InStoreEmployeeWorkController employeeWork;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
 
         public bool TryValidateConfiguration(out string error)
         {
@@ -95,6 +96,17 @@ namespace Margins
                 return false;
             }
 
+            if (customerFlow != null &&
+                (!customerFlow.TryValidateConfiguration(out error) ||
+                 customerFlow.StoreOperating != storeOperating ||
+                 customerFlow.Checkout != checkout ||
+                 customerFlow.PhysicalUnits != physicalUnits))
+            {
+                error ??=
+                    "First-store persistence customer flow does not match the configured store authorities.";
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -124,6 +136,15 @@ namespace Margins
                 return false;
             }
 
+            StoreCustomerFlowSnapshot customerSnapshot = null;
+            if (customerFlow != null &&
+                !customerFlow.TryCaptureSnapshot(
+                    out customerSnapshot,
+                    out error))
+            {
+                return false;
+            }
+
             try
             {
                 snapshot = FirstStoreSnapshotMapper.Create(
@@ -135,6 +156,7 @@ namespace Margins
                     cleaningTask.CreateSnapshot());
                 snapshot.physicalProductUnits = physicalSnapshots;
                 snapshot.nextPhysicalUnitOrdinal = nextPhysicalUnitOrdinal;
+                snapshot.customerFlow = customerSnapshot;
                 error = null;
                 return true;
             }
@@ -149,10 +171,25 @@ namespace Margins
             FirstStoreSnapshot snapshot,
             out string error)
         {
+            if (customerFlow != null &&
+                customerFlow.TryGetRestoreBlocker(out error))
+            {
+                return false;
+            }
+
             if (!TryPrepareRestore(
                     snapshot,
                     out RestoredFirstStoreState restored,
                     out Dictionary<string, DeliveryContainer> restoredContainers,
+                    out error))
+            {
+                return false;
+            }
+
+            StoreCustomerFlowSnapshot previousCustomers = null;
+            if (customerFlow != null &&
+                !customerFlow.TryCaptureSnapshot(
+                    out previousCustomers,
                     out error))
             {
                 return false;
@@ -166,6 +203,8 @@ namespace Margins
             {
                 return false;
             }
+
+            customerFlow?.ResetTransientStateForRestore();
 
             if (!physicalUnits.TryApplySnapshot(
                     restored.Inventory,
@@ -184,6 +223,17 @@ namespace Margins
                 {
                     throw new InvalidOperationException(
                         $"First-store physical restore failed ('{applyError}') and rollback failed ('{rollbackError}').");
+                }
+
+                if (customerFlow != null &&
+                    !customerFlow.TryApplySnapshot(
+                        previousCustomers,
+                        previousPhysicalUnits,
+                        storeOperating.Session.CreateSnapshot(),
+                        out string customerRollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"First-store physical restore failed ('{applyError}'); physical rollback succeeded but customer rollback failed ('{customerRollbackError}').");
                 }
 
                 error = applyError;
@@ -228,6 +278,17 @@ namespace Margins
                     $"A preflighted first-store domain restore failed after physical restoration: {error}");
             }
 
+            if (customerFlow != null &&
+                !customerFlow.TryApplySnapshot(
+                    snapshot.customerFlow,
+                    snapshot.physicalProductUnits,
+                    restored.StoreOperating.CreateSnapshot(),
+                    out error))
+            {
+                throw new InvalidOperationException(
+                    $"A preflighted customer-flow restore failed after physical restoration: {error}");
+            }
+
             error = null;
             return true;
         }
@@ -259,6 +320,12 @@ namespace Margins
             if (checkout.HasActiveIncompleteSession)
             {
                 blocker = "Complete the active checkout before saving.";
+                return true;
+            }
+
+            if (customerFlow != null &&
+                customerFlow.TryGetDiskSaveBlocker(out blocker))
+            {
                 return true;
             }
 
@@ -306,6 +373,25 @@ namespace Margins
                     storeOperating.Stocking,
                     out error))
             {
+                return false;
+            }
+
+            if (customerFlow != null)
+            {
+                if (!customerFlow.CanApplySnapshot(
+                        snapshot.customerFlow,
+                        snapshot.physicalProductUnits,
+                        restored.StoreOperating.CreateSnapshot(),
+                        out error))
+                {
+                    return false;
+                }
+            }
+            else if (snapshot.customerFlow?.customers != null &&
+                     snapshot.customerFlow.customers.Count > 0)
+            {
+                error =
+                    "This scene has no customer-flow controller for the saved active customers.";
                 return false;
             }
 

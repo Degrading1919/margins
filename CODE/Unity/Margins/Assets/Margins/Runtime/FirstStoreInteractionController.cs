@@ -515,14 +515,26 @@ namespace Margins
 
             MonoBehaviour[] behaviours =
                 collider.GetComponentsInParent<MonoBehaviour>(true);
+            IFirstStoreWorldInteractionTarget selected = null;
             for (int index = 0; index < behaviours.Length; index++)
             {
-                if (behaviours[index] is IFirstStoreWorldInteractionTarget target)
+                if (behaviours[index] is not IFirstStoreWorldInteractionTarget target ||
+                    !target.IsAvailable)
                 {
-                    return target;
+                    continue;
+                }
+
+                if (selected == null ||
+                    target.Priority < selected.Priority ||
+                    (target.Priority == selected.Priority &&
+                     StringComparer.Ordinal.Compare(
+                         target.StableTargetId,
+                         selected.StableTargetId) < 0))
+                {
+                    selected = target;
                 }
             }
-            return null;
+            return selected;
         }
 
         private sealed class LooseProductTarget : IFirstStoreWorldInteractionTarget

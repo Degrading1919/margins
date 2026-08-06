@@ -49,6 +49,7 @@ namespace Margins
         [SerializeField] private StockingController stocking;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
         [SerializeField] private CleaningTaskComponent cleaning;
         [SerializeField] private StoreOperatingController store;
         [SerializeField] private PortfolioProgressionController portfolio;
@@ -578,6 +579,12 @@ namespace Margins
             {
                 cue = "Cleanup needed";
                 cueColor = Amber;
+            }
+            else if (customerFlow != null && customerFlow.QueuedCustomerCount > 0)
+            {
+                cue = customerFlow.QueuedCustomerCount == 1
+                    ? "Customer waiting"
+                    : $"{customerFlow.QueuedCustomerCount} customers waiting";
             }
             else if (stagedCheckout != null &&
                      !stagedCheckout.AllBasketsComplete &&

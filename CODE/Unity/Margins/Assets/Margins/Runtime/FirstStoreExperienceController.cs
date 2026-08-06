@@ -17,6 +17,7 @@ namespace Margins
         [SerializeField] private StockingController stocking;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
         [SerializeField] private CleaningTaskComponent cleaning;
         [SerializeField] private StoreOperatingController store;
         [SerializeField] private FixturePlacementController fixturePlacement;
@@ -310,6 +311,31 @@ namespace Margins
                 return;
             }
 
+            if (customerFlow != null)
+            {
+                SetCheckoutProps(false, false);
+                if (customerFlow.HasActiveCheckout)
+                {
+                    checkoutDisplayText.text =
+                        customerFlow.ActiveCheckoutScannedCount ==
+                        customerFlow.ActiveCheckoutItemCount
+                            ? $"TOTAL\n{FormatCents(customerFlow.ActiveCheckoutSubtotalCents)}"
+                            : $"SCAN {customerFlow.ActiveCheckoutScannedCount}/" +
+                              $"{customerFlow.ActiveCheckoutItemCount}\n" +
+                              FormatCents(customerFlow.ActiveCheckoutSubtotalCents);
+                }
+                else if (customerFlow.QueuedCustomerCount > 0)
+                {
+                    checkoutDisplayText.text =
+                        $"NEXT CUSTOMER\nQUEUE {customerFlow.QueuedCustomerCount}";
+                }
+                else
+                {
+                    checkoutDisplayText.text = "LANE\nREADY";
+                }
+                return;
+            }
+
             if (stagedCheckout.AllBasketsComplete)
             {
                 checkoutDisplayText.text =
@@ -349,13 +375,29 @@ namespace Margins
 
         private void SetCheckoutProps(bool showCola, bool showChips)
         {
-            if (checkoutColaProp != null)
+            SetCheckoutPropVisible(checkoutColaProp, showCola);
+            SetCheckoutPropVisible(checkoutChipsProp, showChips);
+        }
+
+        private static void SetCheckoutPropVisible(
+            GameObject checkoutProp,
+            bool visible)
+        {
+            if (checkoutProp == null)
             {
-                checkoutColaProp.SetActive(showCola);
+                return;
             }
-            if (checkoutChipsProp != null)
+
+            checkoutProp.SetActive(true);
+            foreach (Renderer renderer in
+                     checkoutProp.GetComponentsInChildren<Renderer>(true))
             {
-                checkoutChipsProp.SetActive(showChips);
+                renderer.enabled = visible;
+            }
+            foreach (Collider collider in
+                     checkoutProp.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = visible;
             }
         }
 

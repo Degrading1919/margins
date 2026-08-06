@@ -149,6 +149,101 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void ExactPhysicalCheckoutConsumesTheSpecifiedCustomerUnitOnce()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);
+            ProductItem first = StockOne(rig, rig.Cola);
+            ProductItem customerItem = StockOne(rig, rig.Cola);
+
+            Assert.That(
+                rig.Checkout.TryBeginSession("customer-sale-exact", out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Checkout.TryScan(rig.Cola, 1, out CheckoutFailure scanFailure),
+                Is.True,
+                scanFailure.ToString());
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    new[] { customerItem.PhysicalUnitId },
+                    out CheckoutTransactionSummary summary,
+                    out CheckoutFailure completeFailure),
+                Is.True,
+                completeFailure.ToString());
+
+            Assert.That(summary.transactionId, Is.EqualTo("customer-sale-exact"));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(rig.Checkout.GrossSalesCents, Is.EqualTo(149));
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"),
+                Is.EqualTo(1));
+            Assert.That(
+                rig.PhysicalUnits.TryGetUnit(
+                    first.PhysicalUnitId,
+                    out ProductItem remaining,
+                    out string remainingLocation),
+                Is.True);
+            Assert.That(remaining, Is.SameAs(first));
+            Assert.That(remainingLocation, Is.EqualTo("loc-shelf-cola"));
+            Assert.That(
+                rig.PhysicalUnits.TryGetUnit(
+                    customerItem.PhysicalUnitId,
+                    out _,
+                    out _),
+                Is.False);
+
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    new[] { customerItem.PhysicalUnitId },
+                    out CheckoutTransactionSummary replay,
+                    out CheckoutFailure replayFailure),
+                Is.True);
+            Assert.That(replayFailure, Is.EqualTo(CheckoutFailure.AlreadyCompleted));
+            Assert.That(replay, Is.EqualTo(summary));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"),
+                Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExactPhysicalCheckoutRejectsAnItemThatWasNotScanned()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 1);
+            ProductItem cola = StockOne(rig, rig.Cola);
+            ProductItem chips = StockOne(rig, rig.Chips);
+
+            Assert.That(
+                rig.Checkout.TryBeginSession("customer-sale-mismatch", out string error),
+                Is.True,
+                error);
+            Assert.That(rig.Checkout.TryScan(rig.Cola, 1, out _), Is.True);
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    new[] { chips.PhysicalUnitId },
+                    out _,
+                    out CheckoutFailure failure),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(CheckoutFailure.InventoryChanged));
+            Assert.That(rig.Checkout.CompletedTransactionCount, Is.Zero);
+            Assert.That(rig.Checkout.GrossSalesCents, Is.Zero);
+            Assert.That(rig.PhysicalUnits.VisibleUnitCount, Is.EqualTo(2));
+            Assert.That(
+                rig.PhysicalUnits.TryGetUnit(cola.PhysicalUnitId, out _, out _),
+                Is.True);
+            Assert.That(
+                rig.PhysicalUnits.TryGetUnit(chips.PhysicalUnitId, out _, out _),
+                Is.True);
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-cola", "prod-cola"),
+                Is.EqualTo(1));
+            Assert.That(
+                rig.Inventory.Inventory.GetQuantity("loc-shelf-chips", "prod-chips"),
+                Is.EqualTo(1));
+            Assert.That(rig.Checkout.TryCancelActiveSession(out error), Is.True, error);
+        }
+
+        [Test]
         public void RepeatedRemovalAndStockingUsesDistinctPhysicalUnits()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 2, chipsBoxQuantity: 0);

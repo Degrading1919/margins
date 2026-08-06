@@ -294,7 +294,51 @@ namespace Margins
                 out failure);
         }
 
+        public bool TryCancelActiveSession(out string error)
+        {
+            if (ActiveSession == null)
+            {
+                error = "Checkout has no active session.";
+                return false;
+            }
+
+            if (ActiveSession.IsCompleted)
+            {
+                error = "A completed checkout session cannot be cancelled.";
+                return false;
+            }
+
+            ActiveSession = null;
+            error = null;
+            return true;
+        }
+
         public bool TryComplete(
+            out CheckoutTransactionSummary summary,
+            out CheckoutFailure failure)
+        {
+            return TryCompleteInternal(
+                null,
+                useSpecificPhysicalUnits: false,
+                out summary,
+                out failure);
+        }
+
+        public bool TryComplete(
+            IReadOnlyList<string> physicalUnitIds,
+            out CheckoutTransactionSummary summary,
+            out CheckoutFailure failure)
+        {
+            return TryCompleteInternal(
+                physicalUnitIds,
+                useSpecificPhysicalUnits: true,
+                out summary,
+                out failure);
+        }
+
+        private bool TryCompleteInternal(
+            IReadOnlyList<string> physicalUnitIds,
+            bool useSpecificPhysicalUnits,
             out CheckoutTransactionSummary summary,
             out CheckoutFailure failure)
         {
@@ -316,10 +360,17 @@ namespace Margins
             IReadOnlyList<CheckoutLineSnapshot> lines = ActiveSession.Lines;
             SortedDictionary<string, string> shelfMappings =
                 CreateShelfMappings();
-            if (!physicalUnits.CanConsumeShelvedUnits(
+            bool canConsume = useSpecificPhysicalUnits
+                ? physicalUnits.CanConsumeSpecificShelvedUnits(
                     shelfMappings,
                     lines,
-                    out _))
+                    physicalUnitIds,
+                    out _)
+                : physicalUnits.CanConsumeShelvedUnits(
+                    shelfMappings,
+                    lines,
+                    out _);
+            if (!canConsume)
             {
                 summary = null;
                 failure = CheckoutFailure.InventoryChanged;
@@ -334,16 +385,33 @@ namespace Margins
                 return false;
             }
 
-            if (!physicalUnits.TryConsumeShelvedUnits(
+            string physicalError;
+            bool physicallyConsumed = useSpecificPhysicalUnits
+                ? physicalUnits.TryConsumeSpecificShelvedUnits(
                     shelfMappings,
                     lines,
-                    out string physicalError))
+                    physicalUnitIds,
+                    out physicalError)
+                : physicalUnits.TryConsumeShelvedUnits(
+                    shelfMappings,
+                    lines,
+                    out physicalError);
+            if (!physicallyConsumed)
             {
                 throw new InvalidOperationException(
                     $"Validated physical checkout reconciliation failed: {physicalError}");
             }
 
             return true;
+        }
+
+        public bool TryGetProductDefinition(
+            string productId,
+            out ProductDefinition productDefinition)
+        {
+            CheckoutPriceConfiguration price = FindPrice(productId);
+            productDefinition = price?.ProductDefinition;
+            return productDefinition != null;
         }
 
         internal bool CanApplyLedger(

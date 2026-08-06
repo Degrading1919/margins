@@ -11,6 +11,7 @@ namespace Margins
         [SerializeField] private StockingController stocking;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private CleaningTaskComponent cleaningTask;
+        [SerializeField] private StoreCustomerFlowController customerFlow;
         [SerializeField] private string[] requiredFixtureInstanceIds;
         [SerializeField, Min(0)] private int includedOperatingExpensesCents;
         [SerializeField] private bool continuousOperation;
@@ -28,6 +29,7 @@ namespace Margins
         public StockingController Stocking => stocking;
         public CheckoutStationComponent Checkout => checkout;
         public CleaningTaskComponent CleaningTask => cleaningTask;
+        public StoreCustomerFlowController CustomerFlow => customerFlow;
         public int IncludedOperatingExpensesCents =>
             includedOperatingExpensesCents;
         public long LivePayrollCents => livePayrollCents;
@@ -163,6 +165,16 @@ namespace Margins
                         $"Checkout and stocking shelf mappings disagree for '{productId}'.";
                     return false;
                 }
+            }
+
+            if (customerFlow != null &&
+                (customerFlow.StoreOperating != this ||
+                 customerFlow.Checkout != checkout ||
+                 customerFlow.PhysicalUnits != stocking.PhysicalUnits))
+            {
+                error =
+                    "Store customer flow does not use this operating controller's checkout and physical units.";
+                return false;
             }
 
             error = null;
@@ -321,6 +333,12 @@ namespace Margins
 
         public bool TryFinishClosing(out string error)
         {
+            if (customerFlow != null && customerFlow.HasCustomersInStore)
+            {
+                error = "Wait for all customers to complete checkout or leave before closing.";
+                return false;
+            }
+
             if (checkout.HasActiveIncompleteSession)
             {
                 error = "Complete or clear the active checkout session before closing.";
@@ -369,6 +387,12 @@ namespace Margins
             if (checkout.HasActiveIncompleteSession)
             {
                 blocker = "Complete or clear the active checkout before closing.";
+                return true;
+            }
+
+            if (customerFlow != null && customerFlow.HasCustomersInStore)
+            {
+                blocker = "Wait for all customers to complete checkout or leave.";
                 return true;
             }
 

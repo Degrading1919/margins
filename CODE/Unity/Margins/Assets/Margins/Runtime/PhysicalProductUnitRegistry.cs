@@ -224,6 +224,53 @@ namespace Margins
             return false;
         }
 
+        public bool TryGetUnit(
+            string physicalUnitId,
+            out ProductItem item,
+            out string inventoryLocationId)
+        {
+            if (FirstStoreIdentifier.IsValid(physicalUnitId) &&
+                unitsById.TryGetValue(physicalUnitId, out UnitRecord record) &&
+                record.Item != null)
+            {
+                item = record.Item;
+                inventoryLocationId = record.InventoryLocationId;
+                return true;
+            }
+
+            item = null;
+            inventoryLocationId = null;
+            return false;
+        }
+
+        public bool TryGetAvailableShelvedUnit(
+            string productId,
+            string shelfLocationId,
+            out ProductItem item)
+        {
+            foreach (UnitRecord record in unitsById.Values)
+            {
+                if (record.Item?.Definition != null &&
+                    record.Item.IsSnapped &&
+                    !record.Item.IsReservedByCustomer &&
+                    string.Equals(
+                        record.Item.Definition.StableProductId,
+                        productId,
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        record.InventoryLocationId,
+                        shelfLocationId,
+                        StringComparison.Ordinal))
+                {
+                    item = record.Item;
+                    return true;
+                }
+            }
+
+            item = null;
+            return false;
+        }
+
         public bool TryGetOldestUnitAtLocation(
             string inventoryLocationId,
             out ProductItem item)
@@ -309,6 +356,7 @@ namespace Margins
                 {
                     if (record.Item?.Definition != null &&
                         record.Item.IsSnapped &&
+                        !record.Item.IsReservedByCustomer &&
                         string.Equals(
                             record.Item.Definition.StableProductId,
                             line.productId,
@@ -357,6 +405,7 @@ namespace Margins
                     if (remaining > 0 &&
                         pair.Value.Item?.Definition != null &&
                         pair.Value.Item.IsSnapped &&
+                        !pair.Value.Item.IsReservedByCustomer &&
                         string.Equals(
                             pair.Value.Item.Definition.StableProductId,
                             line.productId,
@@ -381,6 +430,123 @@ namespace Margins
                     DestroyUnitObject(record.Item.gameObject);
                 }
                 unitsById.Remove(unitId);
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool CanConsumeSpecificShelvedUnits(
+            IReadOnlyDictionary<string, string> shelfLocationIdsByProduct,
+            IReadOnlyList<CheckoutLineSnapshot> lines,
+            IReadOnlyList<string> physicalUnitIds,
+            out string error)
+        {
+            if (shelfLocationIdsByProduct == null || lines == null ||
+                lines.Count == 0 || physicalUnitIds == null ||
+                physicalUnitIds.Count == 0)
+            {
+                error = "Specific physical checkout consumption request is empty.";
+                return false;
+            }
+
+            Dictionary<string, int> expectedByProduct =
+                new(StringComparer.Ordinal);
+            int expectedUnitCount = 0;
+            foreach (CheckoutLineSnapshot line in lines)
+            {
+                if (line == null || line.quantityUnits <= 0 ||
+                    !shelfLocationIdsByProduct.ContainsKey(line.productId))
+                {
+                    error = "Specific physical checkout consumption request is invalid or unmapped.";
+                    return false;
+                }
+
+                expectedByProduct.TryGetValue(line.productId, out int expected);
+                expectedByProduct[line.productId] = checked(expected + line.quantityUnits);
+                expectedUnitCount = checked(expectedUnitCount + line.quantityUnits);
+            }
+
+            if (physicalUnitIds.Count != expectedUnitCount)
+            {
+                error = "Specific physical checkout unit count does not match scanned lines.";
+                return false;
+            }
+
+            HashSet<string> uniqueIds = new(StringComparer.Ordinal);
+            Dictionary<string, int> actualByProduct = new(StringComparer.Ordinal);
+            foreach (string physicalUnitId in physicalUnitIds)
+            {
+                if (!FirstStoreIdentifier.IsValid(physicalUnitId) ||
+                    !uniqueIds.Add(physicalUnitId) ||
+                    !unitsById.TryGetValue(physicalUnitId, out UnitRecord record) ||
+                    record.Item?.Definition == null ||
+                    !record.Item.IsSnapped)
+                {
+                    error = "Specific physical checkout contains a missing, duplicate, or unshelved unit.";
+                    return false;
+                }
+
+                string productId = record.Item.Definition.StableProductId;
+                if (!shelfLocationIdsByProduct.TryGetValue(
+                        productId,
+                        out string shelfLocationId) ||
+                    !string.Equals(
+                        record.InventoryLocationId,
+                        shelfLocationId,
+                        StringComparison.Ordinal))
+                {
+                    error =
+                        $"Physical unit '{physicalUnitId}' is not on the mapped shelf for '{productId}'.";
+                    return false;
+                }
+
+                actualByProduct.TryGetValue(productId, out int actual);
+                actualByProduct[productId] = actual + 1;
+            }
+
+            if (expectedByProduct.Count != actualByProduct.Count)
+            {
+                error = "Specific physical checkout products do not match scanned lines.";
+                return false;
+            }
+
+            foreach (KeyValuePair<string, int> expected in expectedByProduct)
+            {
+                if (!actualByProduct.TryGetValue(expected.Key, out int actual) ||
+                    actual != expected.Value)
+                {
+                    error =
+                        $"Specific physical units for '{expected.Key}' do not match scanned quantity.";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool TryConsumeSpecificShelvedUnits(
+            IReadOnlyDictionary<string, string> shelfLocationIdsByProduct,
+            IReadOnlyList<CheckoutLineSnapshot> lines,
+            IReadOnlyList<string> physicalUnitIds,
+            out string error)
+        {
+            if (!CanConsumeSpecificShelvedUnits(
+                    shelfLocationIdsByProduct,
+                    lines,
+                    physicalUnitIds,
+                    out error))
+            {
+                return false;
+            }
+
+            foreach (string physicalUnitId in physicalUnitIds)
+            {
+                UnitRecord record = unitsById[physicalUnitId];
+                record.Item.SnappedFixture?.ReleaseProduct(record.Item);
+                DestroyUnitObject(record.Item.gameObject);
+                unitsById.Remove(physicalUnitId);
             }
 
             error = null;

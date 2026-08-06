@@ -883,6 +883,62 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void LegacySnapshotVersionRestoresWithoutInventingCustomers()
+        {
+            FirstStoreSnapshot legacy = CreateCompleteSnapshot(out _);
+            legacy.version = FirstStoreSnapshot.LegacyVersion;
+            legacy.customerFlow = null;
+
+            Assert.That(
+                FirstStoreSnapshotMapper.TryRestore(
+                    legacy,
+                    out RestoredFirstStoreState restored,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(restored.TransactionLedger.TransactionCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void CustomerFlowSnapshotEqualityIncludesReservationsAndQueueState()
+        {
+            StoreCustomerSnapshot customer = new(
+                "store-customer-000001",
+                StoreCustomerState.Queueing,
+                new[] { "prod-cola" },
+                new[] { "physical-unit-000001" },
+                12f,
+                0f,
+                1f,
+                0f,
+                2f,
+                false);
+            StoreCustomerFlowSnapshot first = new(2, 3f, new[] { customer });
+            StoreCustomerFlowSnapshot same = new(
+                2,
+                3f,
+                new[]
+                {
+                    new StoreCustomerSnapshot(
+                        "store-customer-000001",
+                        StoreCustomerState.Queueing,
+                        new[] { "prod-cola" },
+                        new[] { "physical-unit-000001" },
+                        12f,
+                        0f,
+                        1f,
+                        0f,
+                        2f,
+                        false)
+                });
+
+            Assert.That(same, Is.EqualTo(first));
+            same.customers[0].reservedPhysicalUnitIds[0] =
+                "physical-unit-000002";
+            Assert.That(same, Is.Not.EqualTo(first));
+        }
+
+        [Test]
         public void RestoreRejectsTotalsThatContradictCompletedTransactions()
         {
             FirstStoreSnapshot snapshot = CreateCompleteSnapshot(out _);
