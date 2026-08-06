@@ -115,7 +115,7 @@ namespace Margins
                                           ActionDelay(
                                               cashier,
                                               manager,
-                                              PortfolioTaskFocus.Service);
+                                              ConvenienceStoreOperations.CustomerCheckout);
                 }
             }
 
@@ -132,7 +132,7 @@ namespace Margins
                                           ActionDelay(
                                               stocker,
                                               manager,
-                                              PortfolioTaskFocus.Inventory);
+                                              ConvenienceStoreOperations.RestockShelf);
                 }
             }
 
@@ -148,7 +148,7 @@ namespace Margins
                                             ActionDelay(
                                                 manager,
                                                 null,
-                                                PortfolioTaskFocus.Standards);
+                                                ConvenienceStoreOperations.RestoreStandards);
                 }
             }
             else if (stocker != null &&
@@ -163,7 +163,7 @@ namespace Margins
                                         ActionDelay(
                                             stocker,
                                             null,
-                                            PortfolioTaskFocus.Standards);
+                                            ConvenienceStoreOperations.RestoreStandards);
             }
         }
 
@@ -399,30 +399,21 @@ namespace Margins
         private static float ActionDelay(
             PortfolioEmployeeSnapshot employee,
             PortfolioEmployeeSnapshot manager,
-            PortfolioTaskFocus preferredFocus)
+            BusinessOperationRecipe operation)
         {
-            float skill = Mathf.Clamp01(employee.skill / 100f);
-            float reliability = Mathf.Clamp01(employee.reliability / 100f);
-            float competence = skill * 0.55f + reliability * 0.45f;
-            float delay = Mathf.Lerp(2.35f, 0.72f, competence);
-
-            if (employee.taskFocus == preferredFocus)
+            if (employee == null || operation == null)
             {
-                delay *= 0.86f;
-            }
-            else if (employee.taskFocus == PortfolioTaskFocus.Balanced)
-            {
-                delay *= 0.94f;
+                throw new ArgumentNullException(
+                    employee == null ? nameof(employee) : nameof(operation));
             }
 
-            if (manager != null)
-            {
-                float managerCompetence = Mathf.Clamp01(
-                    (manager.skill + manager.reliability) / 200f);
-                delay *= Mathf.Lerp(0.9f, 0.7f, managerCompetence);
-            }
-
-            return Mathf.Max(0.35f, delay);
+            EmployeeWorkProfile? supervisor = manager == null
+                ? null
+                : manager.CreateWorkProfile();
+            return EmployeeWorkPerformance.CalculateDetailedActionSeconds(
+                employee.CreateWorkProfile(),
+                operation.PrimaryWorkCategory,
+                supervisor);
         }
 
         private void MoveAvatar(Transform avatar, Transform destination)

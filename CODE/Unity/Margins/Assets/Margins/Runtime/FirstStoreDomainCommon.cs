@@ -3,7 +3,11 @@ using System;
 
 namespace Margins
 {
-    public static class FirstStoreIdentifier
+    /// <summary>
+    /// Shared stable-id contract for persisted state, recipes, jobs, resources,
+    /// stations, and transactions.
+    /// </summary>
+    public static class StableIdentifier
     {
         public static bool IsValid(string value)
         {
@@ -42,6 +46,17 @@ namespace Margins
             return (character >= 'a' && character <= 'z') ||
                    (character >= 'A' && character <= 'Z') ||
                    (character >= '0' && character <= '9');
+        }
+    }
+
+    /// <summary>
+    /// Compatibility facade retained for the first-store authorities.
+    /// </summary>
+    public static class FirstStoreIdentifier
+    {
+        public static bool IsValid(string value)
+        {
+            return StableIdentifier.IsValid(value);
         }
     }
 

@@ -48,6 +48,26 @@ namespace Margins
         public long hiringCostCents;
         public string assignedLocationId;
         public int lastTrainingDay;
+
+        public EmployeeWorkProfile CreateWorkProfile()
+        {
+            BusinessWorkFocus workFocus = taskFocus switch
+            {
+                PortfolioTaskFocus.Service =>
+                    BusinessWorkFocus.CustomerService,
+                PortfolioTaskFocus.Inventory =>
+                    BusinessWorkFocus.ResourceFlow,
+                PortfolioTaskFocus.Standards =>
+                    BusinessWorkFocus.Standards,
+                PortfolioTaskFocus.Balanced =>
+                    BusinessWorkFocus.Balanced,
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(taskFocus),
+                    taskFocus,
+                    "Employee task focus is invalid.")
+            };
+            return new EmployeeWorkProfile(skill, reliability, workFocus);
+        }
     }
 
     [Serializable]
@@ -180,9 +200,15 @@ namespace Margins
             long dailyRentCents,
             long leaseCostCents,
             long openingInventoryCostCents,
+            BusinessSimulationProfile simulationProfile,
             string businessTypeId = "business-convenience-retail",
             string operatingModel = "Retail goods: receive containers, stock fixtures, scan items, and delegate service.")
         {
+            if (simulationProfile == null)
+            {
+                throw new ArgumentNullException(nameof(simulationProfile));
+            }
+
             LocationId = locationId;
             DisplayName = displayName;
             DistrictName = districtName;
@@ -197,6 +223,7 @@ namespace Margins
             OpeningInventoryCostCents = openingInventoryCostCents;
             BusinessTypeId = businessTypeId;
             OperatingModel = operatingModel;
+            SimulationProfile = simulationProfile;
         }
 
         public string LocationId { get; }
@@ -213,6 +240,7 @@ namespace Margins
         public long OpeningInventoryCostCents { get; }
         public string BusinessTypeId { get; }
         public string OperatingModel { get; }
+        public BusinessSimulationProfile SimulationProfile { get; }
     }
 
     public static class PortfolioProgressionRules
@@ -301,7 +329,8 @@ namespace Margins
                 900,
                 9_000,
                 0,
-                0);
+                0,
+                ConvenienceStoreOperations.Simulation);
 
         private static readonly PortfolioLocationDefinition[] ExpansionDefinitions =
         {
@@ -317,7 +346,8 @@ namespace Margins
                 1_000,
                 12_500,
                 450_000,
-                125_000),
+                125_000,
+                ConvenienceStoreOperations.Simulation),
             new(
                 "location-downtown-market",
                 "Exchange Market",
@@ -330,7 +360,8 @@ namespace Margins
                 1_200,
                 22_000,
                 650_000,
-                175_000)
+                175_000,
+                ConvenienceStoreOperations.Simulation)
         };
 
         public static IReadOnlyList<PortfolioCandidateDefinition> Candidates =>
@@ -1261,6 +1292,18 @@ namespace Margins
             int simulatedDay,
             out string error)
         {
+            if (!PortfolioProgressionRules.TryGetLocationDefinition(
+                    location.locationId,
+                    out PortfolioLocationDefinition locationDefinition) ||
+                locationDefinition.SimulationProfile == null)
+            {
+                error =
+                    $"Location '{location.locationId}' has no aggregate simulation profile.";
+                return false;
+            }
+
+            BusinessSimulationProfile simulation =
+                locationDefinition.SimulationProfile;
             List<PortfolioEmployeeSnapshot> assigned = candidate.employees
                 .Where(employee => string.Equals(
                     employee.assignedLocationId,
@@ -1291,12 +1334,17 @@ namespace Margins
                     0,
                     candidate.cashCents -
                     PortfolioProgressionRules.MinimumCashReserveCents);
-                int affordableUnits = (int)Math.Min(
-                    int.MaxValue,
-                    spendable / PortfolioProgressionRules.AggregateUnitCostCents);
+                int affordableUnits =
+                    simulation.UnitEconomy.VariableUnitCostCents == 0
+                        ? desiredUnits
+                        : (int)Math.Min(
+                            int.MaxValue,
+                            spendable /
+                            simulation.UnitEconomy.VariableUnitCostCents);
                 reorderedUnits = Math.Min(desiredUnits, affordableUnits);
                 inventoryPurchase = checked(
-                    reorderedUnits * PortfolioProgressionRules.AggregateUnitCostCents);
+                    reorderedUnits *
+                    simulation.UnitEconomy.VariableUnitCostCents);
                 candidate.cashCents -= inventoryPurchase;
                 location.inventoryUnits += reorderedUnits;
             }
@@ -1304,14 +1352,18 @@ namespace Margins
 
             long unitPrice = location.pricingPolicy switch
             {
-                PortfolioPricingPolicy.Value => 299,
-                PortfolioPricingPolicy.Premium => 419,
-                _ => 349
+                PortfolioPricingPolicy.Value =>
+                    simulation.UnitEconomy.ValuePriceCents,
+                PortfolioPricingPolicy.Premium =>
+                    simulation.UnitEconomy.PremiumPriceCents,
+                _ => simulation.UnitEconomy.BalancedPriceCents
             };
             int priceDemandAdjustment = location.pricingPolicy switch
             {
-                PortfolioPricingPolicy.Value => 55,
-                PortfolioPricingPolicy.Premium => -70,
+                PortfolioPricingPolicy.Value =>
+                    simulation.UnitEconomy.ValueDemandAdjustmentUnits,
+                PortfolioPricingPolicy.Premium =>
+                    simulation.UnitEconomy.PremiumDemandAdjustmentUnits,
                 _ => 0
             };
             int managerDemandAdjustment = (manager.skill - 50) * 2;
@@ -1333,27 +1385,15 @@ namespace Margins
                 managerDemandAdjustment +
                 dayVariance);
 
+            EmployeeWorkProfile managerWork = manager.CreateWorkProfile();
             int serviceCapacity =
-                120 + cashier.skill * 3 + manager.skill;
-            if (cashier.taskFocus == PortfolioTaskFocus.Service)
-            {
-                serviceCapacity += 35;
-            }
-            if (manager.taskFocus == PortfolioTaskFocus.Service)
-            {
-                serviceCapacity += 45;
-            }
-
+                simulation.CustomerServiceCapacity.CalculateCapacity(
+                    cashier.CreateWorkProfile(),
+                    managerWork);
             int stockedAvailability =
-                140 + stocker.skill * 4 + manager.skill;
-            if (stocker.taskFocus == PortfolioTaskFocus.Inventory)
-            {
-                stockedAvailability += 50;
-            }
-            if (manager.taskFocus == PortfolioTaskFocus.Inventory)
-            {
-                stockedAvailability += 55;
-            }
+                simulation.ResourceFlowCapacity.CalculateCapacity(
+                    stocker.CreateWorkProfile(),
+                    managerWork);
 
             int unitsSold = Math.Min(
                 demand,
@@ -1368,7 +1408,7 @@ namespace Margins
             {
                 grossSales = checked(unitPrice * unitsSold);
                 costOfGoodsSold = checked(
-                    PortfolioProgressionRules.AggregateUnitCostCents * unitsSold);
+                    simulation.UnitEconomy.VariableUnitCostCents * unitsSold);
                 operatingProfit = checked(
                     grossSales - costOfGoodsSold - payroll - location.dailyRentCents);
                 candidate.cashCents = checked(candidate.cashCents + grossSales);
@@ -1582,6 +1622,17 @@ namespace Margins
             PortfolioLocationReportSnapshot report,
             out string error)
         {
+            if (!PortfolioProgressionRules.TryGetLocationDefinition(
+                    location.locationId,
+                    out PortfolioLocationDefinition definition) ||
+                definition.SimulationProfile?.UnitEconomy == null)
+            {
+                error = "Portfolio location report has no simulation definition.";
+                return false;
+            }
+
+            long aggregateUnitCost =
+                definition.SimulationProfile.UnitEconomy.VariableUnitCostCents;
             long expectedGrossSales;
             long expectedCostOfGoods;
             long expectedInventoryPurchase;
@@ -1592,11 +1643,9 @@ namespace Margins
                 expectedGrossSales = checked(
                     report.unitPriceCents * report.unitsSold);
                 expectedCostOfGoods = checked(
-                    PortfolioProgressionRules.AggregateUnitCostCents *
-                    report.unitsSold);
+                    aggregateUnitCost * report.unitsSold);
                 expectedInventoryPurchase = checked(
-                    PortfolioProgressionRules.AggregateUnitCostCents *
-                    report.reorderedUnits);
+                    aggregateUnitCost * report.reorderedUnits);
                 expectedOperatingProfit = checked(
                     report.grossSalesCents -
                     report.costOfGoodsSoldCents -

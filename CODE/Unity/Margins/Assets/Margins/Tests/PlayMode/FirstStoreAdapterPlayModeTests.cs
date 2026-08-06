@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -234,6 +235,8 @@ namespace Margins.Tests
                 error);
             Assert.That(queuedSnapshot.customerFlow, Is.Not.Null);
             Assert.That(queuedSnapshot.customerFlow.customers.Count, Is.EqualTo(3));
+            string expectedFrontCustomerId =
+                queuedSnapshot.customerFlow.customers[0].customerId;
             Assert.That(
                 mapper.TryRestore(queuedSnapshot, out error),
                 Is.True,
@@ -267,6 +270,14 @@ namespace Margins.Tests
             Assert.That(flow.TryCompleteCheckout(out error), Is.True, error);
             yield return null;
             Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(
+                checkout.CompletedTransactions.Any(transaction =>
+                    string.Equals(
+                        transaction.transactionId,
+                        $"sale-{expectedFrontCustomerId}",
+                        System.StringComparison.Ordinal)),
+                Is.True,
+                "Queue order must survive snapshot reconstruction.");
             Assert.That(
                 TotalShelfQuantity(checkout),
                 Is.EqualTo(unitsBeforePayment - actualItemIds.Length));

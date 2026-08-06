@@ -46,27 +46,14 @@ namespace Margins
         [SerializeField, Min(1f)] private float checkoutPatienceSeconds = 45f;
 
         private readonly List<RuntimeCustomer> customers = new();
+        private BusinessStationQueue checkoutQueue;
         private RuntimeCustomer checkoutCustomer;
         private int nextCustomerOrdinal = 1;
         private float secondsUntilNextArrival;
         private bool started;
 
         public int ActiveCustomerCount => customers.Count;
-        public int QueuedCustomerCount
-        {
-            get
-            {
-                int count = 0;
-                foreach (RuntimeCustomer customer in customers)
-                {
-                    if (customer.State == StoreCustomerState.Queueing)
-                    {
-                        count++;
-                    }
-                }
-                return count;
-            }
-        }
+        public int QueuedCustomerCount => CheckoutQueue.WaitingCount;
         public bool HasCustomersInStore => customers.Count > 0;
         public int LeavingWithoutPurchaseCount
         {
@@ -134,6 +121,7 @@ namespace Margins
 
         private void Start()
         {
+            EnsureCheckoutQueue();
             started = true;
             secondsUntilNextArrival = initialArrivalDelaySeconds;
             if (!TryValidateConfiguration(out string error))
@@ -285,6 +273,16 @@ namespace Margins
                 return false;
             }
 
+            if (!CheckoutQueue.TryReserveNext(
+                    customer.CustomerId,
+                    out BusinessStationQueueFailure queueFailure))
+            {
+                checkout.TryCancelActiveSession(out _);
+                error =
+                    $"Checkout station reservation failed ({queueFailure}).";
+                return false;
+            }
+
             customer.State = StoreCustomerState.Checkout;
             customer.PatienceSeconds = checkoutPatienceSeconds;
             checkoutCustomer = customer;
@@ -310,6 +308,13 @@ namespace Margins
                     checkout.TryCancelActiveSession(out _);
                     checkoutCustomer = null;
                     customer.State = StoreCustomerState.Queueing;
+                    if (!CheckoutQueue.TryReturnReservationToFront(
+                            customer.CustomerId,
+                            out BusinessStationQueueFailure rollbackFailure))
+                    {
+                        throw new InvalidOperationException(
+                            $"Checkout queue rollback failed for '{customer.CustomerId}' ({rollbackFailure}).");
+                    }
                     error =
                         $"Customer item '{unitId}' could not reach checkout: {moveError}";
                     return false;
@@ -407,7 +412,8 @@ namespace Margins
             if (checkoutCustomer == null ||
                 checkoutCustomer.ReservedPhysicalUnitIds.Count == 0 ||
                 checkoutCustomer.ScannedPhysicalUnitIds.Count !=
-                checkoutCustomer.ReservedPhysicalUnitIds.Count)
+                checkoutCustomer.ReservedPhysicalUnitIds.Count ||
+                !CheckoutQueue.HasReservation(checkoutCustomer.CustomerId))
             {
                 error = "Every actual customer item must be scanned before payment.";
                 return false;
@@ -427,6 +433,13 @@ namespace Margins
             customer.ScannedPhysicalUnitIds.Clear();
             customer.State = StoreCustomerState.Leaving;
             customer.WasAbandoned = false;
+            if (!CheckoutQueue.TryCompleteReservation(
+                    customer.CustomerId,
+                    out BusinessStationQueueFailure queueFailure))
+            {
+                throw new InvalidOperationException(
+                    $"Completed checkout could not release station capacity for '{customer.CustomerId}' ({queueFailure}).");
+            }
             checkoutCustomer = null;
             UpdateCustomerLabel(customer, "THANK YOU");
             error = null;
@@ -449,10 +462,13 @@ namespace Margins
                 return false;
             }
 
+            if (!TryValidateQueueConsistency(out error))
+            {
+                return false;
+            }
+
             List<StoreCustomerSnapshot> captured = new(customers.Count);
-            List<RuntimeCustomer> ordered = new(customers);
-            ordered.Sort((left, right) =>
-                string.CompareOrdinal(left.CustomerId, right.CustomerId));
+            List<RuntimeCustomer> ordered = GetSnapshotCustomerOrder();
             foreach (RuntimeCustomer customer in ordered)
             {
                 foreach (string unitId in customer.ReservedPhysicalUnitIds)
@@ -645,10 +661,7 @@ namespace Margins
             ResetTransientStateForRestore();
             nextCustomerOrdinal = snapshot.nextCustomerOrdinal;
             secondsUntilNextArrival = snapshot.secondsUntilNextArrival;
-            List<StoreCustomerSnapshot> ordered = new(snapshot.customers);
-            ordered.Sort((left, right) =>
-                string.CompareOrdinal(left.customerId, right.customerId));
-            foreach (StoreCustomerSnapshot source in ordered)
+            foreach (StoreCustomerSnapshot source in snapshot.customers)
             {
                 RuntimeCustomer customer = CreateRuntimeCustomer(
                     source.customerId,
@@ -682,6 +695,17 @@ namespace Margins
                     customer.ReservedPhysicalUnitIds.Add(unitId);
                 }
                 customers.Add(customer);
+                if (customer.State == StoreCustomerState.Queueing &&
+                    !CheckoutQueue.TryEnqueue(
+                        customer.CustomerId,
+                        1,
+                        out BusinessStationQueueFailure queueFailure))
+                {
+                    ResetTransientStateForRestore();
+                    error =
+                        $"Customer queue restore failed for '{customer.CustomerId}' ({queueFailure}).";
+                    return false;
+                }
                 UpdateCustomerLabel(customer, LabelFor(customer));
             }
 
@@ -720,6 +744,7 @@ namespace Margins
             }
             customers.Clear();
             checkoutCustomer = null;
+            checkoutQueue?.Clear();
         }
 
         private void UpdateArrivals(float deltaSeconds)
@@ -855,6 +880,14 @@ namespace Margins
                 return;
             }
 
+            if (!CheckoutQueue.TryEnqueue(
+                    customer.CustomerId,
+                    1,
+                    out BusinessStationQueueFailure queueFailure))
+            {
+                throw new InvalidOperationException(
+                    $"Customer '{customer.CustomerId}' could not enter the checkout queue ({queueFailure}).");
+            }
             customer.State = StoreCustomerState.Queueing;
             customer.PatienceSeconds = queuePatienceSeconds;
             UpdateCustomerLabel(customer, "IN LINE");
@@ -866,6 +899,16 @@ namespace Margins
             {
                 checkout.TryCancelActiveSession(out _);
                 checkoutCustomer = null;
+            }
+
+            if ((customer.State == StoreCustomerState.Queueing ||
+                 customer.State == StoreCustomerState.Checkout) &&
+                !CheckoutQueue.TryAbandon(
+                    customer.CustomerId,
+                    out BusinessStationQueueFailure queueFailure))
+            {
+                throw new InvalidOperationException(
+                    $"Customer '{customer.CustomerId}' could not leave the checkout queue ({queueFailure}).");
             }
 
             foreach (string unitId in customer.ReservedPhysicalUnitIds)
@@ -918,6 +961,7 @@ namespace Margins
                 DestroyRuntimeObject(customer.Root);
             }
             customers.Clear();
+            CheckoutQueue.Clear();
         }
 
         private RuntimeCustomer CreateRuntimeCustomer(
@@ -1000,32 +1044,145 @@ namespace Margins
 
         private RuntimeCustomer GetFrontQueuedCustomer()
         {
+            string frontJobId = CheckoutQueue.FrontWaitingJobId;
+            if (frontJobId == null)
+            {
+                return null;
+            }
+
+            foreach (RuntimeCustomer customer in customers)
+            {
+                if (string.Equals(
+                        customer.CustomerId,
+                        frontJobId,
+                        StringComparison.Ordinal))
+                {
+                    return customer;
+                }
+            }
+            throw new InvalidOperationException(
+                $"Checkout queue references missing customer '{frontJobId}'.");
+        }
+
+        private Transform QueuePointFor(RuntimeCustomer selected)
+        {
+            int queueIndex = CheckoutQueue.GetWaitingPosition(
+                selected.CustomerId);
+            if (queueIndex < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Queued customer '{selected.CustomerId}' has no station request.");
+            }
+            return queuePoints[Mathf.Min(queueIndex, queuePoints.Length - 1)];
+        }
+
+        private BusinessStationQueue CheckoutQueue
+        {
+            get
+            {
+                EnsureCheckoutQueue();
+                return checkoutQueue;
+            }
+        }
+
+        private void EnsureCheckoutQueue()
+        {
+            if (checkoutQueue != null)
+            {
+                return;
+            }
+
+            checkoutQueue = new BusinessStationQueue(
+                "station-first-store-checkout",
+                ConvenienceStoreOperations.CustomerCheckout
+                    .Steps[0]
+                    .StationCapabilityId,
+                1);
+        }
+
+        private bool TryValidateQueueConsistency(out string error)
+        {
+            IReadOnlyList<string> waitingJobIds = CheckoutQueue.WaitingJobIds;
+            HashSet<string> queuedCustomerIds = new(StringComparer.Ordinal);
             foreach (RuntimeCustomer customer in customers)
             {
                 if (customer.State == StoreCustomerState.Queueing)
+                {
+                    queuedCustomerIds.Add(customer.CustomerId);
+                }
+            }
+
+            if (queuedCustomerIds.Count != waitingJobIds.Count)
+            {
+                error =
+                    "Checkout queue membership disagrees with instantiated customer state.";
+                return false;
+            }
+            foreach (string jobId in waitingJobIds)
+            {
+                if (!queuedCustomerIds.Contains(jobId))
+                {
+                    error =
+                        "Checkout queue membership disagrees with instantiated customer state.";
+                    return false;
+                }
+            }
+
+            if (CheckoutQueue.ReservationCount !=
+                    (checkoutCustomer == null ? 0 : 1) ||
+                (checkoutCustomer != null &&
+                 !CheckoutQueue.HasReservation(checkoutCustomer.CustomerId)))
+            {
+                error =
+                    "Checkout station reservations disagree with instantiated customer state.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        private List<RuntimeCustomer> GetSnapshotCustomerOrder()
+        {
+            List<RuntimeCustomer> ordered = new(customers.Count);
+            foreach (string customerId in CheckoutQueue.WaitingJobIds)
+            {
+                RuntimeCustomer queued = FindCustomer(customerId);
+                if (queued == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Checkout queue references missing customer '{customerId}'.");
+                }
+                ordered.Add(queued);
+            }
+
+            List<RuntimeCustomer> remaining = new();
+            foreach (RuntimeCustomer customer in customers)
+            {
+                if (customer.State != StoreCustomerState.Queueing)
+                {
+                    remaining.Add(customer);
+                }
+            }
+            remaining.Sort((left, right) =>
+                string.CompareOrdinal(left.CustomerId, right.CustomerId));
+            ordered.AddRange(remaining);
+            return ordered;
+        }
+
+        private RuntimeCustomer FindCustomer(string customerId)
+        {
+            foreach (RuntimeCustomer customer in customers)
+            {
+                if (string.Equals(
+                        customer.CustomerId,
+                        customerId,
+                        StringComparison.Ordinal))
                 {
                     return customer;
                 }
             }
             return null;
-        }
-
-        private Transform QueuePointFor(RuntimeCustomer selected)
-        {
-            int queueIndex = 0;
-            foreach (RuntimeCustomer customer in customers)
-            {
-                if (customer.State != StoreCustomerState.Queueing)
-                {
-                    continue;
-                }
-                if (customer == selected)
-                {
-                    return queuePoints[Mathf.Min(queueIndex, queuePoints.Length - 1)];
-                }
-                queueIndex++;
-            }
-            return queuePoints[queuePoints.Length - 1];
         }
 
         private bool MoveTowards(
