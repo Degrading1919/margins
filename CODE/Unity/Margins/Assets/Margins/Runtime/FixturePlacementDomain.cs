@@ -131,7 +131,9 @@ namespace Margins
         OperatingStateRestricted,
         InvalidFootprint,
         OutOfBounds,
-        Occupied
+        Occupied,
+        InvalidSupport,
+        StructuralCollision
     }
 
     public sealed class FixturePlacementResult

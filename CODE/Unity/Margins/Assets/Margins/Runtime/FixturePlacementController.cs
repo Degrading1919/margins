@@ -32,6 +32,11 @@ namespace Margins
         [SerializeField, Min(0.01f)] private float cellSize = 0.5f;
         [SerializeField] private PlaceableFixtureComponent[] fixtures;
         [SerializeField] private InitialFixturePlacementConfiguration[] initialPlacements;
+        [Header("Save compatibility")]
+        [SerializeField, Min(0)] private int legacyGridWidthCells;
+        [SerializeField, Min(0)] private int legacyGridDepthCells;
+        [SerializeField] private GridPosition legacyGridOffset;
+        [SerializeField] private string[] legacyFixtureInstanceIds;
 
         private readonly Dictionary<string, PlaceableFixtureComponent> fixturesById =
             new(StringComparer.Ordinal);
@@ -327,10 +332,65 @@ namespace Margins
                 return false;
             }
 
-            if (restored.Width != gridWidthCells ||
-                restored.Depth != gridDepthCells)
+            return TryCreateCompatibleRestoredLayout(restored, out _, out error);
+        }
+
+        public bool TryApplyRestoredLayout(FixtureLayout restored, out string error)
+        {
+            error = null;
+            if (Layout == null || !TryValidateConfiguration(out error))
             {
-                error = "Restored fixture grid dimensions do not match the inspector.";
+                error ??= "Fixture placement controller is not initialized.";
+                return false;
+            }
+
+            if (!TryCreateCompatibleRestoredLayout(
+                    restored,
+                    out FixtureLayout compatible,
+                    out error))
+            {
+                return false;
+            }
+
+            foreach (PlaceableFixtureComponent fixture in fixturesById.Values)
+            {
+                fixture.ClearPlacement();
+            }
+
+            Layout = compatible;
+            foreach (FixturePlacementSnapshot placement in Layout.CreateSnapshot())
+            {
+                fixturesById[placement.fixtureInstanceId].ApplyPlacement(
+                    placement,
+                    gridOrigin,
+                    cellSize);
+            }
+            return true;
+        }
+
+        private bool TryCreateCompatibleRestoredLayout(
+            FixtureLayout restored,
+            out FixtureLayout compatible,
+            out string error)
+        {
+            compatible = null;
+            if (restored == null)
+            {
+                error = "Restored fixture layout is missing.";
+                return false;
+            }
+
+            bool currentDimensions =
+                restored.Width == gridWidthCells &&
+                restored.Depth == gridDepthCells;
+            bool legacyDimensions =
+                legacyGridWidthCells > 0 &&
+                legacyGridDepthCells > 0 &&
+                restored.Width == legacyGridWidthCells &&
+                restored.Depth == legacyGridDepthCells;
+            if (!currentDimensions && !legacyDimensions)
+            {
+                error = "Restored fixture grid dimensions do not match the current or supported legacy property grid.";
                 return false;
             }
 
@@ -344,30 +404,66 @@ namespace Margins
                 }
             }
 
+            if (currentDimensions)
+            {
+                compatible = restored;
+                error = null;
+                return true;
+            }
+
+            FixtureLayout migrated = new(gridWidthCells, gridDepthCells);
+            foreach (FixturePlacementSnapshot placement in restored.CreateSnapshot())
+            {
+                PlaceableFixtureComponent fixture =
+                    fixturesById[placement.fixtureInstanceId];
+                GridPosition migratedPosition = new(
+                    placement.gridPosition.x + legacyGridOffset.x,
+                    placement.gridPosition.z + legacyGridOffset.z);
+                FixturePlacementResult result = migrated.TryPlace(
+                    placement.fixtureInstanceId,
+                    migratedPosition,
+                    fixture.Footprint,
+                    placement.quarterTurns);
+                if (!result.IsSuccess)
+                {
+                    error =
+                        $"Legacy fixture '{placement.fixtureInstanceId}' could not migrate to the owned-property grid ({result.Failure}).";
+                    return false;
+                }
+            }
+
+            HashSet<string> legacyIds = new(
+                legacyFixtureInstanceIds ?? Array.Empty<string>(),
+                StringComparer.Ordinal);
+            if (initialPlacements != null)
+            {
+                foreach (InitialFixturePlacementConfiguration initial in initialPlacements)
+                {
+                    if (initial?.Fixture == null ||
+                        legacyIds.Contains(initial.Fixture.StableFixtureInstanceId) ||
+                        migrated.TryGetPlacement(
+                            initial.Fixture.StableFixtureInstanceId,
+                            out _))
+                    {
+                        continue;
+                    }
+
+                    FixturePlacementResult result = migrated.TryPlace(
+                        initial.Fixture.StableFixtureInstanceId,
+                        initial.GridPosition,
+                        initial.Fixture.Footprint,
+                        initial.QuarterTurns);
+                    if (!result.IsSuccess)
+                    {
+                        error =
+                            $"New fixture '{initial.Fixture.StableFixtureInstanceId}' could not be added while migrating the legacy layout ({result.Failure}).";
+                        return false;
+                    }
+                }
+            }
+
+            compatible = migrated;
             error = null;
-            return true;
-        }
-
-        public bool TryApplyRestoredLayout(FixtureLayout restored, out string error)
-        {
-            if (!CanApplyRestoredLayout(restored, out error))
-            {
-                return false;
-            }
-
-            foreach (PlaceableFixtureComponent fixture in fixturesById.Values)
-            {
-                fixture.ClearPlacement();
-            }
-
-            Layout = restored;
-            foreach (FixturePlacementSnapshot placement in Layout.CreateSnapshot())
-            {
-                fixturesById[placement.fixtureInstanceId].ApplyPlacement(
-                    placement,
-                    gridOrigin,
-                    cellSize);
-            }
             return true;
         }
 

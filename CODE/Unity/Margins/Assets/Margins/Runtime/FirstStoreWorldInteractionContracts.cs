@@ -29,9 +29,10 @@ namespace Margins
         Checkout = 1,
         Delivery = 2,
         LooseProduct = 3,
-        Fixture = 4,
-        Cleaning = 5,
-        Operating = 6
+        Tool = 4,
+        Fixture = 5,
+        Cleaning = 6,
+        Operating = 7
     }
 
     public sealed class FirstStoreWorldInteractionPrompt

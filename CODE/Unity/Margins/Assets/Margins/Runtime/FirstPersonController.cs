@@ -291,14 +291,6 @@ namespace Margins
                 SetGameplayMode(!IsGameplayMode);
             }
 
-            if (Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame)
-            {
-                CameraMotionEnabled = !CameraMotionEnabled;
-                if (!CameraMotionEnabled)
-                {
-                    ResetCameraMotion(false);
-                }
-            }
         }
 
         public void ApplyPlayerSettings(

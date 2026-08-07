@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Margins
@@ -13,6 +14,7 @@ namespace Margins
         [SerializeField] private string stableTargetId;
         [SerializeField] private FixturePlacementController fixturePlacement;
         [SerializeField] private Collider placementFloor;
+        [SerializeField] private OwnedPropertyPlacementArea propertyArea;
         [SerializeField, Min(0.1f)] private float maximumRayDistance = 12f;
 
         private PlaceableFixtureComponent activeFixture;
@@ -23,6 +25,9 @@ namespace Margins
         private int previewQuarterTurns;
         private FixturePlacementResult previewResult;
 
+        public event Action<bool, string> BuildModeChanged;
+
+        public bool IsBuildModeActive { get; private set; }
         public bool IsActive => activeFixture != null;
         public string StableTargetId => stableTargetId;
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Fixture;
@@ -38,9 +43,11 @@ namespace Margins
                     ? PreviewReason ?? "valid grid position"
                     : "aim at the placement floor";
                 return new FirstStoreWorldInteractionPrompt(
-                    "E",
-                    "Confirm fixture",
-                    $"{previewState}; mouse wheel rotates; Q cancels");
+                    "Q",
+                    HasPreview && PreviewResult != null && PreviewResult.IsSuccess
+                        ? "Place fixture"
+                        : "Cancel fixture move",
+                    $"{previewState}; mouse wheel rotates");
             }
         }
         public PlaceableFixtureComponent ActiveFixture => activeFixture;
@@ -59,9 +66,16 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (fixturePlacement == null || placementFloor == null)
+            if (fixturePlacement == null || propertyArea == null ||
+                propertyArea.PlacementSurface == null)
             {
-                error = "Fixture placement mode requires explicit placement and floor references.";
+                error =
+                    "Fixture placement mode requires explicit placement and owned-property references.";
+                return false;
+            }
+
+            if (!propertyArea.TryValidateConfiguration(out error))
+            {
                 return false;
             }
 
@@ -72,6 +86,74 @@ namespace Margins
             }
 
             error = null;
+            return true;
+        }
+
+        private void Update()
+        {
+            RefreshOwnedPropertyPresence();
+        }
+
+        public bool RefreshOwnedPropertyPresence()
+        {
+            if (!IsBuildModeActive ||
+                (propertyArea != null && propertyArea.ContainsPlayer()))
+            {
+                return IsBuildModeActive;
+            }
+
+            TrySetBuildMode(false, out _);
+            return false;
+        }
+
+        private void OnDisable()
+        {
+            if (IsBuildModeActive)
+            {
+                TrySetBuildMode(false, out _);
+            }
+        }
+
+        public bool TryToggleBuildMode(out string error)
+        {
+            return TrySetBuildMode(!IsBuildModeActive, out error);
+        }
+
+        public bool TrySetBuildMode(bool enabled, out string error)
+        {
+            if (enabled == IsBuildModeActive)
+            {
+                error = null;
+                return true;
+            }
+
+            if (enabled)
+            {
+                if (!TryValidateConfiguration(out error))
+                {
+                    return false;
+                }
+
+                if (!propertyArea.ContainsPlayer())
+                {
+                    error = "Return to the owned property before entering Build Mode.";
+                    return false;
+                }
+
+                IsBuildModeActive = true;
+                error = null;
+                BuildModeChanged?.Invoke(true, null);
+                return true;
+            }
+
+            if (IsActive)
+            {
+                TryCancel(out _);
+            }
+
+            IsBuildModeActive = false;
+            error = null;
+            BuildModeChanged?.Invoke(false, "Build Mode exited.");
             return true;
         }
 
@@ -86,6 +168,12 @@ namespace Margins
             if (fixture == null || !fixturePlacement.IsConfiguredFixture(fixture))
             {
                 error = "This fixture is not configured for placement.";
+                return false;
+            }
+
+            if (!IsBuildModeActive)
+            {
+                error = "Enter Build Mode before moving fixtures.";
                 return false;
             }
 
@@ -140,7 +228,9 @@ namespace Margins
                 return false;
             }
 
-            if (!placementFloor.Raycast(ray, out RaycastHit hit, maximumRayDistance))
+            Collider surface = propertyArea?.PlacementSurface ?? placementFloor;
+            if (surface == null ||
+                !surface.Raycast(ray, out RaycastHit hit, maximumRayDistance))
             {
                 error = "Aim at the placement floor to select a grid cell.";
                 InvalidateCurrentPreview();
@@ -217,6 +307,29 @@ namespace Margins
                 return false;
             }
 
+            if (previewResult == null || !previewResult.IsSuccess)
+            {
+                error = FormatResult(previewResult) ??
+                        "Select a valid placement-floor cell before confirming.";
+                return false;
+            }
+
+            if (!propertyArea.TryValidateFixturePlacement(
+                    activeFixture,
+                    fixturePlacement.GridOrigin,
+                    fixturePlacement.CellSize,
+                    previewQuarterTurns,
+                    out FixturePlacementFailure physicalFailure,
+                    out error))
+            {
+                previewResult = FixturePlacementResult.Reject(
+                    physicalFailure,
+                    activeFixture.StableFixtureInstanceId);
+                activeFixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
+                error ??= FormatResult(previewResult);
+                return false;
+            }
+
             FixturePlacementResult result = isMove
                 ? fixturePlacement.TryMove(activeFixture, previewPosition, previewQuarterTurns)
                 : fixturePlacement.TryPlace(activeFixture, previewPosition, previewQuarterTurns);
@@ -283,6 +396,11 @@ namespace Margins
             }
 
             ClearSession();
+            if (IsBuildModeActive)
+            {
+                IsBuildModeActive = false;
+                BuildModeChanged?.Invoke(false, "Build Mode exited after loading.");
+            }
         }
 
         public bool TryRemove(PlaceableFixtureComponent fixture, out string error)
@@ -338,7 +456,8 @@ namespace Margins
 
         public bool TryPrimary(out string error)
         {
-            return TryConfirm(out error);
+            error = "Use Q to place or cancel the selected fixture.";
+            return false;
         }
 
         private bool TryPreviewAtGridPosition(GridPosition gridPosition, out string error)
@@ -360,6 +479,24 @@ namespace Margins
                 fixturePlacement.GridOrigin,
                 fixturePlacement.CellSize,
                 previewResult.IsSuccess);
+
+            if (previewResult.IsSuccess &&
+                !propertyArea.TryValidateFixturePlacement(
+                    activeFixture,
+                    fixturePlacement.GridOrigin,
+                    fixturePlacement.CellSize,
+                    previewQuarterTurns,
+                    out FixturePlacementFailure physicalFailure,
+                    out string physicalError))
+            {
+                previewResult = FixturePlacementResult.Reject(
+                    physicalFailure,
+                    activeFixture.StableFixtureInstanceId);
+                activeFixture.SetPreviewState(FixturePlacementPreviewState.Invalid);
+                error = physicalError ?? FormatResult(previewResult);
+                return false;
+            }
+
             error = previewResult.IsSuccess ? null : FormatResult(previewResult);
             return previewResult.IsSuccess;
         }
@@ -391,6 +528,10 @@ namespace Margins
             {
                 FixturePlacementFailure.OutOfBounds => "That fixture footprint extends outside the placement grid.",
                 FixturePlacementFailure.Occupied => "That grid space is occupied by another fixture.",
+                FixturePlacementFailure.InvalidSupport =>
+                    "The whole fixture must remain on supported owned property.",
+                FixturePlacementFailure.StructuralCollision =>
+                    "That fixture collides with the building or another structural obstacle.",
                 FixturePlacementFailure.OperatingStateRestricted =>
                     "Fixture changes are unavailable while the store is open or closing.",
                 FixturePlacementFailure.MissingFixture => "This fixture is unavailable for placement.",

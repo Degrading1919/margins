@@ -375,11 +375,18 @@ namespace Margins
             }
             if (stockerUnit?.IsHeld == true)
             {
-                return shelfWorkPoint;
+                return stocking != null &&
+                       stocking.TryGetShelfFixture(
+                           stockerUnit.Definition?.StableProductId,
+                           out ShelfFixture shelf)
+                    ? shelf.transform
+                    : shelfWorkPoint;
             }
             if (!deliveryRelocated)
             {
-                return deliveryWorkPoint;
+                return deliveryBox != null
+                    ? deliveryBox.transform
+                    : deliveryWorkPoint;
             }
             return deliveryDropPoint;
         }

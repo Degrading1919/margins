@@ -728,6 +728,15 @@ namespace Margins
             return configuration != null;
         }
 
+        public bool TryGetShelfFixture(
+            string productId,
+            out ShelfFixture shelfFixture)
+        {
+            StockingProductConfiguration configuration = FindProduct(productId);
+            shelfFixture = configuration?.ShelfFixture;
+            return shelfFixture != null;
+        }
+
         internal bool TryPlaceInitialUnit(
             ProductItem item,
             string shelfLocationId,

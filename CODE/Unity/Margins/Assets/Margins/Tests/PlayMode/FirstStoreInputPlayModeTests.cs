@@ -412,7 +412,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator ContinuousWorldPathStocksVisibleFixturesProcessesItemsAndKeepsOperating()
+        public IEnumerator WorldPathStocksVisibleFixturesProcessesItemsAndKeepsOperating()
         {
             yield return LoadValidationScene();
 
@@ -463,6 +463,15 @@ namespace Margins.Tests
                 }
             }
 
+            StoreCustomerFlowController customerFlow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            customerFlow.enabled = false;
+            StoreOperatingController store =
+                GameObject.Find("Store Operating Controller")
+                    .GetComponent<StoreOperatingController>();
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
+
             StagedCheckoutWorldInteractionTarget checkoutTarget =
                 GameObject.Find("World Checkout Interaction")
                     .GetComponent<StagedCheckoutWorldInteractionTarget>();
@@ -493,15 +502,15 @@ namespace Margins.Tests
                     .GetComponent<CleaningWorldInteractionTarget>();
             CleaningTaskComponent cleaning =
                 GameObject.Find("Cleaning Task").GetComponent<CleaningTaskComponent>();
+            CarryableToolComponent mop =
+                GameObject.Find("Mop Tool").GetComponent<CarryableToolComponent>();
             Assert.That(cleaning.NeedsCleaning, Is.True);
+            Assert.That(mop.TryPrimary(out error), Is.True, error);
             while (cleaning.NeedsCleaning)
             {
                 Assert.That(cleaningTarget.TryPrimary(out error), Is.True, error);
             }
 
-            StoreOperatingController store =
-                GameObject.Find("Store Operating Controller")
-                    .GetComponent<StoreOperatingController>();
             Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
             Assert.That(store.ResultTotals, Is.Null);
             Assert.That(store.CurrentTotals.transactionCount, Is.EqualTo(3));

@@ -87,6 +87,7 @@ namespace Margins.Tests
             CompleteOneColaSale();
             Assert.That(mapper.TryCapture(out FirstStoreSnapshot savedState, out string error), Is.True, error);
             Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
+            CloseStoreForLayoutMutation();
             MutateFixtureLayout();
 
             Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.True, diskPersistence.LastDiagnostic);
@@ -114,7 +115,6 @@ namespace Margins.Tests
         {
             CompleteOneColaSale();
             StockOneColaUnit();
-            MutateFixtureLayout();
             StoreOperatingController store =
                 Object.FindAnyObjectByType<StoreOperatingController>();
             Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
@@ -251,6 +251,7 @@ namespace Margins.Tests
             Assert.That(mapper.TryCapture(out FirstStoreSnapshot expectedState, out string error), Is.True, error);
             Assert.That(diskPersistence.TrySaveToPath(savePath), Is.True, diskPersistence.LastDiagnostic);
 
+            Assert.That(mode.TrySetBuildMode(true, out error), Is.True, error);
             Assert.That(mode.TryBegin(fixture, out error), Is.True, error);
             Assert.That(
                 mode.TryPreviewAtWorldPoint(GridCellCenter(placement, 4, 3), out error),
@@ -332,6 +333,12 @@ namespace Margins.Tests
                 error);
             Assert.That(stocking.TryPickUpLooseUnit(loose, out _, out error), Is.True, error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            if (store.State == StoreOperatingState.Closed)
+            {
+                Assert.That(store.TryOpenStore(out error), Is.True, error);
+            }
             Assert.That(checkout.TryBeginSession("transaction-disk-replay-01", out error), Is.True, error);
             Assert.That(checkout.TryScan(cola, 1, out CheckoutFailure scanFailure), Is.True, scanFailure.ToString());
             Assert.That(checkout.TryComplete(out _, out CheckoutFailure completionFailure), Is.True, completionFailure.ToString());
@@ -354,6 +361,21 @@ namespace Margins.Tests
                 error);
             Assert.That(stocking.TryPickUpLooseUnit(loose, out _, out error), Is.True, error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+        }
+
+        private static void CloseStoreForLayoutMutation()
+        {
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            Assert.That(store.TryBeginClosing(out string error), Is.True, error);
+            while (cleaning.NeedsCleaning)
+            {
+                cleaning.TryApplyProgress(1);
+            }
+            Assert.That(store.TryFinishClosing(out error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Closed));
         }
 
         private static void SetConfiguredUnitCost(

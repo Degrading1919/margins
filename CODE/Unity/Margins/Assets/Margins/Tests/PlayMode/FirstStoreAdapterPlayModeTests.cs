@@ -206,6 +206,7 @@ namespace Margins.Tests
 
             Assert.That(physicalUnits.VisibleUnitCount, Is.EqualTo(4));
             Assert.That(TotalShelfQuantity(checkout), Is.EqualTo(4));
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
             for (int index = 0; index < 3; index++)
             {
                 Assert.That(
@@ -289,6 +290,10 @@ namespace Margins.Tests
             Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(1));
 
             Assert.That(store.TryBeginClosing(out error), Is.True, error);
+            int customersAlreadyInside = flow.ActiveCustomerCount;
+            Assert.That(flow.TryAdmitCustomerNow(out _, out string intakeBlocker), Is.False);
+            StringAssert.Contains("store is open", intakeBlocker);
+            Assert.That(flow.ActiveCustomerCount, Is.EqualTo(customersAlreadyInside));
             Assert.That(
                 store.TryGetFirstFinalCloseBlocker(out string closeBlocker),
                 Is.True);
@@ -315,6 +320,8 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<PhysicalProductUnitRegistry>();
             FirstStorePersistenceMapperComponent mapper =
                 Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
 
             SetField(flow, "secondsUntilNextArrival", 1_000f);
             SetField(flow, "arrivalIntervalSeconds", 1_000f);
@@ -340,6 +347,7 @@ namespace Margins.Tests
                 Is.True,
                 error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
             Assert.That(flow.TryAdmitCustomerNow(out _, out error), Is.True, error);
 
             float queueDeadline = Time.realtimeSinceStartup + 12f;
@@ -403,13 +411,42 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<StoreCustomerFlowController>();
             CheckoutStationComponent checkout =
                 Object.FindAnyObjectByType<CheckoutStationComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
             PhysicalProductUnitRegistry physicalUnits =
                 Object.FindAnyObjectByType<PhysicalProductUnitRegistry>();
             SetField(flow, "secondsUntilNextArrival", 1_000f);
             SetField(flow, "arrivalIntervalSeconds", 1_000f);
 
+            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            string productId = checkout.ConfiguredProductIds[0];
             Assert.That(
-                flow.TryAdmitCustomerNow(out _, out string error),
+                checkout.TryGetProductDefinition(productId, out ProductDefinition product),
+                Is.True);
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    product,
+                    out ProductItem loose,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(stocking.TryPickUpLooseUnit(loose, out _, out error), Is.True, error);
+            Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
+            Assert.That(checkout.TryBeginSession("sale-before-empty-queue", out error), Is.True, error);
+            Assert.That(checkout.TryScan(product, 1, out CheckoutFailure scanFailure), Is.True, scanFailure.ToString());
+            Assert.That(checkout.TryComplete(out _, out CheckoutFailure completeFailure), Is.True, completeFailure.ToString());
+            int completedBefore = checkout.CompletedTransactionCount;
+            long grossBefore = checkout.GrossSalesCents;
+
+            Assert.That(
+                flow.TryAdmitCustomerNow(out _, out error),
                 Is.True,
                 error);
             float deadline = Time.realtimeSinceStartup + 10f;
@@ -421,8 +458,8 @@ namespace Margins.Tests
 
             Assert.That(flow.LeavingWithoutPurchaseCount, Is.EqualTo(1));
             Assert.That(flow.QueuedCustomerCount, Is.Zero);
-            Assert.That(checkout.CompletedTransactionCount, Is.Zero);
-            Assert.That(checkout.GrossSalesCents, Is.Zero);
+            Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(completedBefore));
+            Assert.That(checkout.GrossSalesCents, Is.EqualTo(grossBefore));
             Assert.That(physicalUnits.VisibleUnitCount, Is.Zero);
             Assert.That(TotalShelfQuantity(checkout), Is.Zero);
         }

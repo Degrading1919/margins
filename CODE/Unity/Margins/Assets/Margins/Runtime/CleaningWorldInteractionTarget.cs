@@ -6,6 +6,8 @@ namespace Margins
     {
         [SerializeField] private string stableTargetId;
         [SerializeField] private CleaningTaskComponent cleaningTask;
+        [SerializeField] private PlayerCarryableToolController toolCarrier;
+        [SerializeField] private string requiredToolCapabilityId = "clean-floor";
 
         private Renderer[] visualRenderers;
         private Collider[] interactionColliders;
@@ -14,7 +16,9 @@ namespace Margins
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Cleaning;
         public bool IsAvailable =>
             FirstStoreIdentifier.IsValid(stableTargetId) &&
+            FirstStoreIdentifier.IsValid(requiredToolCapabilityId) &&
             cleaningTask != null &&
+            toolCarrier != null &&
             cleaningTask.TryValidateConfiguration(out _) &&
             cleaningTask.NeedsCleaning;
         public FirstStoreWorldInteractionPrompt Prompt
@@ -22,7 +26,11 @@ namespace Margins
             get
             {
                 string taskName = cleaningTask == null ? "Cleaning task" : cleaningTask.DisplayName;
-                string state = cleaningTask != null && !cleaningTask.IsActive
+                string state = cleaningTask != null && cleaningTask.NeedsCleaning &&
+                               toolCarrier != null &&
+                               !toolCarrier.HasCapability(requiredToolCapabilityId)
+                    ? "requires a compatible cleaning tool"
+                    : cleaningTask != null && !cleaningTask.IsActive
                     ? "store is clean"
                     : cleaningTask != null && cleaningTask.IsComplete
                     ? "cleaned"
@@ -69,6 +77,12 @@ namespace Margins
             if (!IsAvailable)
             {
                 error = "There is no dirt or spill to clean here.";
+                return false;
+            }
+
+            if (!toolCarrier.HasCapability(requiredToolCapabilityId))
+            {
+                error = "Pick up the compatible cleaning tool before cleaning this spill.";
                 return false;
             }
 

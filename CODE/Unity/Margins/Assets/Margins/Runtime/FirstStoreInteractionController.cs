@@ -10,7 +10,14 @@ namespace Margins
         [SerializeField] private FirstPersonController firstPersonController;
         [SerializeField] private Camera viewCamera;
         [SerializeField] private StockingController stocking;
+        [SerializeField] private PlayerCarryableToolController toolCarrier;
         [SerializeField] private FirstStoreFixturePlacementModeController fixturePlacementMode;
+        [SerializeField] private InputActionAsset inputActions;
+        [SerializeField] private string inputActionMapName = "Player";
+        [SerializeField] private string interactActionName = "Interact";
+        [SerializeField] private string cancelActionName = "Cancel";
+        [SerializeField] private string buildModeActionName = "BuildMode";
+        [SerializeField] private string rotatePlacementActionName = "RotatePlacement";
         [SerializeField, Min(0.1f)] private float pickupDistance = 3f;
         [SerializeField] private LayerMask pickupLayers = ~0;
 
@@ -21,6 +28,11 @@ namespace Margins
         private Vector3 focusedWorldPoint;
         private Vector3 focusedWorldNormal;
         private bool hasFocusedWorldPoint;
+        private InputAction interactAction;
+        private InputAction cancelAction;
+        private InputAction buildModeAction;
+        private InputAction rotatePlacementAction;
+        private bool ownsFallbackActions;
 
         public event Action<FirstStoreInteractionFeedback> InteractionResolved;
 
@@ -38,6 +50,14 @@ namespace Margins
         public Vector3 FocusedWorldNormal => focusedWorldNormal;
         public bool HasFocusedWorldPoint => hasFocusedWorldPoint;
 
+        private void OnEnable()
+        {
+            if (!TryResolveInputActions(out string error))
+            {
+                Debug.LogError(error, this);
+            }
+        }
+
         private void Start()
         {
             if (!TryValidateConfiguration(out string error))
@@ -48,41 +68,50 @@ namespace Margins
 
         private void OnDisable()
         {
-            CancelActiveFixturePlacement();
+            fixturePlacementMode?.TrySetBuildMode(false, out _);
+            SetInputActionsEnabled(false);
             ClearFocus();
+        }
+
+        private void OnDestroy()
+        {
+            if (!ownsFallbackActions)
+            {
+                return;
+            }
+
+            interactAction?.Dispose();
+            cancelAction?.Dispose();
+            buildModeAction?.Dispose();
+            rotatePlacementAction?.Dispose();
         }
 
         private void Update()
         {
             if (!IsWorldInteractionEnabled)
             {
-                CancelActiveFixturePlacement();
+                fixturePlacementMode?.TrySetBuildMode(false, out _);
                 ClearFocus();
                 return;
             }
 
+            if (buildModeAction != null && buildModeAction.WasPressedThisFrame())
+            {
+                TryToggleBuildMode(out _);
+            }
+
             RefreshFocus();
 
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
+            if (interactAction != null && interactAction.WasPressedThisFrame())
             {
                 TryPrimaryInteraction(out _);
             }
-            if (keyboard != null && keyboard.qKey.wasPressedThisFrame)
+            if (cancelAction != null && cancelAction.WasPressedThisFrame())
             {
                 TryCancelInteraction(out _);
             }
-            if (keyboard != null && keyboard.backspaceKey.wasPressedThisFrame)
-            {
-                TryRemoveFocusedFixture(out _);
-            }
 
-            if (Mouse.current == null)
-            {
-                return;
-            }
-
-            float scroll = Mouse.current.scroll.ReadValue().y;
+            float scroll = rotatePlacementAction?.ReadValue<float>() ?? 0f;
             if (scroll > 0f)
             {
                 TryRotateContext(1);
@@ -96,16 +125,21 @@ namespace Margins
         public bool TryValidateConfiguration(out string error)
         {
             if (firstPersonController == null || viewCamera == null || stocking == null ||
-                fixturePlacementMode == null)
+                toolCarrier == null || fixturePlacementMode == null)
             {
                 error =
-                    "First-store interaction requires explicit player, camera, stocking, and fixture-placement references.";
+                    "First-store interaction requires explicit player, camera, stocking, tool-carrying, and fixture-placement references.";
                 return false;
             }
 
             if (pickupDistance <= 0f)
             {
                 error = "First-store interaction distance must be positive.";
+                return false;
+            }
+
+            if (!TryResolveInputActions(out error))
+            {
                 return false;
             }
 
@@ -151,9 +185,21 @@ namespace Margins
                     FindExplicitTarget(hit.collider);
                 if (explicitTarget != null)
                 {
+                    bool isFixtureTarget =
+                        explicitTarget.Priority == FirstStoreWorldInteractionPriority.Fixture;
+                    if (fixturePlacementMode.IsBuildModeActive != isFixtureTarget)
+                    {
+                        continue;
+                    }
+
                     candidates.Add(new FirstStoreWorldInteractionCandidate(
                         explicitTarget,
                         hit.distance));
+                    continue;
+                }
+
+                if (fixturePlacementMode.IsBuildModeActive)
+                {
                     continue;
                 }
 
@@ -203,6 +249,20 @@ namespace Margins
                 return false;
             }
 
+            if (toolCarrier != null && toolCarrier.HasHeldTool &&
+                focusedTarget.Priority != FirstStoreWorldInteractionPriority.Cleaning &&
+                focusedTarget.Priority != FirstStoreWorldInteractionPriority.Operating &&
+                focusedTarget.Priority != FirstStoreWorldInteractionPriority.Tool)
+            {
+                error = $"Put down {toolCarrier.HeldToolName} before using that object.";
+                RecordInteraction(
+                    false,
+                    focusedTarget.StableTargetId,
+                    focusedTarget.Prompt?.Action ?? "Interact",
+                    error);
+                return false;
+            }
+
             string targetId = focusedTarget.StableTargetId;
             string action = focusedTarget.Prompt?.Action ?? "Interact";
             bool success = focusedTarget.TryPrimary(out error);
@@ -223,14 +283,33 @@ namespace Margins
             if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
             {
                 string placementTargetId = fixturePlacementMode.StableTargetId;
-                bool cancelled = fixturePlacementMode.TryCancel(out error);
+                bool shouldPlace =
+                    fixturePlacementMode.HasPreview &&
+                    fixturePlacementMode.PreviewResult != null &&
+                    fixturePlacementMode.PreviewResult.IsSuccess;
+                bool resolved = shouldPlace
+                    ? fixturePlacementMode.TryConfirm(out error)
+                    : fixturePlacementMode.TryCancel(out error);
                 RecordInteraction(
-                    cancelled,
+                    resolved,
                     placementTargetId,
-                    "Cancel placement",
+                    shouldPlace ? "Place fixture" : "Cancel fixture move",
                     error);
                 RefreshFocus();
-                return cancelled;
+                return resolved;
+            }
+
+            if (toolCarrier != null && toolCarrier.HasHeldTool)
+            {
+                string toolId = toolCarrier.HeldTool?.StableToolId;
+                bool released = toolCarrier.TrySetDownHeldTool(out error);
+                RecordInteraction(
+                    released,
+                    toolId,
+                    "Put down tool",
+                    error);
+                RefreshFocus();
+                return released;
             }
 
             if (stocking != null && stocking.PlayerHasHeldUnit)
@@ -375,6 +454,39 @@ namespace Margins
             return success;
         }
 
+        public bool TryToggleBuildMode(out string error)
+        {
+            if (!IsWorldInteractionEnabled || fixturePlacementMode == null)
+            {
+                error = "Return to the store before changing Build Mode.";
+                LastFeedback = error;
+                return false;
+            }
+
+            if (!fixturePlacementMode.IsBuildModeActive &&
+                ((stocking != null && stocking.HasHeldUnit) ||
+                 (toolCarrier != null && toolCarrier.HasHeldTool)))
+            {
+                error = "Put down the carried product or tool before entering Build Mode.";
+                RecordInteraction(
+                    false,
+                    fixturePlacementMode.StableTargetId,
+                    "Enter Build Mode",
+                    error);
+                return false;
+            }
+
+            bool wasActive = fixturePlacementMode.IsBuildModeActive;
+            bool changed = fixturePlacementMode.TryToggleBuildMode(out error);
+            RecordInteraction(
+                changed,
+                fixturePlacementMode.StableTargetId,
+                wasActive ? "Exit Build Mode" : "Enter Build Mode",
+                error);
+            RefreshFocus();
+            return changed;
+        }
+
         private bool TryRotateContext(int direction)
         {
             if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
@@ -401,6 +513,91 @@ namespace Margins
                     null);
             }
             return rotated;
+        }
+
+        private bool TryResolveInputActions(out string error)
+        {
+            if (interactAction != null && cancelAction != null &&
+                buildModeAction != null && rotatePlacementAction != null)
+            {
+                SetInputActionsEnabled(true);
+                error = null;
+                return true;
+            }
+
+            if (inputActions != null)
+            {
+                InputActionMap actionMap = inputActions.FindActionMap(
+                    inputActionMapName,
+                    false);
+                interactAction = actionMap?.FindAction(interactActionName, false);
+                cancelAction = actionMap?.FindAction(cancelActionName, false);
+                buildModeAction = actionMap?.FindAction(buildModeActionName, false);
+                rotatePlacementAction = actionMap?.FindAction(
+                    rotatePlacementActionName,
+                    false);
+                ownsFallbackActions = false;
+            }
+            else
+            {
+                interactAction = new InputAction(
+                    interactActionName,
+                    InputActionType.Button,
+                    "<Keyboard>/e");
+                cancelAction = new InputAction(
+                    cancelActionName,
+                    InputActionType.Button,
+                    "<Keyboard>/q");
+                buildModeAction = new InputAction(
+                    buildModeActionName,
+                    InputActionType.Button,
+                    "<Keyboard>/b");
+                rotatePlacementAction = new InputAction(
+                    rotatePlacementActionName,
+                    InputActionType.Value,
+                    "<Mouse>/scroll/y");
+                ownsFallbackActions = true;
+            }
+
+            if (interactAction == null || cancelAction == null ||
+                buildModeAction == null || rotatePlacementAction == null)
+            {
+                error =
+                    $"Input action map '{inputActionMapName}' must define '{interactActionName}', " +
+                    $"'{cancelActionName}', '{buildModeActionName}', and '{rotatePlacementActionName}'.";
+                return false;
+            }
+
+            SetInputActionsEnabled(true);
+            error = null;
+            return true;
+        }
+
+        private void SetInputActionsEnabled(bool enabled)
+        {
+            InputAction[] actions =
+            {
+                interactAction,
+                cancelAction,
+                buildModeAction,
+                rotatePlacementAction
+            };
+            foreach (InputAction action in actions)
+            {
+                if (action == null)
+                {
+                    continue;
+                }
+
+                if (enabled)
+                {
+                    action.Enable();
+                }
+                else
+                {
+                    action.Disable();
+                }
+            }
         }
 
         private void CancelActiveFixturePlacement()
@@ -505,7 +702,7 @@ namespace Margins
                 message));
         }
 
-        private static IFirstStoreWorldInteractionTarget FindExplicitTarget(
+        private IFirstStoreWorldInteractionTarget FindExplicitTarget(
             Collider collider)
         {
             if (collider == null)
@@ -524,12 +721,15 @@ namespace Margins
                     continue;
                 }
 
-                if (selected == null ||
-                    target.Priority < selected.Priority ||
-                    (target.Priority == selected.Priority &&
-                     StringComparer.Ordinal.Compare(
-                         target.StableTargetId,
-                         selected.StableTargetId) < 0))
+                bool isFixtureTarget =
+                    target.Priority == FirstStoreWorldInteractionPriority.Fixture;
+                if ((fixturePlacementMode?.IsBuildModeActive ?? false) !=
+                    isFixtureTarget)
+                {
+                    continue;
+                }
+
+                if (selected == null || target.Priority < selected.Priority)
                 {
                     selected = target;
                 }
