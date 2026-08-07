@@ -22,6 +22,7 @@ namespace Margins
             public GameObject Root;
             public Transform ItemRoot;
             public TextMesh StatusLabel;
+            public LocalNavigationAgent Navigation;
             public float PatienceSeconds;
             public float PhaseSeconds;
             public bool WasAbandoned;
@@ -44,6 +45,7 @@ namespace Margins
         [SerializeField, Min(0.1f)] private float shoppingSeconds = 1.5f;
         [SerializeField, Min(1f)] private float queuePatienceSeconds = 35f;
         [SerializeField, Min(1f)] private float checkoutPatienceSeconds = 45f;
+        [SerializeField] private bool showDeveloperStatusLabels;
 
         private readonly List<RuntimeCustomer> customers = new();
         private BusinessStationQueue checkoutQueue;
@@ -238,6 +240,37 @@ namespace Margins
             UpdateCustomerLabel(customer, "SHOPPING");
             error = null;
             return true;
+        }
+
+        public bool TryGetCustomerNavigationAgent(
+            string customerId,
+            out LocalNavigationAgent navigation)
+        {
+            RuntimeCustomer customer = FindCustomer(customerId);
+            navigation = customer?.Navigation;
+            return navigation != null;
+        }
+
+        public bool IsFixtureModificationRestricted(string fixtureInstanceId)
+        {
+            if (!FirstStoreIdentifier.IsValid(fixtureInstanceId))
+            {
+                return false;
+            }
+
+            if (checkoutCustomer != null &&
+                (IsAttachedToFixture(
+                     checkoutCustomerPoint,
+                     fixtureInstanceId) ||
+                 ContainsAttachedPoint(
+                     checkoutItemPoints,
+                     fixtureInstanceId)))
+            {
+                return true;
+            }
+
+            return CheckoutQueue.WaitingCount > 0 &&
+                   ContainsAttachedPoint(queuePoints, fixtureInstanceId);
         }
 
         public bool TryUseRegister(out string error)
@@ -778,8 +811,7 @@ namespace Margins
                     case StoreCustomerState.Entering:
                         if (MoveTowards(
                                 customer,
-                                browsePoints[customer.Ordinal % browsePoints.Length],
-                                deltaSeconds))
+                                browsePoints[customer.Ordinal % browsePoints.Length]))
                         {
                             customer.State = StoreCustomerState.Shopping;
                             customer.PhaseSeconds = shoppingSeconds;
@@ -805,8 +837,7 @@ namespace Margins
                         }
                         MoveTowards(
                             customer,
-                            QueuePointFor(customer),
-                            deltaSeconds);
+                            QueuePointFor(customer));
                         break;
 
                     case StoreCustomerState.Checkout:
@@ -816,11 +847,11 @@ namespace Margins
                             Abandon(customer);
                             break;
                         }
-                        MoveTowards(customer, checkoutCustomerPoint, deltaSeconds);
+                        MoveTowards(customer, checkoutCustomerPoint);
                         break;
 
                     case StoreCustomerState.Leaving:
-                        if (MoveTowards(customer, exitPoint, deltaSeconds))
+                        if (MoveTowards(customer, exitPoint))
                         {
                             completedLeaving ??= new List<RuntimeCustomer>();
                             completedLeaving.Add(customer);
@@ -972,6 +1003,11 @@ namespace Margins
         {
             GameObject root = new($"Customer {customerId}");
             root.transform.position = position;
+            LocalNavigationAgent navigation =
+                root.AddComponent<LocalNavigationAgent>();
+            navigation.Configure(
+                movementSpeed,
+                35 + Math.Abs(ordinal % 45));
 
             Material material = customerMaterials != null &&
                                 customerMaterials.Length > 0
@@ -1003,17 +1039,21 @@ namespace Margins
             itemRootObject.transform.SetParent(root.transform, false);
             itemRootObject.transform.localPosition = new Vector3(0.48f, 1.1f, 0f);
 
-            GameObject labelObject = new("Customer Status");
-            labelObject.transform.SetParent(root.transform, false);
-            labelObject.transform.localPosition = new Vector3(0f, 2.35f, 0f);
-            labelObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            labelObject.transform.localScale = Vector3.one * 0.035f;
-            TextMesh label = labelObject.AddComponent<TextMesh>();
-            label.anchor = TextAnchor.MiddleCenter;
-            label.alignment = TextAlignment.Center;
-            label.characterSize = 0.18f;
-            label.fontSize = 48;
-            label.color = Color.white;
+            TextMesh label = null;
+            if (showDeveloperStatusLabels)
+            {
+                GameObject labelObject = new("Customer Status Diagnostic");
+                labelObject.transform.SetParent(root.transform, false);
+                labelObject.transform.localPosition = new Vector3(0f, 2.35f, 0f);
+                labelObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                labelObject.transform.localScale = Vector3.one * 0.035f;
+                label = labelObject.AddComponent<TextMesh>();
+                label.anchor = TextAnchor.MiddleCenter;
+                label.alignment = TextAlignment.Center;
+                label.characterSize = 0.18f;
+                label.fontSize = 48;
+                label.color = Color.white;
+            }
 
             return new RuntimeCustomer
             {
@@ -1022,7 +1062,8 @@ namespace Margins
                 State = state,
                 Root = root,
                 ItemRoot = itemRootObject.transform,
-                StatusLabel = label
+                StatusLabel = label,
+                Navigation = navigation
             };
         }
 
@@ -1185,40 +1226,62 @@ namespace Margins
             return null;
         }
 
-        private bool MoveTowards(
+        private static bool MoveTowards(
             RuntimeCustomer customer,
-            Transform target,
-            float deltaSeconds)
+            Transform target)
         {
-            Vector3 current = customer.Root.transform.position;
-            Vector3 destination = target.position;
-            Vector3 direction = destination - current;
-            if (direction.sqrMagnitude <= 0.0225f)
-            {
-                customer.Root.transform.position = destination;
-                return true;
-            }
-
-            customer.Root.transform.position = Vector3.MoveTowards(
-                current,
-                destination,
-                movementSpeed * deltaSeconds);
-            direction.y = 0f;
-            if (direction.sqrMagnitude > 0.0001f)
-            {
-                customer.Root.transform.rotation = Quaternion.Slerp(
-                    customer.Root.transform.rotation,
-                    Quaternion.LookRotation(direction.normalized, Vector3.up),
-                    Mathf.Clamp01(deltaSeconds * 8f));
-            }
-            return false;
+            return customer?.Navigation != null &&
+                   customer.Navigation.NavigateTo(target);
         }
 
         private static bool IsAtPoint(RuntimeCustomer customer, Transform point)
         {
-            return customer != null && point != null &&
-                   (customer.Root.transform.position - point.position).sqrMagnitude <=
-                   0.09f;
+            if (customer == null || point == null)
+            {
+                return false;
+            }
+
+            if (customer.Navigation != null &&
+                customer.Navigation.HasArrivedAt(point))
+            {
+                return true;
+            }
+
+            Vector3 delta = customer.Root.transform.position - point.position;
+            delta.y = 0f;
+            return delta.sqrMagnitude <= 0.1225f;
+        }
+
+        private static bool ContainsAttachedPoint(
+            IReadOnlyList<Transform> points,
+            string fixtureInstanceId)
+        {
+            if (points == null)
+            {
+                return false;
+            }
+
+            foreach (Transform point in points)
+            {
+                if (IsAttachedToFixture(point, fixtureInstanceId))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsAttachedToFixture(
+            Transform point,
+            string fixtureInstanceId)
+        {
+            PlaceableFixtureComponent fixture =
+                point?.GetComponentInParent<PlaceableFixtureComponent>();
+            return fixture != null &&
+                   string.Equals(
+                       fixture.StableFixtureInstanceId,
+                       fixtureInstanceId,
+                       StringComparison.Ordinal);
         }
 
         private static Transform CreateCustomerItemPoint(

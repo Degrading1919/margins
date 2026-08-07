@@ -106,7 +106,7 @@ namespace Margins.Editor
             FirstPersonController player = playerObject.GetComponent<FirstPersonController>();
             Camera camera = Require("Validation Camera").GetComponent<Camera>();
             playerObject.transform.SetPositionAndRotation(
-                new Vector3(0f, 1f, -7.65f),
+                new Vector3(0f, 1f, -9.25f),
                 Quaternion.identity);
             camera.fieldOfView = 72f;
             camera.nearClipPlane = 0.04f;
@@ -122,7 +122,7 @@ namespace Margins.Editor
             ConfigureShelf(
                 presentationRoot.transform,
                 colaShelf,
-                new Vector3(-2.5f, 0f, 1.5f),
+                new Vector3(-3.5f, 0f, 0.5f),
                 "COLD DRINKS",
                 teal,
                 charcoal,
@@ -131,7 +131,7 @@ namespace Margins.Editor
             ConfigureShelf(
                 presentationRoot.transform,
                 chipsShelf,
-                new Vector3(2.5f, 0f, 1.5f),
+                new Vector3(3.5f, 0f, 0.5f),
                 "SNACKS",
                 orange,
                 charcoal,
@@ -339,7 +339,7 @@ namespace Margins.Editor
             CreatePointLight(
                 root.transform,
                 "Exterior Sign Glow",
-                new Vector3(0f, 3.55f, -5.85f),
+                new Vector3(0f, 3.55f, -7.65f),
                 new Color(1f, 0.32f, 0.12f),
                 3.6f,
                 4.2f,
@@ -360,34 +360,34 @@ namespace Margins.Editor
             Material warmEmission)
         {
             CreateShape(root, "Parking Lot", PrimitiveType.Cube,
-                new Vector3(0f, -0.16f, -13.5f), new Vector3(24f, 0.22f, 15f), asphalt, true);
+                new Vector3(0f, -0.16f, -15.3f), new Vector3(24f, 0.22f, 11.4f), asphalt, true);
             CreateShape(root, "Front Sidewalk", PrimitiveType.Cube,
-                new Vector3(0f, -0.05f, -6.75f), new Vector3(13f, 0.18f, 3.5f), sidewalk, true);
+                new Vector3(0f, -0.05f, -8.25f), new Vector3(22f, 0.18f, 2.5f), sidewalk, true);
             CreateShape(root, "Curb", PrimitiveType.Cube,
-                new Vector3(0f, 0.02f, -8.45f), new Vector3(13f, 0.25f, 0.22f), wallLight, true);
+                new Vector3(0f, 0.02f, -9.48f), new Vector3(22f, 0.25f, 0.22f), wallLight, true);
             CreateShape(root, "Front Fascia", PrimitiveType.Cube,
-                new Vector3(0f, 3.12f, -5.2f), new Vector3(10.6f, 0.72f, 0.34f), wall, true);
+                new Vector3(0f, 3.12f, -7f), new Vector3(14.2f, 0.72f, 0.34f), wall, true);
             CreateShape(root, "Front Left Pier", PrimitiveType.Cube,
-                new Vector3(-4.95f, 1.55f, -5.2f), new Vector3(0.68f, 3.2f, 0.34f), wall, true);
+                new Vector3(-6.75f, 1.55f, -7f), new Vector3(0.5f, 3.2f, 0.34f), wall, true);
             CreateShape(root, "Front Right Pier", PrimitiveType.Cube,
-                new Vector3(4.95f, 1.55f, -5.2f), new Vector3(0.68f, 3.2f, 0.34f), wall, true);
+                new Vector3(6.75f, 1.55f, -7f), new Vector3(0.5f, 3.2f, 0.34f), wall, true);
             CreateShape(root, "Door Left Frame", PrimitiveType.Cube,
-                new Vector3(-0.86f, 1.25f, -5.16f), new Vector3(0.12f, 2.5f, 0.2f), charcoal, true);
+                new Vector3(-0.9f, 1.25f, -6.96f), new Vector3(0.12f, 2.5f, 0.2f), charcoal, true);
             CreateShape(root, "Door Right Frame", PrimitiveType.Cube,
-                new Vector3(0.86f, 1.25f, -5.16f), new Vector3(0.12f, 2.5f, 0.2f), charcoal, true);
+                new Vector3(0.9f, 1.25f, -6.96f), new Vector3(0.12f, 2.5f, 0.2f), charcoal, true);
             CreateShape(root, "Door Header", PrimitiveType.Cube,
-                new Vector3(0f, 2.5f, -5.16f), new Vector3(1.85f, 0.12f, 0.2f), charcoal, true);
+                new Vector3(0f, 2.5f, -6.96f), new Vector3(1.95f, 0.12f, 0.2f), charcoal, true);
             CreateShape(root, "Left Storefront Glass", PrimitiveType.Cube,
-                new Vector3(-2.88f, 1.5f, -5.16f), new Vector3(3.8f, 2.65f, 0.1f), glass, true);
+                new Vector3(-3.72f, 1.5f, -6.96f), new Vector3(5.52f, 2.65f, 0.1f), glass, true);
             CreateShape(root, "Right Storefront Glass", PrimitiveType.Cube,
-                new Vector3(2.88f, 1.5f, -5.16f), new Vector3(3.8f, 2.65f, 0.1f), glass, true);
+                new Vector3(3.72f, 1.5f, -6.96f), new Vector3(5.52f, 2.65f, 0.1f), glass, true);
 
             GameObject signBacking = CreateShape(root, "Mile 7 Sign Backing", PrimitiveType.Cube,
-                new Vector3(0f, 3.7f, -5.42f), new Vector3(6.8f, 0.9f, 0.18f), charcoal, false);
+                new Vector3(0f, 3.7f, -7.22f), new Vector3(7.8f, 0.9f, 0.18f), charcoal, false);
             CreateShape(root, "Mile 7 Sign Teal Bar", PrimitiveType.Cube,
-                new Vector3(-2.55f, 3.7f, -5.54f), new Vector3(1.25f, 0.72f, 0.08f), teal, false);
+                new Vector3(-3.05f, 3.7f, -7.34f), new Vector3(1.25f, 0.72f, 0.08f), teal, false);
             CreateShape(root, "Mile 7 Sign Orange Bar", PrimitiveType.Cube,
-                new Vector3(2.55f, 3.7f, -5.54f), new Vector3(1.25f, 0.72f, 0.08f), orange, false);
+                new Vector3(3.05f, 3.7f, -7.34f), new Vector3(1.25f, 0.72f, 0.08f), orange, false);
             CreateText(
                 signBacking.transform,
                 "Experience Store Name",
@@ -397,21 +397,21 @@ namespace Margins.Editor
                 cream.color,
                 TextAnchor.MiddleCenter);
             CreateText(root, "Window Hours", "LOCALLY OWNED  /  OPEN LATE",
-                new Vector3(-2.9f, 0.75f, -5.32f), 0.075f, cream.color, TextAnchor.MiddleCenter);
+                new Vector3(-3.75f, 0.75f, -7.12f), 0.075f, cream.color, TextAnchor.MiddleCenter);
 
             CreateShape(root, "Entry Mat", PrimitiveType.Cube,
-                new Vector3(0f, 0.015f, -4.72f), new Vector3(1.55f, 0.03f, 1.05f), teal, false);
-            CreateText(root, "Entry Mat Text", "M7", new Vector3(0f, 0.045f, -4.72f),
+                new Vector3(0f, 0.015f, -6.45f), new Vector3(1.55f, 0.03f, 1.05f), teal, false);
+            CreateText(root, "Entry Mat Text", "M7", new Vector3(0f, 0.045f, -6.45f),
                 0.17f, cream.color, TextAnchor.MiddleCenter, Quaternion.Euler(90f, 0f, 0f));
 
-            for (int index = 0; index < 3; index++)
+            for (int index = 0; index < 7; index++)
             {
-                float x = -7f + index * 7f;
+                float x = -8.7f + index * 2.9f;
                 CreateShape(root, $"Parking Stripe {index}", PrimitiveType.Cube,
-                    new Vector3(x, -0.035f, -12f), new Vector3(0.09f, 0.025f, 5.5f), cream, false);
+                    new Vector3(x, -0.035f, -15.1f), new Vector3(0.09f, 0.025f, 5.5f), cream, false);
             }
-            CreateStylizedCar(root, "Parked Car A", new Vector3(-5.7f, 0.35f, -12.6f), teal, charcoal);
-            CreateStylizedCar(root, "Parked Car B", new Vector3(5.8f, 0.35f, -13.5f), orange, charcoal);
+            CreateStylizedCar(root, "Parked Car A", new Vector3(-4.35f, 0.35f, -15.2f), teal, charcoal);
+            CreateStylizedCar(root, "Parked Car B", new Vector3(4.35f, 0.35f, -15.2f), orange, charcoal);
 
             for (int index = 0; index < 5; index++)
             {
@@ -440,56 +440,56 @@ namespace Margins.Editor
             out Renderer[] practicalRenderers)
         {
             CreateShape(root, "Store Floor Visual", PrimitiveType.Cube,
-                new Vector3(0f, -0.08f, 0.45f), new Vector3(10.2f, 0.15f, 11.1f), tile, false);
+                new Vector3(0f, -0.08f, -0.55f), new Vector3(13.6f, 0.15f, 12.7f), tile, false);
             CreateShape(root, "Back Wall", PrimitiveType.Cube,
-                new Vector3(0f, 1.72f, 5.92f), new Vector3(10.55f, 3.45f, 0.28f), wall, true);
+                new Vector3(0f, 1.72f, 5.92f), new Vector3(14f, 3.45f, 0.28f), wall, true);
             CreateShape(root, "Left Wall", PrimitiveType.Cube,
-                new Vector3(-5.14f, 1.72f, 0.45f), new Vector3(0.28f, 3.45f, 11.2f), wall, true);
+                new Vector3(-6.86f, 1.72f, -0.55f), new Vector3(0.28f, 3.45f, 13.2f), wall, true);
             CreateShape(root, "Right Wall", PrimitiveType.Cube,
-                new Vector3(5.14f, 1.72f, 0.45f), new Vector3(0.28f, 3.45f, 11.2f), wall, true);
+                new Vector3(6.86f, 1.72f, -0.55f), new Vector3(0.28f, 3.45f, 13.2f), wall, true);
             CreateShape(root, "Ceiling", PrimitiveType.Cube,
-                new Vector3(0f, 3.5f, 0.45f), new Vector3(10.55f, 0.22f, 11.2f), ceiling, false);
+                new Vector3(0f, 3.5f, -0.55f), new Vector3(14f, 0.22f, 13.2f), ceiling, false);
 
             CreateShape(root, "Left Wall Teal Stripe", PrimitiveType.Cube,
-                new Vector3(-4.98f, 1.95f, 0.45f), new Vector3(0.05f, 0.18f, 10.6f), teal, false);
+                new Vector3(-6.7f, 1.95f, -0.55f), new Vector3(0.05f, 0.18f, 12.6f), teal, false);
             CreateShape(root, "Right Wall Orange Stripe", PrimitiveType.Cube,
-                new Vector3(4.98f, 1.95f, 0.45f), new Vector3(0.05f, 0.18f, 10.6f), orange, false);
+                new Vector3(6.7f, 1.95f, -0.55f), new Vector3(0.05f, 0.18f, 12.6f), orange, false);
             CreateShape(root, "Back Wall Stripe", PrimitiveType.Cube,
-                new Vector3(0f, 1.95f, 5.76f), new Vector3(9.9f, 0.18f, 0.05f), teal, false);
+                new Vector3(0f, 1.95f, 5.76f), new Vector3(13.4f, 0.18f, 0.05f), teal, false);
 
             CreateShape(root, "Receiving Floor Zone", PrimitiveType.Cube,
-                new Vector3(-3.3f, 0.012f, 4.3f), new Vector3(3.2f, 0.025f, 2.5f), charcoal, false);
+                new Vector3(-4.8f, 0.012f, 4.35f), new Vector3(3.5f, 0.025f, 2.5f), charcoal, false);
             CreateText(root, "Receiving Wall Sign", "RECEIVING",
-                new Vector3(-2.75f, 2.45f, 5.72f), 0.09f, cream.color, TextAnchor.MiddleCenter);
+                new Vector3(-4.6f, 2.45f, 5.72f), 0.09f, cream.color, TextAnchor.MiddleCenter);
             CreateShape(root, "Receiving Rail", PrimitiveType.Cube,
-                new Vector3(-2.75f, 2.16f, 5.74f), new Vector3(4.3f, 0.05f, 0.06f), orange, false);
+                new Vector3(-4.6f, 2.16f, 5.74f), new Vector3(3.8f, 0.05f, 0.06f), orange, false);
 
             CreateShape(root, "Backroom Rack Left Post", PrimitiveType.Cube,
-                new Vector3(-4.7f, 1f, 3.78f), new Vector3(0.1f, 2f, 0.1f), charcoal, true);
+                new Vector3(-6.35f, 1f, 3.78f), new Vector3(0.1f, 2f, 0.1f), charcoal, true);
             CreateShape(root, "Backroom Rack Right Post", PrimitiveType.Cube,
-                new Vector3(-2.1f, 1f, 3.78f), new Vector3(0.1f, 2f, 0.1f), charcoal, true);
+                new Vector3(-3.25f, 1f, 3.78f), new Vector3(0.1f, 2f, 0.1f), charcoal, true);
             for (int index = 0; index < 3; index++)
             {
                 CreateShape(root, $"Backroom Rack Shelf {index}", PrimitiveType.Cube,
-                    new Vector3(-3.4f, 0.35f + index * 0.65f, 3.86f),
-                    new Vector3(2.7f, 0.08f, 0.65f), metal, true);
+                    new Vector3(-4.8f, 0.35f + index * 0.65f, 3.86f),
+                    new Vector3(3.2f, 0.08f, 0.65f), metal, true);
             }
 
             CreateShape(root, "Checkout Floor Accent", PrimitiveType.Cube,
-                new Vector3(3.25f, 0.015f, -1.95f), new Vector3(3.15f, 0.03f, 2.5f), teal, false);
+                new Vector3(5f, 0.015f, -4.5f), new Vector3(3.15f, 0.03f, 2.5f), teal, false);
 
             List<Light> lights = new();
             List<Renderer> bulbs = new();
             Vector3[] positions =
             {
-                new(-3.15f, 3.28f, -2.5f),
-                new(0f, 3.28f, -2.5f),
-                new(3.15f, 3.28f, -2.5f),
-                new(-3.15f, 3.28f, 1.2f),
-                new(0f, 3.28f, 1.2f),
-                new(3.15f, 3.28f, 1.2f),
-                new(-3.15f, 3.28f, 4.45f),
-                new(2.6f, 3.28f, 4.45f)
+                new(-4.5f, 3.28f, -4.6f),
+                new(0f, 3.28f, -4.6f),
+                new(4.5f, 3.28f, -4.6f),
+                new(-4.5f, 3.28f, 0f),
+                new(0f, 3.28f, 0f),
+                new(4.5f, 3.28f, 0f),
+                new(-4.5f, 3.28f, 4.45f),
+                new(3.8f, 3.28f, 4.45f)
             };
             for (int index = 0; index < positions.Length; index++)
             {
@@ -509,7 +509,7 @@ namespace Margins.Editor
             Light checkoutFocus = CreateSpotLight(
                 root,
                 "Checkout Focus Light",
-                new Vector3(3.2f, 3.18f, -1.55f),
+                new Vector3(5f, 3.18f, -4.5f),
                 new Color(1f, 0.48f, 0.18f),
                 3.4f,
                 20f,
@@ -621,7 +621,7 @@ namespace Margins.Editor
             Material cream)
         {
             deliveryObject.transform.SetPositionAndRotation(
-                new Vector3(-3.45f, 0.48f, 4.62f),
+                new Vector3(-8.5f, 0.48f, -9.15f),
                 Quaternion.identity);
             deliveryObject.transform.localScale = Vector3.one;
             SetRendererEnabled(deliveryObject, false);
@@ -676,7 +676,7 @@ namespace Margins.Editor
         {
             DestroyExperienceChildren(requiredFixture.transform);
             requiredFixture.transform.SetPositionAndRotation(
-                new Vector3(3f, 0f, -0.5f),
+                new Vector3(5f, 0f, -4.5f),
                 Quaternion.identity);
             requiredFixture.transform.localScale = Vector3.one;
             SetRendererEnabled(requiredFixture, false);
@@ -739,7 +739,7 @@ namespace Margins.Editor
             DestroyAllTextChildren(storeControl.transform);
             DestroyExperienceChildren(storeControl.transform);
             storeControl.transform.SetPositionAndRotation(
-                new Vector3(-3.95f, 1.35f, -4.72f),
+                new Vector3(-5.65f, 1.35f, -6.52f),
                 Quaternion.identity);
             storeControl.transform.localScale = new Vector3(1.15f, 0.82f, 0.18f);
             storeControl.GetComponent<Renderer>().sharedMaterial = charcoal;
@@ -762,16 +762,16 @@ namespace Margins.Editor
         {
             DestroyAllTextChildren(cleaningTarget.transform);
             cleaningTarget.transform.SetPositionAndRotation(
-                new Vector3(-1.45f, 0.035f, 2.72f),
+                new Vector3(-1.75f, 0.035f, 2.85f),
                 Quaternion.identity);
             cleaningTarget.transform.localScale = new Vector3(1.45f, 0.045f, 1.05f);
             cleaningTarget.GetComponent<Renderer>().sharedMaterial = spill;
 
             CreateShape(root, "Mop Bucket", PrimitiveType.Cylinder,
-                new Vector3(-2.25f, 0.28f, 3.02f), new Vector3(0.34f, 0.28f, 0.34f), teal, true);
+                new Vector3(-2.65f, 0.28f, 3.25f), new Vector3(0.34f, 0.28f, 0.34f), teal, true);
             GameObject mop = new("Mop Tool");
             mop.transform.SetParent(root, false);
-            mop.transform.localPosition = new Vector3(-2.25f, 0f, 3.02f);
+            mop.transform.localPosition = new Vector3(-2.65f, 0f, 3.25f);
             mop.transform.localRotation = Quaternion.Euler(0f, 0f, -8f);
             CreateShape(mop.transform, "Experience Mop Handle", PrimitiveType.Cylinder,
                 new Vector3(0f, 0.95f, 0f), new Vector3(0.035f, 0.82f, 0.035f), metal, true);
@@ -788,7 +788,7 @@ namespace Margins.Editor
             DestroyAllTextChildren(deliveryDrop.transform);
             DestroyExperienceChildren(deliveryDrop.transform);
             deliveryDrop.transform.SetPositionAndRotation(
-                new Vector3(-0.5f, 0f, 2.5f),
+                new Vector3(-8.5f, 0f, -8.5f),
                 Quaternion.identity);
             deliveryDrop.transform.localScale = Vector3.one;
             SetRendererEnabled(deliveryDrop, false);
@@ -913,6 +913,25 @@ namespace Margins.Editor
             GameObject root = PrefabUtility.LoadPrefabContents(prefabPath);
             try
             {
+                string[] expectedChildren = isCan
+                    ? new[]
+                    {
+                        "Experience Can Band",
+                        "Experience Can Top",
+                        "Experience Can Bottom"
+                    }
+                    : new[]
+                    {
+                        "Experience Chips Label",
+                        "Experience Chips Top Seam",
+                        "Experience Chips Bottom Seam"
+                    };
+                if (expectedChildren.All(childName =>
+                        root.transform.Find(childName) != null))
+                {
+                    return;
+                }
+
                 DestroyExperienceChildren(root.transform);
                 GameObject temporary = GameObject.CreatePrimitive(primitive);
                 Mesh mesh = temporary.GetComponent<MeshFilter>().sharedMesh;
@@ -959,9 +978,9 @@ namespace Margins.Editor
             car.transform.SetParent(parent, false);
             car.transform.localPosition = position;
             CreateShape(car.transform, "Experience Car Body", PrimitiveType.Cube,
-                Vector3.zero, new Vector3(2.25f, 0.58f, 4.1f), bodyMaterial, false);
+                Vector3.zero, new Vector3(2.25f, 0.58f, 4.1f), bodyMaterial, true);
             CreateShape(car.transform, "Experience Car Cabin", PrimitiveType.Cube,
-                new Vector3(0f, 0.54f, 0.25f), new Vector3(1.82f, 0.65f, 2.05f), trimMaterial, false);
+                new Vector3(0f, 0.54f, 0.25f), new Vector3(1.82f, 0.65f, 2.05f), trimMaterial, true);
             CreateShape(car.transform, "Experience Car Front Light", PrimitiveType.Cube,
                 new Vector3(0f, 0.05f, -2.08f), new Vector3(1.45f, 0.15f, 0.05f), trimMaterial, false);
 

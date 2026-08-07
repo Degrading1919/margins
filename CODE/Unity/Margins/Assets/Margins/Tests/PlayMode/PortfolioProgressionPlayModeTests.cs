@@ -370,7 +370,7 @@ namespace Margins.Tests
             SetField(flow, "nextCustomerOrdinal", 3);
             DeliveryBoxWorldInteractionTarget deliveryTarget =
                 Object.FindAnyObjectByType<DeliveryBoxWorldInteractionTarget>();
-            float deadline = Time.realtimeSinceStartup + 8f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!delivery.IsCarried &&
                    Time.realtimeSinceStartup < deadline)
             {
@@ -417,7 +417,7 @@ namespace Margins.Tests
             Assert.That(flow.ActiveCheckoutScannedCount, Is.EqualTo(1));
             employeeWork.enabled = true;
 
-            deadline = Time.realtimeSinceStartup + 20f;
+            deadline = Time.realtimeSinceStartup + 35f;
             while ((checkout.CompletedTransactionCount < transactionCountBefore + 1 ||
                     !cleaning.IsComplete ||
                     !HasAnyShelfStock(inventory, checkout)) &&
@@ -451,7 +451,7 @@ namespace Margins.Tests
                 Is.Not.Null);
             Assert.That(store.LivePayrollCents, Is.EqualTo(42_000));
 
-            deadline = Time.realtimeSinceStartup + 20f;
+            deadline = Time.realtimeSinceStartup + 35f;
             while ((flow.HasCustomersInStore || employeeWork.IsHandlingInventory) &&
                    Time.realtimeSinceStartup < deadline)
             {
@@ -580,7 +580,7 @@ namespace Margins.Tests
             SetField(flow, "secondsUntilNextArrival", 1_000f);
             SetField(flow, "arrivalIntervalSeconds", 1_000f);
 
-            float deadline = Time.realtimeSinceStartup + 8f;
+            float deadline = Time.realtimeSinceStartup + 14f;
             while (!delivery.IsCarried &&
                    Time.realtimeSinceStartup < deadline)
             {
@@ -596,7 +596,7 @@ namespace Margins.Tests
             }
             Assert.That(cleaning.IsComplete, Is.True);
 
-            deadline = Time.realtimeSinceStartup + 8f;
+            deadline = Time.realtimeSinceStartup + 16f;
             while ((employeeWork.IsHandlingInventory ||
                     store.State != StoreOperatingState.Closed) &&
                    Time.realtimeSinceStartup < deadline)

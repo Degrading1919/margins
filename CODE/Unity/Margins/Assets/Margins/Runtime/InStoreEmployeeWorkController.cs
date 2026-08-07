@@ -34,6 +34,7 @@ namespace Margins
         [SerializeField] private Transform stockerBoxCarryPoint;
         [SerializeField] private Transform stockerUnitCarryPoint;
         [SerializeField, Min(0.1f)] private float movementSpeed = 2.4f;
+        [SerializeField] private bool showDeveloperStatusLabels;
 
         private float nextCashierActionAt;
         private float nextStockerActionAt;
@@ -49,6 +50,9 @@ namespace Margins
 
         private void Start()
         {
+            ConfigureNavigation(cashierAvatar, 20);
+            ConfigureNavigation(stockerAvatar, 25);
+            ConfigureNavigation(managerAvatar, 30);
             if (!TryValidateConfiguration(out string error))
             {
                 Debug.LogError($"In-store employee work is unavailable: {error}", this);
@@ -183,6 +187,13 @@ namespace Margins
                 return false;
             }
 
+            if (!TryValidateNavigation(cashierAvatar, out error) ||
+                !TryValidateNavigation(stockerAvatar, out error) ||
+                !TryValidateNavigation(managerAvatar, out error))
+            {
+                return false;
+            }
+
             if (customerFlow.StoreOperating != store ||
                 customerFlow.Checkout != store.Checkout ||
                 customerFlow.PhysicalUnits != stocking.PhysicalUnits)
@@ -204,10 +215,26 @@ namespace Margins
             nextStockerActionAt = Time.unscaledTime;
             nextStandardsActionAt = Time.unscaledTime;
             deliveryRelocated = deliveryBox != null &&
-                                deliveryDropPoint != null &&
+                                deliveryWorkPoint != null &&
                                 HorizontalDistance(
                                     deliveryBox.transform,
-                                    deliveryDropPoint) < 1.25f;
+                                    deliveryWorkPoint) < 1.25f;
+            ResetNavigation(cashierAvatar);
+            ResetNavigation(stockerAvatar);
+            ResetNavigation(managerAvatar);
+        }
+
+        public bool IsFixtureModificationRestricted(string fixtureInstanceId)
+        {
+            if (!IsHandlingInventory ||
+                !FirstStoreIdentifier.IsValid(fixtureInstanceId))
+            {
+                return false;
+            }
+
+            return IsAttachedToFixture(
+                GetStockerDestination(),
+                fixtureInstanceId);
         }
 
         private void TryPerformCashierAction()
@@ -257,13 +284,13 @@ namespace Margins
                     deliveryRelocated = !deliveryBox.IsCarried &&
                                         HorizontalDistance(
                                             deliveryBox.transform,
-                                            deliveryDropPoint) < 1.25f;
+                                            deliveryWorkPoint) < 1.25f;
                     return;
                 }
 
                 if (deliveryBox.TrySetDown(
-                        deliveryDropPoint.position,
-                        deliveryDropPoint.rotation,
+                        deliveryWorkPoint.position,
+                        deliveryWorkPoint.rotation,
                         out _))
                 {
                     employeeMovingBox = false;
@@ -293,7 +320,7 @@ namespace Margins
             if (deliveryRelocated &&
                 HorizontalDistance(
                     deliveryBox.transform,
-                    deliveryDropPoint) >= 1.25f)
+                    deliveryWorkPoint) >= 1.25f)
             {
                 deliveryRelocated = false;
             }
@@ -371,7 +398,7 @@ namespace Margins
         {
             if (employeeMovingBox)
             {
-                return deliveryDropPoint;
+                return deliveryWorkPoint;
             }
             if (stockerUnit?.IsHeld == true)
             {
@@ -379,7 +406,8 @@ namespace Margins
                        stocking.TryGetShelfFixture(
                            stockerUnit.Definition?.StableProductId,
                            out ShelfFixture shelf)
-                    ? shelf.transform
+                    ? shelf.transform.Find("Employee Stocking Work Point") ??
+                      shelf.transform
                     : shelfWorkPoint;
             }
             if (!deliveryRelocated)
@@ -388,7 +416,7 @@ namespace Margins
                     ? deliveryBox.transform
                     : deliveryWorkPoint;
             }
-            return deliveryDropPoint;
+            return deliveryWorkPoint;
         }
 
         private static PortfolioEmployeeSnapshot FindAssigned(
@@ -430,27 +458,14 @@ namespace Margins
                 return;
             }
 
-            Vector3 target = destination.position;
-            target.y = avatar.position.y;
-            Vector3 before = avatar.position;
-            avatar.position = Vector3.MoveTowards(
-                before,
-                target,
-                movementSpeed * Time.deltaTime);
-            Vector3 direction = target - avatar.position;
-            if (direction.sqrMagnitude > 0.01f)
-            {
-                avatar.rotation = Quaternion.RotateTowards(
-                    avatar.rotation,
-                    Quaternion.LookRotation(direction.normalized, Vector3.up),
-                    540f * Time.deltaTime);
-            }
+            avatar.GetComponent<LocalNavigationAgent>()?.NavigateTo(destination);
         }
 
         private static bool IsAt(Transform avatar, Transform destination)
         {
             return avatar != null && destination != null &&
-                   HorizontalDistance(avatar, destination) < 0.18f;
+                   avatar.GetComponent<LocalNavigationAgent>()
+                       ?.HasArrivedAt(destination) == true;
         }
 
         private static float HorizontalDistance(Transform left, Transform right)
@@ -460,7 +475,7 @@ namespace Margins
             return delta.magnitude;
         }
 
-        private static void SetAvatar(
+        private void SetAvatar(
             Transform avatar,
             TextMesh label,
             PortfolioEmployeeSnapshot employee,
@@ -478,6 +493,11 @@ namespace Margins
             }
             if (active && label != null)
             {
+                label.gameObject.SetActive(showDeveloperStatusLabels);
+                if (!showDeveloperStatusLabels)
+                {
+                    return;
+                }
                 string firstName = employee.displayName;
                 int firstSpace = firstName.IndexOf(' ');
                 if (firstSpace > 0)
@@ -488,6 +508,49 @@ namespace Margins
                 label.text =
                     $"{firstName.ToUpperInvariant()}\n{roleAndWork}";
             }
+        }
+
+        private void ConfigureNavigation(Transform avatar, int priority)
+        {
+            avatar?.GetComponent<LocalNavigationAgent>()
+                ?.Configure(movementSpeed, priority);
+        }
+
+        private static bool TryValidateNavigation(
+            Transform avatar,
+            out string error)
+        {
+            error = null;
+            LocalNavigationAgent navigation =
+                avatar?.GetComponent<LocalNavigationAgent>();
+            if (navigation == null ||
+                !navigation.TryValidateConfiguration(out error))
+            {
+                error ??= "Detailed employees require local navigation agents.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        private static void ResetNavigation(Transform avatar)
+        {
+            avatar?.GetComponent<LocalNavigationAgent>()
+                ?.ResetNavigationAfterRestore();
+        }
+
+        private static bool IsAttachedToFixture(
+            Transform target,
+            string fixtureInstanceId)
+        {
+            PlaceableFixtureComponent fixture =
+                target?.GetComponentInParent<PlaceableFixtureComponent>();
+            return fixture != null &&
+                   string.Equals(
+                       fixture.StableFixtureInstanceId,
+                       fixtureInstanceId,
+                       StringComparison.Ordinal);
         }
     }
 }

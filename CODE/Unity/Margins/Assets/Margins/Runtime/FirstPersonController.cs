@@ -30,8 +30,14 @@ namespace Margins
 
         [SerializeField] private CharacterController characterController;
         [SerializeField] private Transform cameraPivot;
-        [SerializeField, Min(0f)] private float moveSpeed = 3.7f;
-        [SerializeField, Min(0f)] private float briskWalkSpeed = 5.2f;
+        [SerializeField] private InputActionAsset inputActions;
+        [SerializeField] private string inputActionMapName = "Player";
+        [SerializeField] private string moveActionName = "Move";
+        [SerializeField] private string sprintActionName = "Sprint";
+        [SerializeField] private string jumpActionName = "Jump";
+        [SerializeField, Min(0f)] private float moveSpeed = 0.9f;
+        [FormerlySerializedAs("briskWalkSpeed")]
+        [SerializeField, Min(0f)] private float sprintSpeed = 4.5f;
         [SerializeField, Min(0.01f)] private float acceleration = 17f;
         [SerializeField, Min(0.01f)] private float deceleration = 23f;
         [FormerlySerializedAs("mouseSensitivity")]
@@ -39,6 +45,7 @@ namespace Margins
         [SerializeField, Min(0f)] private float verticalLookSensitivity = 0.1f;
         [SerializeField] private bool invertY;
         [SerializeField] private float gravity = -24f;
+        [SerializeField, Min(0.1f)] private float jumpHeight = 1.15f;
         [SerializeField, Range(0f, 0.08f)] private float cameraBobAmplitude = 0.026f;
         [SerializeField, Range(0f, 3f)] private float cameraBobFrequency = 1.75f;
 
@@ -54,9 +61,14 @@ namespace Margins
         private bool wasGrounded;
         private int discardLookThroughFrame;
         private bool hasAppliedInitialMode;
+        private InputAction moveAction;
+        private InputAction sprintAction;
+        private InputAction jumpAction;
+        private bool ownsFallbackActions;
 
         public event Action<bool> Footstep;
         public event Action Landed;
+        public event Action Jumped;
 
         public bool IsGameplayMode { get; private set; }
         public CursorLockMode RequestedCursorLockState { get; private set; }
@@ -69,8 +81,14 @@ namespace Margins
         public float HorizontalLookSensitivity => horizontalLookSensitivity;
         public float VerticalLookSensitivity => verticalLookSensitivity;
         public bool InvertY => invertY;
-        public bool IsBriskWalking { get; private set; }
+        public bool IsSprinting { get; private set; }
+        public bool IsBriskWalking => IsSprinting;
+        public bool IsGrounded { get; private set; }
         public float CurrentPlanarSpeed => planarVelocity.magnitude;
+        public float VerticalVelocity => verticalVelocity;
+        public float WalkSpeed => moveSpeed;
+        public float SprintSpeed => sprintSpeed;
+        public float JumpHeight => jumpHeight;
 
         public FirstStorePlayerTransformSnapshot CaptureTransformSnapshot()
         {
@@ -154,6 +172,17 @@ namespace Margins
         private void OnEnable()
         {
             EnsureCameraState();
+            if (characterController != null)
+            {
+                characterController.minMoveDistance = 0f;
+            }
+            if (!TryResolveMovementActions(out string error))
+            {
+                Debug.LogError(error, this);
+            }
+            IsGrounded = characterController != null &&
+                         characterController.isGrounded;
+            wasGrounded = IsGrounded;
             SetGameplayMode(true);
         }
 
@@ -162,7 +191,18 @@ namespace Margins
             IsGameplayMode = false;
             RequestedCursorLockState = CursorLockMode.None;
             planarVelocity = Vector3.zero;
-            IsBriskWalking = false;
+            IsSprinting = false;
+            SetMovementActionsEnabled(false);
+            if (ownsFallbackActions)
+            {
+                moveAction?.Dispose();
+                sprintAction?.Dispose();
+                jumpAction?.Dispose();
+                moveAction = null;
+                sprintAction = null;
+                jumpAction = null;
+                ownsFallbackActions = false;
+            }
             ResetCameraMotion(true);
             UnlockCursor();
         }
@@ -172,7 +212,7 @@ namespace Margins
             HandleModeToggle();
             if (!IsGameplayMode)
             {
-                IsBriskWalking = false;
+                IsSprinting = false;
                 ResetCameraMotion(false);
                 return;
             }
@@ -207,22 +247,19 @@ namespace Margins
 
         private void HandleMovement()
         {
-            if (characterController == null || Keyboard.current == null)
+            if (characterController == null || moveAction == null ||
+                sprintAction == null || jumpAction == null)
             {
                 return;
             }
 
-            Vector2 input = Vector2.zero;
-            input.y += Keyboard.current.wKey.isPressed ? 1f : 0f;
-            input.y -= Keyboard.current.sKey.isPressed ? 1f : 0f;
-            input.x += Keyboard.current.dKey.isPressed ? 1f : 0f;
-            input.x -= Keyboard.current.aKey.isPressed ? 1f : 0f;
-            input = Vector2.ClampMagnitude(input, 1f);
+            Vector2 input = Vector2.ClampMagnitude(
+                moveAction.ReadValue<Vector2>(),
+                1f);
 
-            IsBriskWalking = input.sqrMagnitude > 0.01f &&
-                             (Keyboard.current.leftShiftKey.isPressed ||
-                              Keyboard.current.rightShiftKey.isPressed);
-            float targetSpeed = IsBriskWalking ? briskWalkSpeed : moveSpeed;
+            IsSprinting = input.sqrMagnitude > 0.01f &&
+                          sprintAction.IsPressed();
+            float targetSpeed = IsSprinting ? sprintSpeed : moveSpeed;
             Vector3 desiredVelocity =
                 (transform.right * input.x + transform.forward * input.y) * targetSpeed;
             float rate = input.sqrMagnitude > 0.01f ? acceleration : deceleration;
@@ -231,11 +268,20 @@ namespace Margins
                 desiredVelocity,
                 rate * Time.deltaTime);
 
-            if (characterController.isGrounded && verticalVelocity < 0f)
+            bool groundedBeforeMove = characterController.isGrounded;
+            if (groundedBeforeMove && verticalVelocity < 0f)
             {
                 verticalVelocity = -2f;
             }
-            else
+
+            if (groundedBeforeMove && jumpAction.WasPressedThisFrame())
+            {
+                verticalVelocity = Mathf.Sqrt(
+                    jumpHeight * -2f * gravity);
+                groundedBeforeMove = false;
+                Jumped?.Invoke();
+            }
+            else if (!groundedBeforeMove)
             {
                 verticalVelocity += gravity * Time.deltaTime;
             }
@@ -243,6 +289,11 @@ namespace Margins
             Vector3 frameMotion = planarVelocity + Vector3.up * verticalVelocity;
             CollisionFlags collisionFlags = characterController.Move(
                 frameMotion * Time.deltaTime);
+            if ((collisionFlags & CollisionFlags.Above) != 0 &&
+                verticalVelocity > 0f)
+            {
+                verticalVelocity = 0f;
+            }
             bool grounded = characterController.isGrounded ||
                             (collisionFlags & CollisionFlags.Below) != 0;
             if (grounded && !wasGrounded && verticalVelocity < -4f)
@@ -250,6 +301,7 @@ namespace Margins
                 Landed?.Invoke();
             }
             wasGrounded = grounded;
+            IsGrounded = grounded;
 
             UpdateCameraMotion(grounded, targetSpeed);
             UpdateFootsteps(grounded);
@@ -355,7 +407,7 @@ namespace Margins
 
             if (playerCamera != null)
             {
-                float targetFov = baseFieldOfView + (IsBriskWalking ? 2.5f : 0f);
+                float targetFov = baseFieldOfView + (IsSprinting ? 2.5f : 0f);
                 playerCamera.fieldOfView = Mathf.Lerp(
                     playerCamera.fieldOfView,
                     targetFov,
@@ -372,14 +424,105 @@ namespace Margins
             }
 
             distanceSinceFootstep += planarVelocity.magnitude * Time.deltaTime;
-            float stepDistance = IsBriskWalking ? 1.35f : 1.55f;
+            float stepDistance = IsSprinting ? 1.35f : 1.55f;
             if (distanceSinceFootstep < stepDistance)
             {
                 return;
             }
 
             distanceSinceFootstep %= stepDistance;
-            Footstep?.Invoke(IsBriskWalking);
+            Footstep?.Invoke(IsSprinting);
+        }
+
+        public bool TryValidateInputConfiguration(out string error)
+        {
+            return TryResolveMovementActions(out error);
+        }
+
+        private bool TryResolveMovementActions(out string error)
+        {
+            if (moveAction != null && sprintAction != null && jumpAction != null)
+            {
+                SetMovementActionsEnabled(true);
+                error = null;
+                return true;
+            }
+
+            if (inputActions != null)
+            {
+                InputActionMap actionMap = inputActions.FindActionMap(
+                    inputActionMapName,
+                    false);
+                moveAction = actionMap?.FindAction(moveActionName, false);
+                sprintAction = actionMap?.FindAction(sprintActionName, false);
+                jumpAction = actionMap?.FindAction(jumpActionName, false);
+                ownsFallbackActions = false;
+            }
+            else
+            {
+                moveAction = new InputAction(
+                    moveActionName,
+                    InputActionType.Value,
+                    expectedControlType: "Vector2");
+                moveAction.AddCompositeBinding("2DVector")
+                    .With("Up", "<Keyboard>/w")
+                    .With("Down", "<Keyboard>/s")
+                    .With("Left", "<Keyboard>/a")
+                    .With("Right", "<Keyboard>/d");
+                sprintAction = new InputAction(
+                    sprintActionName,
+                    InputActionType.Button,
+                    "<Keyboard>/leftShift",
+                    expectedControlType: "Button");
+                jumpAction = new InputAction(
+                    jumpActionName,
+                    InputActionType.Button,
+                    "<Keyboard>/space",
+                    expectedControlType: "Button");
+                ownsFallbackActions = true;
+            }
+
+            if (moveAction == null || sprintAction == null || jumpAction == null)
+            {
+                error =
+                    $"Input action map '{inputActionMapName}' must define '{moveActionName}', " +
+                    $"'{sprintActionName}', and '{jumpActionName}'.";
+                return false;
+            }
+
+            if (moveAction.expectedControlType != "Vector2" ||
+                sprintAction.expectedControlType != "Button" ||
+                jumpAction.expectedControlType != "Button")
+            {
+                error =
+                    "Player movement input actions must use Vector2 Move and Button Sprint/Jump controls.";
+                return false;
+            }
+
+            SetMovementActionsEnabled(true);
+            error = null;
+            return true;
+        }
+
+        private void SetMovementActionsEnabled(bool enabled)
+        {
+            InputAction[] actions = { moveAction, sprintAction, jumpAction };
+            foreach (InputAction action in actions)
+            {
+                if (action == null)
+                {
+                    continue;
+                }
+
+                if (enabled)
+                {
+                    action.Enable();
+                }
+                else
+                {
+                    action.Disable();
+                }
+            }
         }
 
         private void EnsureCameraState()

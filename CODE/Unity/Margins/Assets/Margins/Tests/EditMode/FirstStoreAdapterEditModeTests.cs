@@ -472,7 +472,7 @@ namespace Margins.Tests
         }
 
         [Test]
-        public void FixtureMoveAndRemovalAreRejectedWhileOpenAndClosing()
+        public void IdleFixtureMoveIsAllowedWhileRequiredRemovalStaysRestricted()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
             StockOne(rig, rig.Cola);
@@ -486,9 +486,15 @@ namespace Margins.Tests
             Assert.That(rig.Store.TryOpenStore(out string error), Is.True, error);
             Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.Open));
 
-            AssertRestrictedFixtureChanges(rig);
+            AssertIdleMoveAllowedAndRequiredRemovalRestricted(
+                rig,
+                new GridPosition(3, 3),
+                1);
             Assert.That(rig.Store.TryBeginClosing(out error), Is.True, error);
-            AssertRestrictedFixtureChanges(rig);
+            AssertIdleMoveAllowedAndRequiredRemovalRestricted(
+                rig,
+                new GridPosition(4, 4),
+                2);
         }
 
         [Test]
@@ -1252,7 +1258,10 @@ namespace Margins.Tests
                 failure.ToString());
         }
 
-        private static void AssertRestrictedFixtureChanges(AdapterRig rig)
+        private static void AssertIdleMoveAllowedAndRequiredRemovalRestricted(
+            AdapterRig rig,
+            GridPosition target,
+            int quarterTurns)
         {
             Vector3 priorPosition = rig.PlaceableFixture.transform.position;
             Quaternion priorRotation = rig.PlaceableFixture.transform.rotation;
@@ -1269,17 +1278,21 @@ namespace Margins.Tests
             Assert.That(rig.PlaceableFixture.transform.rotation, Is.EqualTo(priorRotation));
             Assert.That(rig.PlaceableFixture.PreviewState, Is.EqualTo(priorPreview));
 
-            Assert.That(
-                rig.FixturePlacement.TryMove(
-                    rig.PlaceableFixture,
-                    new GridPosition(3, 3),
-                    1).Failure,
-                Is.EqualTo(FixturePlacementFailure.OperatingStateRestricted));
+            FixturePlacementResult moved = rig.FixturePlacement.TryMove(
+                rig.PlaceableFixture,
+                target,
+                quarterTurns);
+            Assert.That(moved.IsSuccess, Is.True, moved.Failure.ToString());
             Assert.That(rig.FixturePlacement.IsPlaced("fixture-essential-01"), Is.True);
             Assert.That(rig.FixturePlacement.PlacedCount, Is.EqualTo(priorPlacedCount));
             Assert.That(rig.PlaceableFixture.gameObject.activeSelf, Is.True);
-            Assert.That(rig.PlaceableFixture.transform.position, Is.EqualTo(priorPosition));
-            Assert.That(rig.PlaceableFixture.transform.rotation, Is.EqualTo(priorRotation));
+            Assert.That(
+                rig.FixturePlacement.TryGetPlacement(
+                    "fixture-essential-01",
+                    out FixturePlacementSnapshot placement),
+                Is.True);
+            Assert.That(placement.gridPosition, Is.EqualTo(target));
+            Assert.That(placement.quarterTurns, Is.EqualTo(quarterTurns));
         }
 
         private GameObject CreateGameObject(string objectName)

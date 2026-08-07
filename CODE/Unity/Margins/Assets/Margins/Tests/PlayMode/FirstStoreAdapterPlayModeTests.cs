@@ -249,6 +249,20 @@ namespace Margins.Tests
             Assert.That(flow.CanStartCheckout, Is.True);
             Assert.That(TotalShelfQuantity(checkout), Is.EqualTo(4));
             Assert.That(checkout.CompletedTransactionCount, Is.Zero);
+            foreach (StoreCustomerSnapshot restoredCustomer in
+                     queuedSnapshot.customerFlow.customers)
+            {
+                Assert.That(
+                    flow.TryGetCustomerNavigationAgent(
+                        restoredCustomer.customerId,
+                        out LocalNavigationAgent navigation),
+                    Is.True);
+                Assert.That(navigation.CurrentTarget, Is.Not.Null);
+                Assert.That(
+                    navigation.RepathCount,
+                    Is.GreaterThan(0),
+                    "Navigation should reconstruct a path from restored authoritative state.");
+            }
 
             Assert.That(flow.TryStartCheckout(out error), Is.True, error);
             IReadOnlyList<string> activeItemIds =
