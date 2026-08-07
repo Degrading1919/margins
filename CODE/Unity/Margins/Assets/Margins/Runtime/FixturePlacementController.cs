@@ -74,6 +74,15 @@ namespace Margins
                        fixture.StableFixtureInstanceId);
         }
 
+        public bool IsFixtureRemovalRestricted(
+            PlaceableFixtureComponent fixture)
+        {
+            return fixture != null &&
+                   operatingController != null &&
+                   operatingController.IsFixtureRemovalRestricted(
+                       fixture.StableFixtureInstanceId);
+        }
+
         public bool IsPlaced(string fixtureInstanceId)
         {
             return Layout != null &&
@@ -258,7 +267,7 @@ namespace Margins
                 return rejection;
             }
 
-            if (IsFixtureModificationRestricted(fixture))
+            if (IsFixtureRemovalRestricted(fixture))
             {
                 return FixturePlacementResult.Reject(
                     FixturePlacementFailure.OperatingStateRestricted,

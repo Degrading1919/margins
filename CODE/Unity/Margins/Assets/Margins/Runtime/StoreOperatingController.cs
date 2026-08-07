@@ -12,6 +12,7 @@ namespace Margins
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private CleaningTaskComponent cleaningTask;
         [SerializeField] private StoreCustomerFlowController customerFlow;
+        [SerializeField] private InStoreEmployeeWorkController employeeWork;
         [SerializeField] private string[] requiredFixtureInstanceIds;
         [SerializeField, Min(0)] private int includedOperatingExpensesCents;
         [SerializeField] private bool continuousOperation;
@@ -32,6 +33,7 @@ namespace Margins
         public CheckoutStationComponent Checkout => checkout;
         public CleaningTaskComponent CleaningTask => cleaningTask;
         public StoreCustomerFlowController CustomerFlow => customerFlow;
+        public InStoreEmployeeWorkController EmployeeWork => employeeWork;
         public int IncludedOperatingExpensesCents =>
             includedOperatingExpensesCents;
         public long LivePayrollCents => livePayrollCents;
@@ -189,6 +191,14 @@ namespace Margins
             {
                 error =
                     "Store customer flow does not use this operating controller's checkout and physical units.";
+                return false;
+            }
+
+            if (employeeWork != null &&
+                employeeWork.CustomerFlow != customerFlow)
+            {
+                error =
+                    "Store employee work does not use this operating controller's customer flow.";
                 return false;
             }
 
@@ -469,13 +479,44 @@ namespace Margins
 
         public bool IsFixtureModificationRestricted(string fixtureInstanceId)
         {
-            if (continuousOperation)
+            return customerFlow != null &&
+                   customerFlow.IsFixtureModificationRestricted(
+                       fixtureInstanceId) ||
+                   employeeWork != null &&
+                   employeeWork.IsFixtureModificationRestricted(
+                       fixtureInstanceId);
+        }
+
+        public bool IsFixtureRemovalRestricted(string fixtureInstanceId)
+        {
+            if (IsFixtureModificationRestricted(fixtureInstanceId))
+            {
+                return true;
+            }
+
+            return (State == StoreOperatingState.Open ||
+                    State == StoreOperatingState.Closing) &&
+                   IsRequiredFixture(fixtureInstanceId);
+        }
+
+        private bool IsRequiredFixture(string fixtureInstanceId)
+        {
+            if (requiredFixtureInstanceIds == null)
             {
                 return false;
             }
 
-            return State == StoreOperatingState.Open ||
-                   State == StoreOperatingState.Closing;
+            foreach (string requiredId in requiredFixtureInstanceIds)
+            {
+                if (string.Equals(
+                        requiredId,
+                        fixtureInstanceId,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public bool CanApplySnapshot(

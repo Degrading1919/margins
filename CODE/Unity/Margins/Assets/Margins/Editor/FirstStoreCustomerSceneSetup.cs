@@ -49,8 +49,14 @@ namespace Margins.Editor
                 ?.transform ?? throw new InvalidOperationException(
                     "Autonomous customer setup requires the chips shelf fixture.");
 
-            Transform entrance = CreatePoint(root.transform, "Customer Entrance", new Vector3(0f, 0f, -5.4f));
-            Transform exit = CreatePoint(root.transform, "Customer Exit", new Vector3(-1.25f, 0f, -5.4f));
+            Transform entrance = CreatePoint(
+                root.transform,
+                "Customer Exterior Arrival Boundary",
+                new Vector3(-10.5f, 0f, -8.25f));
+            Transform exit = CreatePoint(
+                root.transform,
+                "Customer Exterior Departure Boundary",
+                new Vector3(10.5f, 0f, -8.25f));
             Transform checkoutCustomer = CreateLocalPoint(
                 requiredFixture.transform,
                 "Customer Checkout Position",
@@ -104,10 +110,11 @@ namespace Margins.Editor
             SetInteger(flow, "maximumActiveCustomers", 5);
             SetFloat(flow, "arrivalIntervalSeconds", 5f);
             SetFloat(flow, "initialArrivalDelaySeconds", 0.75f);
-            SetFloat(flow, "movementSpeed", 1.85f);
-            SetFloat(flow, "shoppingSeconds", 1.5f);
+            SetFloat(flow, "movementSpeed", 2.4f);
+            SetFloat(flow, "shoppingSeconds", 1f);
             SetFloat(flow, "queuePatienceSeconds", 35f);
             SetFloat(flow, "checkoutPatienceSeconds", 45f);
+            SetBoolean(flow, "showDeveloperStatusLabels", false);
 
             GameObject checkoutTargetObject = GameObject.Find("World Checkout Interaction") ??
                 throw new InvalidOperationException(
@@ -298,6 +305,20 @@ namespace Margins.Editor
         {
             SerializedObject serialized = new(target);
             serialized.FindProperty(propertyName).floatValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetBoolean(
+            UnityEngine.Object target,
+            string propertyName,
+            bool value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.boolValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }

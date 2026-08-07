@@ -137,6 +137,129 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator NamedMovementActionsProduceDistinctWalkAndSprint()
+        {
+            yield return LoadValidationScene();
+
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            Assert.That(
+                player.TryValidateInputConfiguration(out string error),
+                Is.True,
+                error);
+            Assert.That(player.SprintSpeed, Is.GreaterThan(player.WalkSpeed * 4f));
+
+            FirstStorePlayerTransformSnapshot start = new(
+                new Vector3(0f, 1f, -4f),
+                0f,
+                0f);
+            Assert.That(player.TryApplyTransformSnapshot(start, out error), Is.True, error);
+            yield return WaitUntilGrounded(player);
+            Vector3 walkStart = player.transform.position;
+            yield return MoveForward(1.4f, sprint: false);
+            float walkDistance = HorizontalDistance(walkStart, player.transform.position);
+
+            Assert.That(player.TryApplyTransformSnapshot(start, out error), Is.True, error);
+            yield return WaitUntilGrounded(player);
+            Vector3 sprintStart = player.transform.position;
+            yield return MoveForward(1.4f, sprint: true);
+            float sprintDistance = HorizontalDistance(sprintStart, player.transform.position);
+
+            Assert.That(walkDistance, Is.GreaterThan(0.55f));
+            Assert.That(sprintDistance, Is.GreaterThan(walkDistance * 3f));
+            Assert.That(player.IsSprinting, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator JumpOnlyStartsWhenGroundedAndReturnsToGround()
+        {
+            yield return LoadValidationScene();
+
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            Assert.That(
+                player.TryApplyTransformSnapshot(
+                    new FirstStorePlayerTransformSnapshot(
+                        new Vector3(0f, 1f, -18f),
+                        0f,
+                        0f),
+                    out string error),
+                Is.True,
+                error);
+            yield return WaitUntilGrounded(player);
+
+            int jumpCount = 0;
+            player.Jumped += () => jumpCount++;
+            float groundedHeight = player.transform.position.y;
+            float maximumHeight = groundedHeight;
+
+            Press(keyboard.spaceKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.spaceKey, queueEventOnly: true);
+            yield return new WaitForSeconds(0.12f);
+            Press(keyboard.spaceKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.spaceKey, queueEventOnly: true);
+
+            bool leftGround = false;
+            float deadline = Time.realtimeSinceStartup + 2.5f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                maximumHeight = Mathf.Max(maximumHeight, player.transform.position.y);
+                leftGround |= !player.IsGrounded;
+                if (leftGround && player.IsGrounded)
+                {
+                    break;
+                }
+                yield return null;
+            }
+
+            Assert.That(jumpCount, Is.EqualTo(1));
+            Assert.That(maximumHeight, Is.GreaterThan(groundedHeight + 0.65f));
+            Assert.That(player.IsGrounded, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator DoorwayIsTraversableWhileStorefrontGlassBlocksPlayer()
+        {
+            yield return LoadValidationScene();
+
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            Assert.That(
+                player.TryApplyTransformSnapshot(
+                    new FirstStorePlayerTransformSnapshot(
+                        new Vector3(0f, 1f, -9.25f),
+                        0f,
+                        0f),
+                    out string error),
+                Is.True,
+                error);
+            yield return WaitUntilGrounded(player);
+            yield return MoveForward(1.1f, sprint: true);
+            Assert.That(
+                player.transform.position.z,
+                Is.GreaterThan(-6.65f),
+                "The open doorway should admit the player.");
+
+            Assert.That(
+                player.TryApplyTransformSnapshot(
+                    new FirstStorePlayerTransformSnapshot(
+                        new Vector3(3.72f, 1f, -9.25f),
+                        0f,
+                        0f),
+                    out error),
+                Is.True,
+                error);
+            yield return WaitUntilGrounded(player);
+            yield return MoveForward(1.4f, sprint: true);
+            Assert.That(
+                player.transform.position.z,
+                Is.LessThan(-7.3f),
+                "Storefront glass should stop the player rather than act as an alternate entrance.");
+        }
+
+        [UnityTest]
         public IEnumerator RaycastPickupSelectsExactTargetAndSynchronizesLocations()
         {
             yield return LoadValidationScene();
@@ -528,6 +651,40 @@ namespace Margins.Tests
             Assert.That(
                 Object.FindAnyObjectByType<FirstStoreInteractionController>(),
                 Is.Not.Null);
+        }
+
+        private IEnumerator MoveForward(float seconds, bool sprint)
+        {
+            if (sprint)
+            {
+                Press(keyboard.leftShiftKey, queueEventOnly: true);
+            }
+            Press(keyboard.wKey, queueEventOnly: true);
+            yield return null;
+            yield return new WaitForSeconds(seconds);
+            Release(keyboard.wKey, queueEventOnly: true);
+            if (sprint)
+            {
+                Release(keyboard.leftShiftKey, queueEventOnly: true);
+            }
+            yield return null;
+        }
+
+        private static IEnumerator WaitUntilGrounded(FirstPersonController player)
+        {
+            float deadline = Time.realtimeSinceStartup + 1f;
+            while (!player.IsGrounded && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(player.IsGrounded, Is.True);
+        }
+
+        private static float HorizontalDistance(Vector3 left, Vector3 right)
+        {
+            Vector3 delta = right - left;
+            delta.y = 0f;
+            return delta.magnitude;
         }
 
         private static ProductItem[] RemoveLooseColaUnits(int count)

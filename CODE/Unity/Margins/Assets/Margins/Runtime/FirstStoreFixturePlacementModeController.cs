@@ -446,7 +446,7 @@ namespace Margins
 
             if (fixturePlacement.IsFixtureModificationRestricted(fixture))
             {
-                blocker = "fixture changes are unavailable while the store is open or closing";
+                blocker = "fixture changes are unavailable while this fixture is in active use";
                 return true;
             }
 
@@ -533,7 +533,7 @@ namespace Margins
                 FixturePlacementFailure.StructuralCollision =>
                     "That fixture collides with the building or another structural obstacle.",
                 FixturePlacementFailure.OperatingStateRestricted =>
-                    "Fixture changes are unavailable while the store is open or closing.",
+                    "Fixture changes are unavailable while this fixture is in active use or required for current operations.",
                 FixturePlacementFailure.MissingFixture => "This fixture is unavailable for placement.",
                 _ => "That fixture placement is unavailable."
             };

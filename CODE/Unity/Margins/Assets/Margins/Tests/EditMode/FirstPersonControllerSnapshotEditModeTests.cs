@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Margins.Tests
 {
@@ -98,6 +100,52 @@ namespace Margins.Tests
             rig.Controller.SetGameplayMode(true);
             Assert.That(rig.Controller.TryApplyTransformSnapshot(snapshot, out error), Is.True, error);
             Assert.That(rig.Controller.IsGameplayMode, Is.True);
+        }
+
+        [Test]
+        public void PlayerActionsExposeRebindableMovementSprintAndJumpDefaults()
+        {
+            InputActionAsset actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(
+                "Assets/InputSystem_Actions.inputactions");
+            Assert.That(actions, Is.Not.Null);
+            InputActionMap player = actions.FindActionMap("Player", true);
+            InputAction move = player.FindAction("Move", true);
+            InputAction sprint = player.FindAction("Sprint", true);
+            InputAction jump = player.FindAction("Jump", true);
+
+            Assert.That(move.expectedControlType, Is.EqualTo("Vector2"));
+            Assert.That(sprint.expectedControlType, Is.EqualTo("Button"));
+            Assert.That(jump.expectedControlType, Is.EqualTo("Button"));
+            string[] movePaths = move.bindings
+                .Select(binding => binding.path)
+                .ToArray();
+            CollectionAssert.IsSubsetOf(
+                new[]
+                {
+                    "<Keyboard>/w",
+                    "<Keyboard>/a",
+                    "<Keyboard>/s",
+                    "<Keyboard>/d"
+                },
+                movePaths);
+            Assert.That(
+                sprint.bindings.Any(binding =>
+                    binding.path == "<Keyboard>/leftShift"),
+                Is.True);
+            Assert.That(
+                jump.bindings.Any(binding =>
+                    binding.path == "<Keyboard>/space"),
+                Is.True);
+
+            PlayerRig rig = CreateRig();
+            Assert.That(
+                rig.Controller.TryValidateInputConfiguration(out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Controller.SprintSpeed,
+                Is.GreaterThan(rig.Controller.WalkSpeed * 4f));
+            Assert.That(rig.Controller.JumpHeight, Is.GreaterThan(0f));
         }
 
         private PlayerRig CreateRig()

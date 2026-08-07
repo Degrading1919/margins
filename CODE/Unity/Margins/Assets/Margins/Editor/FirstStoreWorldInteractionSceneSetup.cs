@@ -2,7 +2,9 @@ using System;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
@@ -12,6 +14,8 @@ namespace Margins.Editor
     {
         private const string ScenePath =
             "Assets/Margins/Scenes/FirstStoreValidation.unity";
+        private const string NavMeshDataPath =
+            "Assets/Margins/Scenes/FirstStoreLocalNavigation.asset";
 
         public static void Apply()
         {
@@ -43,7 +47,8 @@ namespace Margins.Editor
             StoreOperatingController store = storeObject.GetComponent<StoreOperatingController>();
             FirstStoreInteractionController interaction =
                 playerObject.GetComponent<FirstStoreInteractionController>();
-            Collider placementFloor = placementFloorObject.GetComponent<Collider>();
+            Collider placementFloor = ConfigurePlacementFloorCollider(
+                placementFloorObject);
 
             ProductDefinition cola = AssetDatabase.LoadAssetAtPath<ProductDefinition>(
                 "Assets/Margins/Content/FirstStoreValidation/ValidationColaProduct.asset");
@@ -80,7 +85,7 @@ namespace Margins.Editor
             DestroySceneObjectsNamed("Stockroom Delivery Drop");
             GameObject deliveryDropObject = new("Stockroom Delivery Drop");
             deliveryDropObject.transform.SetPositionAndRotation(
-                new Vector3(-0.5f, 0f, 2.5f),
+                new Vector3(-8.5f, 0f, -8.5f),
                 Quaternion.identity);
 
             PlaceableFixtureComponent colaShelfFixture =
@@ -143,6 +148,12 @@ namespace Margins.Editor
             SetObject(placementMode, "propertyArea", propertyArea);
             SetObject(interaction, "fixturePlacementMode", placementMode);
             SetObject(interaction, "inputActions", inputActions);
+            FirstPersonController firstPerson =
+                playerObject.GetComponent<FirstPersonController>();
+            SetObject(firstPerson, "inputActions", inputActions);
+            SetFloat(firstPerson, "moveSpeed", 0.9f);
+            SetFloat(firstPerson, "sprintSpeed", 4.5f);
+            SetFloat(firstPerson, "jumpHeight", 1.15f);
 
             FixturePlacementWorldInteractionTarget placedFixtureTarget =
                 GetOrAdd<FixturePlacementWorldInteractionTarget>(requiredFixtureObject);
@@ -253,6 +264,7 @@ namespace Margins.Editor
                 requiredFixtureObject.transform,
                 deliveryDropObject.transform,
                 colaShelfObject.transform,
+                chipsShelfObject.transform,
                 validMaterial,
                 fixtureMaterial,
                 chipsMaterial);
@@ -262,6 +274,7 @@ namespace Margins.Editor
             {
                 SetObject(persistenceMapper, "employeeWork", employeeWork);
             }
+            SetObject(store, "employeeWork", employeeWork);
 
             GameObject cleaningTargetObject = CreateWorldShape(
                 "World Cleaning Interaction",
@@ -335,6 +348,16 @@ namespace Margins.Editor
                 store);
 
             FirstStoreCustomerSceneSetup.Configure(scene);
+            ConfigureLocalNavigation(
+                scene,
+                fixturePlacement,
+                playerObject,
+                deliveryObject,
+                Require("Mop Tool"),
+                requiredFixture,
+                colaShelfFixture,
+                chipsShelfFixture,
+                deliveryDropFixture);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -504,45 +527,53 @@ namespace Margins.Editor
             ProductDefinition chips,
             Transform checkoutFixture,
             Transform deliveryDropFixture,
-            Transform fallbackShelfFixture,
+            Transform colaShelfFixture,
+            Transform chipsShelfFixture,
             Material cashierMaterial,
             Material stockerMaterial,
             Material managerMaterial)
         {
             Transform cashierAvatar = CreateEmployeeAvatar(
                 "Detailed Cashier Employee",
-                new Vector3(4.2f, 0.9f, -1.1f),
+                new Vector3(5f, 0f, -5.6f),
                 cashierMaterial,
+                20,
                 out TextMesh cashierLabel);
             Transform stockerAvatar = CreateEmployeeAvatar(
                 "Detailed Stock Employee",
-                new Vector3(-3.45f, 0.9f, 4.62f),
+                new Vector3(-4.8f, 0f, 4.45f),
                 stockerMaterial,
+                25,
                 out TextMesh stockerLabel);
             Transform managerAvatar = CreateEmployeeAvatar(
                 "Detailed Manager Employee",
-                new Vector3(-3.8f, 0.9f, -1.3f),
+                new Vector3(-5.25f, 0f, -3f),
                 managerMaterial,
+                30,
                 out TextMesh managerLabel);
 
             Transform cashierWork = CreateAttachedWorkPoint(
                 checkoutFixture,
                 "Cashier Work Point",
-                new Vector3(-0.15f, 0.9f, -1.55f));
+                new Vector3(-0.15f, 0f, -1.55f));
             Transform deliveryWork = CreateWorkPoint(
                 "Receiving Work Point",
-                new Vector3(-3.45f, 0.9f, 4.62f));
+                new Vector3(-4.8f, 0f, 4.45f));
             Transform deliveryDrop = CreateAttachedWorkPoint(
                 deliveryDropFixture,
                 "Stockroom Delivery Setdown Point",
-                new Vector3(0f, 0.48f, 0f));
+                new Vector3(0f, 0f, -0.85f));
             Transform shelfWork = CreateAttachedWorkPoint(
-                fallbackShelfFixture,
-                "Shelf Stocking Work Point",
-                new Vector3(0f, 0.9f, -1f));
+                colaShelfFixture,
+                "Employee Stocking Work Point",
+                new Vector3(0f, 0f, -1.15f));
+            CreateAttachedWorkPoint(
+                chipsShelfFixture,
+                "Employee Stocking Work Point",
+                new Vector3(0f, 0f, -1.15f));
             Transform managerWork = CreateWorkPoint(
                 "Manager Work Point",
-                new Vector3(-2.6f, 0.9f, -2.25f));
+                new Vector3(-5.25f, 0f, -3f));
             Transform boxCarry = CreateCarryPoint(
                 stockerAvatar,
                 "Employee Box Carry Point",
@@ -573,6 +604,8 @@ namespace Margins.Editor
             SetObject(controller, "managerWorkPoint", managerWork);
             SetObject(controller, "stockerBoxCarryPoint", boxCarry);
             SetObject(controller, "stockerUnitCarryPoint", unitCarry);
+            SetFloat(controller, "movementSpeed", 2.8f);
+            SetBoolean(controller, "showDeveloperStatusLabels", false);
             return controller;
         }
 
@@ -694,6 +727,104 @@ namespace Margins.Editor
             SetArray(propertyArea, "structuralObstacles", obstacles);
         }
 
+        private static void ConfigureLocalNavigation(
+            Scene scene,
+            FixturePlacementController fixturePlacement,
+            GameObject player,
+            GameObject delivery,
+            GameObject mop,
+            params PlaceableFixtureComponent[] movableFixtures)
+        {
+            DestroySceneObjectsNamed("First Store Local Navigation");
+
+            ConfigureIgnoredNavigationSource(player);
+            ConfigureIgnoredNavigationSource(delivery);
+            ConfigureIgnoredNavigationSource(mop);
+            foreach (PlaceableFixtureComponent fixture in movableFixtures)
+            {
+                ConfigureMovableNavigationObstacle(fixture);
+            }
+
+            GameObject navigationRoot = new("First Store Local Navigation");
+            SceneManager.MoveGameObjectToScene(navigationRoot, scene);
+            NavMeshSurface surface = navigationRoot.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Volume;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.layerMask = ~0;
+            surface.center = new Vector3(0f, 1.75f, -7.5f);
+            surface.size = new Vector3(24f, 4.5f, 27f);
+
+            if (AssetDatabase.LoadAssetAtPath<NavMeshData>(NavMeshDataPath) != null &&
+                !AssetDatabase.DeleteAsset(NavMeshDataPath))
+            {
+                throw new InvalidOperationException(
+                    "The previous first-store NavMesh asset could not be replaced.");
+            }
+
+            Physics.SyncTransforms();
+            surface.BuildNavMesh();
+            if (surface.navMeshData == null)
+            {
+                throw new InvalidOperationException(
+                    "First-store local navigation did not produce NavMesh data.");
+            }
+
+            surface.navMeshData.name = "First Store Local Navigation";
+            AssetDatabase.CreateAsset(surface.navMeshData, NavMeshDataPath);
+            EditorUtility.SetDirty(surface);
+            EditorUtility.SetDirty(fixturePlacement);
+        }
+
+        private static void ConfigureIgnoredNavigationSource(GameObject root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            NavMeshModifier modifier = GetOrAdd<NavMeshModifier>(root);
+            modifier.ignoreFromBuild = true;
+            modifier.applyToChildren = true;
+            EditorUtility.SetDirty(modifier);
+        }
+
+        private static Collider ConfigurePlacementFloorCollider(GameObject floor)
+        {
+            MeshCollider meshCollider = floor.GetComponent<MeshCollider>();
+            if (meshCollider != null)
+            {
+                UnityEngine.Object.DestroyImmediate(meshCollider);
+            }
+
+            BoxCollider boxCollider = GetOrAdd<BoxCollider>(floor);
+            boxCollider.center = Vector3.zero;
+            boxCollider.size = Vector3.one;
+            boxCollider.isTrigger = false;
+            boxCollider.enabled = true;
+            return boxCollider;
+        }
+
+        private static void ConfigureMovableNavigationObstacle(
+            PlaceableFixtureComponent fixture)
+        {
+            if (fixture == null)
+            {
+                return;
+            }
+
+            ConfigureIgnoredNavigationSource(fixture.gameObject);
+            NavMeshObstacle obstacle = GetOrAdd<NavMeshObstacle>(fixture.gameObject);
+            obstacle.shape = NavMeshObstacleShape.Box;
+            obstacle.center = new Vector3(0f, 0.9f, 0f);
+            obstacle.size = new Vector3(
+                fixture.Footprint.width,
+                1.8f,
+                fixture.Footprint.depth);
+            obstacle.carving = true;
+            obstacle.carveOnlyStationary = false;
+            EditorUtility.SetDirty(obstacle);
+        }
+
         private static void ConfigureCarryableMop(
             GameObject mopObject,
             PlayerCarryableToolController carrier)
@@ -727,26 +858,26 @@ namespace Margins.Editor
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(0),
                 checkoutFixture,
-                14,
-                20,
+                16,
+                16,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(1),
                 colaShelfFixture,
-                8,
-                22,
+                7,
+                21,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(2),
                 chipsShelfFixture,
-                13,
-                22,
+                14,
+                21,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(3),
                 deliveryDropFixture,
-                11,
-                23,
+                3,
+                12,
                 0);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(fixturePlacement);
@@ -811,6 +942,7 @@ namespace Margins.Editor
             string objectName,
             Vector3 position,
             Material material,
+            int avoidancePriority,
             out TextMesh label)
         {
             DestroySceneObjectsNamed(objectName);
@@ -820,7 +952,7 @@ namespace Margins.Editor
             GameObject torso = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             torso.name = $"{objectName} Torso";
             torso.transform.SetParent(root.transform, false);
-            torso.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            torso.transform.localPosition = new Vector3(0f, 0.92f, 0f);
             torso.transform.localScale = new Vector3(0.43f, 0.62f, 0.34f);
             Collider torsoCollider = torso.GetComponent<Collider>();
             if (torsoCollider != null)
@@ -832,7 +964,7 @@ namespace Margins.Editor
             GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             head.name = $"{objectName} Head";
             head.transform.SetParent(root.transform, false);
-            head.transform.localPosition = new Vector3(0f, 0.92f, 0f);
+            head.transform.localPosition = new Vector3(0f, 1.82f, 0f);
             head.transform.localScale = Vector3.one * 0.38f;
             Collider headCollider = head.GetComponent<Collider>();
             if (headCollider != null)
@@ -848,7 +980,7 @@ namespace Margins.Editor
                 leg.transform.SetParent(root.transform, false);
                 leg.transform.localPosition = new Vector3(
                     index == 0 ? -0.17f : 0.17f,
-                    -0.72f,
+                    0.18f,
                     0f);
                 leg.transform.localScale = new Vector3(0.2f, 0.58f, 0.24f);
                 Collider legCollider = leg.GetComponent<Collider>();
@@ -862,7 +994,7 @@ namespace Margins.Editor
             GameObject badge = GameObject.CreatePrimitive(PrimitiveType.Cube);
             badge.name = $"{objectName} Role Badge";
             badge.transform.SetParent(root.transform, false);
-            badge.transform.localPosition = new Vector3(0f, 0.3f, -0.35f);
+            badge.transform.localPosition = new Vector3(0f, 1.2f, -0.35f);
             badge.transform.localScale = new Vector3(0.32f, 0.17f, 0.035f);
             Collider badgeCollider = badge.GetComponent<Collider>();
             if (badgeCollider != null)
@@ -873,7 +1005,7 @@ namespace Margins.Editor
 
             GameObject labelObject = new($"{objectName} Label");
             labelObject.transform.SetParent(root.transform, false);
-            labelObject.transform.localPosition = new Vector3(0f, 0.3f, -0.375f);
+            labelObject.transform.localPosition = new Vector3(0f, 1.2f, -0.375f);
             labelObject.transform.localRotation = Quaternion.identity;
             labelObject.transform.localScale = Vector3.one * 0.035f;
             label = labelObject.AddComponent<TextMesh>();
@@ -883,6 +1015,12 @@ namespace Margins.Editor
             label.characterSize = 0.22f;
             label.fontSize = 48;
             label.color = Color.white;
+            labelObject.SetActive(false);
+
+            LocalNavigationAgent navigation =
+                root.AddComponent<LocalNavigationAgent>();
+            navigation.Configure(2.8f, avoidancePriority);
+            EditorUtility.SetDirty(navigation);
 
             root.SetActive(false);
             return root.transform;
@@ -901,7 +1039,11 @@ namespace Margins.Editor
             string objectName,
             Vector3 localPosition)
         {
-            DestroySceneObjectsNamed(objectName);
+            Transform existing = parent.Find(objectName);
+            if (existing != null)
+            {
+                UnityEngine.Object.DestroyImmediate(existing.gameObject);
+            }
             GameObject point = new(objectName);
             point.transform.SetParent(parent, false);
             point.transform.localPosition = localPosition;
@@ -1092,6 +1234,20 @@ namespace Margins.Editor
                 throw new InvalidOperationException(
                     $"Serialized property '{propertyName}' is missing on '{target.name}'.");
             property.intValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetFloat(
+            UnityEngine.Object target,
+            string propertyName,
+            float value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.floatValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }
