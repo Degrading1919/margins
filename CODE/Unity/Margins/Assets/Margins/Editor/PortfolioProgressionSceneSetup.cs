@@ -23,12 +23,15 @@ namespace Margins.Editor
                 .GetComponent<StoreOperatingController>();
             FirstStoreInventoryComponent inventory = Require("First-Store Inventory")
                 .GetComponent<FirstStoreInventoryComponent>();
+            DeliveryBoxComponent delivery = Require("Mixed Starter Delivery")
+                .GetComponent<DeliveryBoxComponent>();
             FirstStoreDiskPersistenceController disk =
                 UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
             FirstStoreValidationController validation =
                 controls.GetComponent<FirstStoreValidationController>();
 
             if (player == null || store == null || inventory == null ||
+                delivery == null ||
                 disk == null || validation == null)
             {
                 throw new InvalidOperationException(
@@ -41,6 +44,7 @@ namespace Margins.Editor
             SetObject(portfolio, "firstPersonController", player);
             SetObject(portfolio, "firstStore", store);
             SetObject(portfolio, "firstStoreInventory", inventory);
+            SetObject(portfolio, "firstStoreDeliveryBox", delivery);
             SetObject(disk, "portfolioProgression", portfolio);
             SetObject(validation, "portfolioProgression", portfolio);
 

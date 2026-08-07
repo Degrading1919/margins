@@ -342,6 +342,15 @@ namespace Margins
                     return Reject(
                         "Load rejected: detailed first-shift result and portfolio posting disagree.");
                 }
+
+                if (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
+                        saveData.firstStore,
+                        acceptedPortfolio,
+                        out error))
+                {
+                    return Reject(
+                        $"Load rejected: procurement reconciliation failed: {error}");
+                }
             }
             else if (saveData.portfolio != null)
             {

@@ -20,6 +20,7 @@ namespace Margins
 
         internal DeliveryContainer Container { get; private set; }
         public string StableContainerId => stableContainerId;
+        public string InventoryLocationId => inventoryLocationId;
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
         public bool IsInitialized => Container != null;
@@ -207,6 +208,31 @@ namespace Margins
             }
 
             result = Container.TryOpen();
+            error = null;
+            return true;
+        }
+
+        public bool TryPrepareProcurementDelivery(out string error)
+        {
+            if (IsCarried)
+            {
+                error = "A carried delivery box cannot be replaced by an arriving order.";
+                return false;
+            }
+
+            if (!TryValidateConfiguration(out error) ||
+                !DeliveryContainer.TryCreate(
+                    inventoryComponent.Inventory,
+                    stableContainerId,
+                    inventoryLocationId,
+                    false,
+                    out DeliveryContainer replacement,
+                    out error))
+            {
+                return false;
+            }
+
+            Container = replacement;
             error = null;
             return true;
         }

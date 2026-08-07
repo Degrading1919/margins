@@ -284,13 +284,17 @@ namespace Margins.Tests.EditMode
                     report.grossSalesCents -
                     report.costOfGoodsSoldCents -
                     report.payrollCents -
-                    report.rentCents));
+                    report.rentCents -
+                    report.deliveryFeesCents));
             Assert.That(
                 after.cashCents,
                 Is.EqualTo(beforeCash + report.cashChangeCents));
             Assert.That(
                 location.inventoryUnits,
-                Is.EqualTo(beforeInventory - report.unitsSold + report.reorderedUnits));
+                Is.EqualTo(beforeInventory - report.unitsSold),
+                "An order is paid when placed but cannot become inventory before delivery.");
+            Assert.That(report.reorderedUnits, Is.GreaterThan(0));
+            Assert.That(after.procurement.orders.Single().status, Is.EqualTo(PurchaseOrderStatus.Pending));
             Assert.That(location.inventoryUnits, Is.InRange(0, location.inventoryCapacityUnits));
             Assert.That(
                 after.employees.All(employee =>

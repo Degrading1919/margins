@@ -3,10 +3,13 @@
 ## Status
 
 - **Status:** Owner-authorized temporary vertical-slice implementation
-- **Implementation marker:** Disk implementation and focused EditMode/PlayMode
-  verification complete; final integrated suites, build, and owner testing pending
-- **File-envelope version:** `1`
-- **First-store snapshot version:** `2`
+- **Implementation marker:** Disk, portfolio, and procurement implementation with
+  focused EditMode/PlayMode verification; integrated suites and build are recorded
+  with the implementing pull request
+- **File-envelope version:** `2`
+- **First-store snapshot version:** `3`
+- **Portfolio snapshot version:** `2`
+- **Procurement snapshot version:** `1`
 - **Disposition:** Reversible first-store validation implementation only; it is not
   approval of the eventual production save architecture, migration policy, or slots
 
@@ -40,6 +43,10 @@ this contract does not choose its migration or compatibility policy.
 
 ## Envelope
 
+The file envelope contains the first-store snapshot, player transform, and
+portfolio snapshot. The portfolio snapshot remains the authority for company
+cash, locations, employees, policies, aggregate inventory, and procurement.
+
 The first-store snapshot contains:
 
 - integer version;
@@ -58,6 +65,21 @@ The first-store snapshot contains:
   and transaction count;
 - one bounded cleaning-task snapshot;
 - player world position, body yaw, and camera pitch.
+
+The nested procurement snapshot contains:
+
+- one monotonic procurement clock and next purchase-order ordinal;
+- purchase orders sorted by stable order ID;
+- location, supplier, and container-definition IDs;
+- captured placement and fulfillment ticks;
+- `pending`, `fulfilled`, `delivered`, `partially_received`, `canceled`, or
+  `completed` status;
+- configured resource lines with ordered and received integer quantities,
+  captured unit cost, and checked line cost;
+- subtotal, delivery fee, total payment, and cancellation refund in integer
+  cents; and
+- deterministic payment, fulfillment, delivery, inventory-receipt,
+  completion-receipt, and cancellation event IDs as applicable to status.
 
 ## Invariants
 
@@ -80,25 +102,44 @@ The first-store snapshot contains:
 - `closed_with_result_pending` requires totals that reconcile to the ledger and
   its captured sale-time unit costs.
 - Unsupported versions reject the snapshot without partial mutation.
+- A location has at most one nonterminal purchase order.
+- Order and event IDs are unique, deterministic, and never reused. Status must
+  agree with every present or absent lifecycle event.
+- Payment is recorded when the order is placed. Only a pending order may cancel,
+  and its full payment is refunded once.
+- Fulfillment cannot occur before the captured due tick. Delivery creation and
+  absolute receipt updates are idempotent.
+- Received quantity cannot move backward or exceed ordered quantity. Completion
+  requires every line to be fully received.
+- Net purchase-order delivery fees reconcile exactly to each location's lifetime
+  delivery-fee total; procurement purchases cannot exceed its recorded lifetime
+  inventory purchases.
+- For an active detailed `delivered` or `partially_received` order, the physical
+  delivery-location quantities exactly equal ordered quantity minus received
+  quantity for every line. Off-site inventory never receives those units again.
 - Player targeting, prompts, previews, development-HUD state, derived objective
   text, presentation materials, animations, and cached occupancy are excluded.
 
 ## Restoration order
 
-1. Validate envelope and version.
-2. Restore fixture layout and derived occupancy.
-3. Restore product registry, inventory locations, and quantities.
-4. Restore delivery containers against delivery-type inventory locations.
-5. Restore the bounded transaction ledger against known products without
+1. Validate the file envelope and nested snapshot versions.
+2. Validate the portfolio, procurement clock, purchase orders, lifecycle events,
+   company cash, locations, employees, and reports without mutation.
+3. Validate detailed purchase-order quantities against the first-store physical
+   delivery location before accepting either snapshot.
+4. Restore fixture layout and derived occupancy.
+5. Restore product registry, inventory locations, and quantities.
+6. Restore delivery containers against delivery-type inventory locations.
+7. Restore the bounded transaction ledger against known products without
    consuming inventory.
-6. Restore store operating state and validate totals against the ledger's
+8. Restore store operating state and validate totals against the ledger's
    captured sale-time product unit costs.
-7. Validate the optional cleaning task.
-8. Validate physical-unit counts and shelf placements against the accepted
-   inventory without mutating the scene.
-9. Validate player position, body yaw, and camera pitch.
-10. Reconcile distinct Unity physical-unit objects only after the complete domain
-    restore succeeds, then apply the validated player transform.
+9. Validate the optional cleaning task.
+10. Validate physical-unit counts and shelf placements against the accepted
+    inventory without mutating the scene.
+11. Validate player position, body yaw, and camera pitch.
+12. Apply the accepted portfolio, reconcile distinct Unity physical-unit objects,
+    and apply the validated player transform only after every validation succeeds.
 
 ## Deferred decisions
 
@@ -106,8 +147,9 @@ The first-store snapshot contains:
 - Migration from the foundation save
 - Production atomic-write, backup-retention, corruption-recovery, and
   player-facing messaging policies
-- Multi-location envelope and aggregate-simulation state
 - Compatibility guarantees
+- Complex supplier behavior, routing, substitutions, damage, invoices, and
+  speculative logistics
 
 No temporary field becomes a production compatibility promise. The eventual
 production envelope, migration policy, and compatibility guarantees remain

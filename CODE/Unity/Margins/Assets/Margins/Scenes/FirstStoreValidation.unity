@@ -6480,6 +6480,8 @@ MonoBehaviour:
   firstPersonController: {fileID: 33272900}
   firstStore: {fileID: 2123028612}
   firstStoreInventory: {fileID: 1319953152}
+  firstStoreDeliveryBox: {fileID: 287785512}
+  procurementTickSeconds: 5
 --- !u!114 &794714431
 MonoBehaviour:
   m_ObjectHideFlags: 0

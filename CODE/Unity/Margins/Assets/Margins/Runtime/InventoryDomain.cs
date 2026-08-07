@@ -1,6 +1,7 @@
 // Draft implementation — Unity verification pending
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Margins
 {
@@ -225,6 +226,18 @@ namespace Margins
         InsufficientQuantity
     }
 
+    public enum InventoryReceiptFailure
+    {
+        None,
+        InvalidLocation,
+        DestinationIsNotDeliveryContainer,
+        EmptyRequest,
+        UnknownProduct,
+        InvalidQuantity,
+        DestinationCapacityExceeded,
+        DestinationOccupiedByOtherProduct
+    }
+
     public sealed class FirstStoreInventory
     {
         private sealed class LocationState
@@ -407,6 +420,36 @@ namespace Margins
                 total = checked(total + GetQuantity(location.LocationId, productId));
             }
             return total;
+        }
+
+        /// <summary>
+        /// The explicit inventory-acquisition boundary. Purchase-order state
+        /// supplies idempotency; this authority validates the complete batch
+        /// before creating any units in a delivery-container location.
+        /// </summary>
+        public bool TryReceiveDelivery(
+            string destinationLocationId,
+            IReadOnlyDictionary<string, int> receivedQuantities,
+            out InventoryReceiptFailure failure)
+        {
+            if (!ValidateDeliveryReceipt(
+                    destinationLocationId,
+                    receivedQuantities,
+                    out failure))
+            {
+                return false;
+            }
+
+            LocationState destination = locations[destinationLocationId];
+            foreach (string productId in receivedQuantities.Keys
+                         .OrderBy(value => value, StringComparer.Ordinal))
+            {
+                destination.Quantities.TryGetValue(productId, out int existing);
+                destination.Quantities[productId] = checked(
+                    existing + receivedQuantities[productId]);
+            }
+
+            return true;
         }
 
         public InventoryTransferResult CanTransfer(
@@ -762,6 +805,83 @@ namespace Margins
                 sourceLocationId,
                 destinationLocationId,
                 quantityUnits);
+        }
+
+        private bool ValidateDeliveryReceipt(
+            string destinationLocationId,
+            IReadOnlyDictionary<string, int> receivedQuantities,
+            out InventoryReceiptFailure failure)
+        {
+            if (!FirstStoreIdentifier.IsValid(destinationLocationId) ||
+                !locations.TryGetValue(
+                    destinationLocationId,
+                    out LocationState destination))
+            {
+                failure = InventoryReceiptFailure.InvalidLocation;
+                return false;
+            }
+
+            if (destination.Kind != InventoryLocationKind.DeliveryContainer)
+            {
+                failure = InventoryReceiptFailure.DestinationIsNotDeliveryContainer;
+                return false;
+            }
+
+            if (receivedQuantities == null || receivedQuantities.Count == 0)
+            {
+                failure = InventoryReceiptFailure.EmptyRequest;
+                return false;
+            }
+
+            int requestedTotal = 0;
+            int resultingProductKinds = destination.Quantities.Count;
+            foreach (string productId in receivedQuantities.Keys
+                         .OrderBy(value => value, StringComparer.Ordinal))
+            {
+                if (!IsKnownProduct(productId))
+                {
+                    failure = InventoryReceiptFailure.UnknownProduct;
+                    return false;
+                }
+
+                int requested = receivedQuantities[productId];
+                if (requested <= 0)
+                {
+                    failure = InventoryReceiptFailure.InvalidQuantity;
+                    return false;
+                }
+
+                destination.Quantities.TryGetValue(productId, out int existing);
+                if (existing > int.MaxValue - requested ||
+                    requestedTotal > int.MaxValue - requested)
+                {
+                    failure = InventoryReceiptFailure.DestinationCapacityExceeded;
+                    return false;
+                }
+
+                requestedTotal += requested;
+                if (existing == 0)
+                {
+                    resultingProductKinds++;
+                }
+            }
+
+            if (destination.CapacityUnits >= 0 &&
+                destination.TotalQuantity >
+                destination.CapacityUnits - requestedTotal)
+            {
+                failure = InventoryReceiptFailure.DestinationCapacityExceeded;
+                return false;
+            }
+
+            if (destination.SingleProductOnly && resultingProductKinds > 1)
+            {
+                failure = InventoryReceiptFailure.DestinationOccupiedByOtherProduct;
+                return false;
+            }
+
+            failure = InventoryReceiptFailure.None;
+            return true;
         }
 
         private static bool ContainsOtherProduct(LocationState location, string productId)
