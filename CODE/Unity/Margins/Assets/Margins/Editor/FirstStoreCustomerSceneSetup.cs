@@ -37,36 +37,46 @@ namespace Margins.Editor
             GameObject root = new(RootName);
             SceneManager.MoveGameObjectToScene(root, scene);
 
+            PlaceableFixtureComponent requiredFixture =
+                GameObject.Find("Essential Checkout Fixture")
+                    ?.GetComponent<PlaceableFixtureComponent>() ??
+                throw new InvalidOperationException(
+                    "Autonomous customer setup requires the checkout fixture.");
+            Transform colaShelf = GameObject.Find("fixture-shelf-cola-validation")
+                ?.transform ?? throw new InvalidOperationException(
+                    "Autonomous customer setup requires the cola shelf fixture.");
+            Transform chipsShelf = GameObject.Find("fixture-shelf-chips-validation")
+                ?.transform ?? throw new InvalidOperationException(
+                    "Autonomous customer setup requires the chips shelf fixture.");
+
             Transform entrance = CreatePoint(root.transform, "Customer Entrance", new Vector3(0f, 0f, -5.4f));
             Transform exit = CreatePoint(root.transform, "Customer Exit", new Vector3(-1.25f, 0f, -5.4f));
-            Transform checkoutCustomer = CreatePoint(root.transform, "Customer Checkout Position", new Vector3(2.95f, 0f, 0.45f));
+            Transform checkoutCustomer = CreateLocalPoint(
+                requiredFixture.transform,
+                "Customer Checkout Position",
+                new Vector3(0f, 0f, 0.95f));
             Transform[] browsePoints =
             {
-                CreatePoint(root.transform, "Customer Browse Cola", new Vector3(-1.55f, 0f, 0.65f)),
-                CreatePoint(root.transform, "Customer Browse Chips", new Vector3(1.55f, 0f, 0.65f))
+                CreateLocalPoint(colaShelf, "Customer Browse Cola", new Vector3(0f, 0f, -1.15f)),
+                CreateLocalPoint(chipsShelf, "Customer Browse Chips", new Vector3(0f, 0f, -1.15f))
             };
             Transform[] queuePoints =
             {
-                CreatePoint(root.transform, "Customer Queue 1", new Vector3(2.95f, 0f, 1.45f)),
-                CreatePoint(root.transform, "Customer Queue 2", new Vector3(2.95f, 0f, 2.45f)),
-                CreatePoint(root.transform, "Customer Queue 3", new Vector3(1.85f, 0f, 3.25f)),
-                CreatePoint(root.transform, "Customer Queue 4", new Vector3(0.7f, 0f, 3.25f))
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 1", new Vector3(0f, 0f, 1.95f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 2", new Vector3(0f, 0f, 2.95f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 3", new Vector3(-1.1f, 0f, 3.75f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 4", new Vector3(-2.25f, 0f, 3.75f))
             };
             Transform[] checkoutItems =
             {
-                CreatePoint(root.transform, "Customer Checkout Item 1", new Vector3(2.72f, 1.12f, -0.48f)),
-                CreatePoint(root.transform, "Customer Checkout Item 2", new Vector3(3.18f, 1.12f, -0.48f))
+                CreateLocalPoint(requiredFixture.transform, "Customer Checkout Item 1", new Vector3(-0.23f, 1.12f, 0.02f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Checkout Item 2", new Vector3(0.23f, 1.12f, 0.02f))
             };
 
             StoreOperatingController store = Require<StoreOperatingController>();
             CheckoutStationComponent checkout = Require<CheckoutStationComponent>();
             PhysicalProductUnitRegistry physicalUnits = Require<PhysicalProductUnitRegistry>();
             FixturePlacementController fixturePlacement = Require<FixturePlacementController>();
-            PlaceableFixtureComponent requiredFixture =
-                GameObject.Find("Essential Checkout Fixture")
-                    ?.GetComponent<PlaceableFixtureComponent>() ??
-                throw new InvalidOperationException(
-                    "Autonomous customer setup requires the checkout fixture.");
 
             StoreCustomerFlowController flow =
                 root.AddComponent<StoreCustomerFlowController>();
@@ -110,9 +120,16 @@ namespace Margins.Editor
                 EditorUtility.SetDirty(stagedTarget);
             }
 
+            CustomerCheckoutWorldInteractionTarget oldCustomerTarget =
+                checkoutTargetObject.GetComponent<CustomerCheckoutWorldInteractionTarget>();
+            if (oldCustomerTarget != null)
+            {
+                UnityEngine.Object.DestroyImmediate(oldCustomerTarget);
+            }
+
             CustomerCheckoutWorldInteractionTarget customerTarget =
-                checkoutTargetObject.GetComponent<CustomerCheckoutWorldInteractionTarget>() ??
-                checkoutTargetObject.AddComponent<CustomerCheckoutWorldInteractionTarget>();
+                requiredFixture.GetComponent<CustomerCheckoutWorldInteractionTarget>() ??
+                requiredFixture.gameObject.AddComponent<CustomerCheckoutWorldInteractionTarget>();
             SetString(customerTarget, "stableTargetId", "target-checkout-customers-01");
             SetObject(customerTarget, "customerFlow", flow);
             SetObject(customerTarget, "operatingController", store);
@@ -183,9 +200,23 @@ namespace Margins.Editor
             string name,
             Vector3 position)
         {
+            DestroySceneObjectsNamed(name, SceneManager.GetActiveScene());
             GameObject point = new(name);
             point.transform.SetParent(parent, false);
             point.transform.position = position;
+            return point.transform;
+        }
+
+        private static Transform CreateLocalPoint(
+            Transform parent,
+            string name,
+            Vector3 localPosition)
+        {
+            DestroySceneObjectsNamed(name, SceneManager.GetActiveScene());
+            GameObject point = new(name);
+            point.transform.SetParent(parent, false);
+            point.transform.localPosition = localPosition;
+            point.transform.localRotation = Quaternion.identity;
             return point.transform;
         }
 

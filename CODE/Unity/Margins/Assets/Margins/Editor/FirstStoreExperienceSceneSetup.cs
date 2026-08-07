@@ -122,7 +122,7 @@ namespace Margins.Editor
             ConfigureShelf(
                 presentationRoot.transform,
                 colaShelf,
-                new Vector3(-2.55f, 0f, 1.25f),
+                new Vector3(-2.5f, 0f, 1.5f),
                 "COLD DRINKS",
                 teal,
                 charcoal,
@@ -131,7 +131,7 @@ namespace Margins.Editor
             ConfigureShelf(
                 presentationRoot.transform,
                 chipsShelf,
-                new Vector3(2.55f, 0f, 1.25f),
+                new Vector3(2.5f, 0f, 1.5f),
                 "SNACKS",
                 orange,
                 charcoal,
@@ -148,14 +148,11 @@ namespace Margins.Editor
                 chips,
                 cream);
 
-            GameObject fixtureHandle = Require("Essential Checkout Fixture Placement Handle");
             GameObject requiredFixture = Require("Essential Checkout Fixture");
             CheckoutPresentation checkoutPresentation = ConfigureCheckout(
-                fixtureHandle,
                 requiredFixture,
                 charcoal,
                 laminate,
-                cardboard,
                 teal,
                 cream,
                 cola,
@@ -177,6 +174,12 @@ namespace Margins.Editor
                 spill,
                 teal,
                 metal,
+                cream);
+
+            ConfigureDeliveryDrop(
+                Require("Stockroom Delivery Drop"),
+                charcoal,
+                teal,
                 cream);
 
             GameObject colaTarget = deliveryObject.transform
@@ -202,7 +205,7 @@ namespace Margins.Editor
             FirstStorePromptPresenter presenter = Require("First-Store Validation Controls")
                 .GetComponent<FirstStorePromptPresenter>();
             SetObject(presenter, "storeControlTarget", storeControl.transform);
-            SetObject(presenter, "fixtureHandleTarget", fixtureHandle.transform);
+            SetObject(presenter, "fixtureTarget", requiredFixture.transform);
             SetObject(presenter, "deliveryTarget", deliveryObject.transform);
             SetObject(presenter, "colaDeliveryTarget", colaTarget.transform);
             SetObject(presenter, "chipsDeliveryTarget", chipsTarget.transform);
@@ -278,6 +281,7 @@ namespace Margins.Editor
             if (validation != null)
             {
                 SetObject(validation, "portfolioProgression", portfolio);
+                SetBoolean(validation, "enableDevelopmentHud", false);
             }
 
             EditorUtility.SetDirty(presentationRoot);
@@ -473,8 +477,6 @@ namespace Margins.Editor
 
             CreateShape(root, "Checkout Floor Accent", PrimitiveType.Cube,
                 new Vector3(3.25f, 0.015f, -1.95f), new Vector3(3.15f, 0.03f, 2.5f), teal, false);
-            CreateText(root, "Checkout Overhead", "CHECKOUT",
-                new Vector3(3.25f, 2.55f, -0.85f), 0.11f, cream.color, TextAnchor.MiddleCenter);
 
             List<Light> lights = new();
             List<Renderer> bulbs = new();
@@ -528,6 +530,7 @@ namespace Margins.Editor
             Material metal,
             Material cream)
         {
+            DestroyExperienceChildren(shelfObject.transform);
             shelfObject.transform.SetPositionAndRotation(position, Quaternion.identity);
             shelfObject.transform.localScale = Vector3.one;
             SetRendererEnabled(shelfObject, false);
@@ -556,38 +559,55 @@ namespace Margins.Editor
             string prefix = shelfObject.name.Contains("cola", StringComparison.Ordinal)
                 ? "Cola Shelf"
                 : "Chips Shelf";
-            CreateShape(presentationRoot, $"{prefix} Back", PrimitiveType.Cube,
-                position + new Vector3(0f, 0.92f, 0.28f),
+            CreateShape(shelfObject.transform, $"Experience {prefix} Back", PrimitiveType.Cube,
+                new Vector3(0f, 0.92f, 0.28f),
                 new Vector3(2.25f, 1.84f, 0.12f), charcoal, true);
-            CreateShape(presentationRoot, $"{prefix} Left Post", PrimitiveType.Cube,
-                position + new Vector3(-1.08f, 0.93f, 0f),
+            CreateShape(shelfObject.transform, $"Experience {prefix} Left Post", PrimitiveType.Cube,
+                new Vector3(-1.08f, 0.93f, 0f),
                 new Vector3(0.1f, 1.86f, 0.7f), metal, true);
-            CreateShape(presentationRoot, $"{prefix} Right Post", PrimitiveType.Cube,
-                position + new Vector3(1.08f, 0.93f, 0f),
+            CreateShape(shelfObject.transform, $"Experience {prefix} Right Post", PrimitiveType.Cube,
+                new Vector3(1.08f, 0.93f, 0f),
                 new Vector3(0.1f, 1.86f, 0.7f), metal, true);
             float[] shelfHeights = { 0.43f, 0.95f, 1.47f };
             for (int index = 0; index < shelfHeights.Length; index++)
             {
-                CreateShape(presentationRoot, $"{prefix} Deck {index + 1}", PrimitiveType.Cube,
-                    position + new Vector3(0f, shelfHeights[index], 0f),
+                CreateShape(shelfObject.transform, $"Experience {prefix} Deck {index + 1}", PrimitiveType.Cube,
+                    new Vector3(0f, shelfHeights[index], 0f),
                     new Vector3(2.24f, 0.08f, 0.74f), metal, true);
-                CreateShape(presentationRoot, $"{prefix} Price Rail {index + 1}", PrimitiveType.Cube,
-                    position + new Vector3(0f, shelfHeights[index] + 0.04f, -0.39f),
+                CreateShape(shelfObject.transform, $"Experience {prefix} Price Rail {index + 1}", PrimitiveType.Cube,
+                    new Vector3(0f, shelfHeights[index] + 0.04f, -0.39f),
                     new Vector3(2.18f, 0.1f, 0.05f), accent, false);
             }
-            CreateShape(presentationRoot, $"{prefix} Header", PrimitiveType.Cube,
-                position + new Vector3(0f, 1.82f, 0f),
+            GameObject header = CreateShape(shelfObject.transform, $"Experience {prefix} Header", PrimitiveType.Cube,
+                new Vector3(0f, 1.82f, 0f),
                 new Vector3(2.3f, 0.34f, 0.18f), accent, false);
-            CreateText(presentationRoot, $"{prefix} Category", category,
-                position + new Vector3(0f, 1.82f, -0.13f),
+            CreateText(shelfObject.transform, $"Experience {prefix} Category", category,
+                new Vector3(0f, 1.82f, -0.13f),
                 0.085f, cream.color, TextAnchor.MiddleCenter);
 
             for (int index = 0; index < 4; index++)
             {
                 float x = -0.78f + index * 0.52f;
-                CreateShape(presentationRoot, $"{prefix} Empty Bay {index + 1}", PrimitiveType.Cube,
-                    position + new Vector3(x, 0.66f, 0.3f),
+                CreateShape(shelfObject.transform, $"Experience {prefix} Empty Bay {index + 1}", PrimitiveType.Cube,
+                    new Vector3(x, 0.66f, 0.3f),
                     new Vector3(0.38f, 0.34f, 0.035f), accent, false);
+            }
+
+            PlaceableFixtureComponent placeable =
+                shelfObject.GetComponent<PlaceableFixtureComponent>();
+            if (placeable != null)
+            {
+                SerializedObject serialized = new(placeable);
+                serialized.FindProperty("previewRenderer").objectReferenceValue =
+                    header.GetComponent<Renderer>();
+                serialized.FindProperty("defaultMaterial").objectReferenceValue = accent;
+                serialized.FindProperty("validMaterial").objectReferenceValue =
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        "Assets/Margins/Content/FirstStoreValidation/ValidationValid.mat");
+                serialized.FindProperty("invalidMaterial").objectReferenceValue =
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        "Assets/Margins/Content/FirstStoreValidation/ValidationInvalid.mat");
+                serialized.ApplyModifiedPropertiesWithoutUndo();
             }
         }
 
@@ -645,30 +665,18 @@ namespace Margins.Editor
         }
 
         private static CheckoutPresentation ConfigureCheckout(
-            GameObject fixtureHandle,
             GameObject requiredFixture,
             Material charcoal,
             Material laminate,
-            Material cardboard,
             Material teal,
             Material cream,
             Material cola,
             Material chips,
             Material amberEmission)
         {
-            DestroyAllTextChildren(fixtureHandle.transform);
-            DestroyExperienceChildren(fixtureHandle.transform);
-            fixtureHandle.transform.SetPositionAndRotation(
-                new Vector3(2.95f, 0.11f, -0.45f),
-                Quaternion.identity);
-            fixtureHandle.transform.localScale = new Vector3(2.25f, 0.62f, 1.25f);
-            fixtureHandle.GetComponent<Renderer>().sharedMaterial = cardboard;
-            CreateText(fixtureHandle.transform, "Experience Checkout Kit Label", "CHECKOUT KIT",
-                new Vector3(0f, 0.7f, -0.52f), 0.06f, cream.color, TextAnchor.MiddleCenter);
-
             DestroyExperienceChildren(requiredFixture.transform);
             requiredFixture.transform.SetPositionAndRotation(
-                new Vector3(2.95f, 0f, -0.45f),
+                new Vector3(3f, 0f, -0.5f),
                 Quaternion.identity);
             requiredFixture.transform.localScale = Vector3.one;
             SetRendererEnabled(requiredFixture, false);
@@ -680,7 +688,7 @@ namespace Margins.Editor
 
             GameObject footprint = CreateShape(requiredFixture.transform, "Experience Fixture Footprint", PrimitiveType.Cube,
                 new Vector3(0f, 0.035f, 0f), new Vector3(2f, 0.07f, 1f), charcoal, false);
-            GameObject body = CreateShape(requiredFixture.transform, "Experience Checkout Body", PrimitiveType.Cube,
+            CreateShape(requiredFixture.transform, "Experience Checkout Body", PrimitiveType.Cube,
                 new Vector3(0f, 0.49f, 0f), new Vector3(2f, 0.92f, 0.9f), charcoal, true);
             CreateShape(requiredFixture.transform, "Experience Checkout Top", PrimitiveType.Cube,
                 new Vector3(0f, 0.98f, 0f), new Vector3(2.08f, 0.12f, 0.98f), laminate, true);
@@ -761,11 +769,73 @@ namespace Margins.Editor
 
             CreateShape(root, "Mop Bucket", PrimitiveType.Cylinder,
                 new Vector3(-2.25f, 0.28f, 3.02f), new Vector3(0.34f, 0.28f, 0.34f), teal, true);
-            CreateShape(root, "Mop Handle", PrimitiveType.Cylinder,
-                new Vector3(-2.25f, 1.1f, 3.02f), new Vector3(0.035f, 0.82f, 0.035f), metal, true,
-                Quaternion.Euler(0f, 0f, -8f));
-            CreateText(root, "Cleaning Station Sign", "CLEANUP",
-                new Vector3(-2.25f, 0.74f, 3.26f), 0.065f, cream.color, TextAnchor.MiddleCenter);
+            GameObject mop = new("Mop Tool");
+            mop.transform.SetParent(root, false);
+            mop.transform.localPosition = new Vector3(-2.25f, 0f, 3.02f);
+            mop.transform.localRotation = Quaternion.Euler(0f, 0f, -8f);
+            CreateShape(mop.transform, "Experience Mop Handle", PrimitiveType.Cylinder,
+                new Vector3(0f, 0.95f, 0f), new Vector3(0.035f, 0.82f, 0.035f), metal, true);
+            CreateShape(mop.transform, "Experience Mop Head", PrimitiveType.Cube,
+                new Vector3(0f, 0.08f, 0f), new Vector3(0.52f, 0.09f, 0.18f), cream, true);
+        }
+
+        private static void ConfigureDeliveryDrop(
+            GameObject deliveryDrop,
+            Material charcoal,
+            Material teal,
+            Material cream)
+        {
+            DestroyAllTextChildren(deliveryDrop.transform);
+            DestroyExperienceChildren(deliveryDrop.transform);
+            deliveryDrop.transform.SetPositionAndRotation(
+                new Vector3(-0.5f, 0f, 2.5f),
+                Quaternion.identity);
+            deliveryDrop.transform.localScale = Vector3.one;
+            SetRendererEnabled(deliveryDrop, false);
+            Collider rootCollider = deliveryDrop.GetComponent<Collider>();
+            if (rootCollider != null)
+            {
+                rootCollider.enabled = false;
+            }
+
+            GameObject footprint = CreateShape(
+                deliveryDrop.transform,
+                "Experience Delivery Drop Footprint",
+                PrimitiveType.Cube,
+                new Vector3(0f, 0.035f, 0f),
+                new Vector3(1f, 0.07f, 1f),
+                charcoal,
+                false);
+            CreateShape(
+                deliveryDrop.transform,
+                "Experience Delivery Drop Rail",
+                PrimitiveType.Cube,
+                new Vector3(0f, 0.18f, 0.42f),
+                new Vector3(0.92f, 0.28f, 0.08f),
+                teal,
+                true);
+            CreateText(
+                deliveryDrop.transform,
+                "Experience Delivery Drop Label",
+                "DELIVERY",
+                new Vector3(0f, 0.2f, 0.37f),
+                0.055f,
+                cream.color,
+                TextAnchor.MiddleCenter);
+
+            PlaceableFixtureComponent placeable =
+                deliveryDrop.GetComponent<PlaceableFixtureComponent>();
+            SerializedObject serialized = new(placeable);
+            serialized.FindProperty("previewRenderer").objectReferenceValue =
+                footprint.GetComponent<Renderer>();
+            serialized.FindProperty("defaultMaterial").objectReferenceValue = charcoal;
+            serialized.FindProperty("validMaterial").objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<Material>(
+                    "Assets/Margins/Content/FirstStoreValidation/ValidationValid.mat");
+            serialized.FindProperty("invalidMaterial").objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<Material>(
+                    "Assets/Margins/Content/FirstStoreValidation/ValidationInvalid.mat");
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static GameObject CreateObjectiveBeacon(
@@ -1200,6 +1270,20 @@ namespace Margins.Editor
                 throw new InvalidOperationException(
                     $"Serialized property '{propertyName}' is missing on '{target.name}'.");
             property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void SetBoolean(
+            UnityEngine.Object target,
+            string propertyName,
+            bool value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName) ??
+                throw new InvalidOperationException(
+                    $"Serialized property '{propertyName}' is missing on '{target.name}'.");
+            property.boolValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }

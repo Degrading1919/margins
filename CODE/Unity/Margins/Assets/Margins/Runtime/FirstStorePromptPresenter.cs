@@ -44,9 +44,11 @@ namespace Margins
 
         [SerializeField] private FirstStoreInteractionController interaction;
         [SerializeField] private FixturePlacementController fixturePlacement;
+        [SerializeField] private FirstStoreFixturePlacementModeController fixturePlacementMode;
         [SerializeField] private PlaceableFixtureComponent[] requiredFixtures;
         [SerializeField] private DeliveryBoxComponent delivery;
         [SerializeField] private StockingController stocking;
+        [SerializeField] private PlayerCarryableToolController toolCarrier;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
         [SerializeField] private StoreCustomerFlowController customerFlow;
@@ -58,7 +60,7 @@ namespace Margins
         [SerializeField] private ProductDefinition chipsProduct;
         [Header("Objective world targets")]
         [SerializeField] private Transform storeControlTarget;
-        [SerializeField] private Transform fixtureHandleTarget;
+        [SerializeField] private Transform fixtureTarget;
         [SerializeField] private Transform deliveryTarget;
         [SerializeField] private Transform colaDeliveryTarget;
         [SerializeField] private Transform chipsDeliveryTarget;
@@ -108,6 +110,10 @@ namespace Margins
             {
                 persistence.OperationCompleted += HandlePersistenceCompleted;
             }
+            if (store != null)
+            {
+                store.ReportPosted += HandleReportPosted;
+            }
         }
 
         private void OnDisable()
@@ -119,6 +125,10 @@ namespace Margins
             if (persistence != null)
             {
                 persistence.OperationCompleted -= HandlePersistenceCompleted;
+            }
+            if (store != null)
+            {
+                store.ReportPosted -= HandleReportPosted;
             }
         }
 
@@ -146,8 +156,10 @@ namespace Margins
 
         public bool TryValidateConfiguration(out string error)
         {
-            if (interaction == null || fixturePlacement == null || delivery == null ||
-                stocking == null || checkout == null || stagedCheckout == null ||
+            if (interaction == null || fixturePlacement == null ||
+                fixturePlacementMode == null || delivery == null ||
+                stocking == null || toolCarrier == null ||
+                checkout == null || stagedCheckout == null ||
                 cleaning == null || store == null || colaProduct == null ||
                 chipsProduct == null || requiredFixtures == null ||
                 requiredFixtures.Length == 0)
@@ -189,11 +201,6 @@ namespace Margins
             }
 
             bool saleComplete = checkout.CompletedTransactionCount > 0;
-            if (store.State == StoreOperatingState.ClosedWithResultPending)
-            {
-                return FirstStoreObjectiveKind.ReviewResult;
-            }
-
             if (store.State == StoreOperatingState.Closing)
             {
                 return FirstStoreObjectiveKind.FinalizeClosing;
@@ -203,11 +210,6 @@ namespace Margins
                 saleComplete && cleaning.IsComplete)
             {
                 return FirstStoreObjectiveKind.Complete;
-            }
-
-            if (store.State == StoreOperatingState.Closed)
-            {
-                return FirstStoreObjectiveKind.ClockIn;
             }
 
             for (int index = 0; index < requiredFixtures.Length; index++)
@@ -239,7 +241,8 @@ namespace Margins
                 return FirstStoreObjectiveKind.TakeChips;
             }
 
-            if (store.State == StoreOperatingState.Preparing)
+            if (store.State == StoreOperatingState.Closed ||
+                store.State == StoreOperatingState.Preparing)
             {
                 return FirstStoreObjectiveKind.OpenStore;
             }
@@ -269,7 +272,7 @@ namespace Margins
             return objective switch
             {
                 FirstStoreObjectiveKind.ClockIn =>
-                    "Use the front control to begin",
+                    "Open for business at the physical sign",
                 FirstStoreObjectiveKind.PlaceCheckout =>
                     "Place the checkout counter",
                 FirstStoreObjectiveKind.OpenDelivery =>
@@ -285,13 +288,13 @@ namespace Margins
                 FirstStoreObjectiveKind.CompleteCheckout =>
                     "Serve the waiting customer",
                 FirstStoreObjectiveKind.CleanSpill =>
-                    "Clean the spill before closing",
+                    "Pick up the mop and clean the spill",
                 FirstStoreObjectiveKind.BeginClosing =>
                     "Begin closing at the front control",
                 FirstStoreObjectiveKind.FinalizeClosing =>
-                    "Finish closing once the floor is clear",
+                    "Finish serving inside customers and clear closing blockers",
                 FirstStoreObjectiveKind.ReviewResult =>
-                    "Review the shift result",
+                    "Shift report posted",
                 _ => "The business is yours to run"
             };
         }
@@ -322,7 +325,7 @@ namespace Margins
                 FirstStoreObjectiveKind.BeginClosing or
                 FirstStoreObjectiveKind.FinalizeClosing or
                 FirstStoreObjectiveKind.ReviewResult => storeControlTarget,
-                FirstStoreObjectiveKind.PlaceCheckout => fixtureHandleTarget,
+                FirstStoreObjectiveKind.PlaceCheckout => fixtureTarget,
                 FirstStoreObjectiveKind.OpenDelivery => deliveryTarget,
                 FirstStoreObjectiveKind.TakeCola => colaDeliveryTarget,
                 FirstStoreObjectiveKind.TakeChips => chipsDeliveryTarget,
@@ -368,12 +371,29 @@ namespace Margins
 
         private void HandleInteractionResolved(FirstStoreInteractionFeedback feedback)
         {
+            if (feedback.Succeeded && !IsImportantSuccess(feedback.Action))
+            {
+                feedbackText = null;
+                feedbackUntil = 0f;
+                return;
+            }
+
             feedbackSucceeded = feedback.Succeeded;
             feedbackText = feedback.Succeeded
                 ? FriendlySuccess(feedback.Action)
                 : FriendlyFailure(feedback.Message);
             feedbackUntil = Time.unscaledTime +
                             (feedback.Succeeded ? 0.9f : 3.4f);
+        }
+
+        private void HandleReportPosted(StoreSessionTotals totals)
+        {
+            feedbackSucceeded = true;
+            feedbackText = totals == null
+                ? "Shift report posted"
+                : $"Shift report posted  •  {FormatCents(totals.grossSalesCents)} sales  •  " +
+                  $"{FormatCents(totals.contributionAfterCostOfGoodsCents)} contribution";
+            feedbackUntil = Time.unscaledTime + 4.5f;
         }
 
         private void HandlePersistenceCompleted(bool succeeded, string diagnostic)
@@ -419,6 +439,7 @@ namespace Margins
             }
             DrawCrosshair(width, height);
             DrawContextPrompt(width, height);
+            DrawBuildMode(width);
             DrawHeldItem(width, height);
             DrawFeedback(width, height);
             DrawOperationalCue(height);
@@ -426,12 +447,6 @@ namespace Margins
             {
                 DrawHelp(height);
             }
-            if (store != null && !store.IsContinuousOperation &&
-                store.State == StoreOperatingState.ClosedWithResultPending)
-            {
-                DrawResult(width, height);
-            }
-
             GUI.matrix = previousMatrix;
             GUI.color = previousColor;
         }
@@ -531,7 +546,8 @@ namespace Margins
         private void DrawHeldItem(float width, float height)
         {
             ProductItem held = stocking?.HeldPhysicalUnit;
-            if (held == null)
+            CarryableToolComponent heldTool = toolCarrier?.HeldTool;
+            if (held == null && heldTool == null)
             {
                 return;
             }
@@ -541,12 +557,29 @@ namespace Margins
             DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Amber);
             GUI.Label(
                 new Rect(panel.x + 18f, panel.y + 8f, panel.width - 36f, 24f),
-                HeldProductName(),
+                held != null ? HeldProductName() : heldTool.DisplayName,
                 bodyStyle);
             GUI.Label(
                 new Rect(panel.x + 18f, panel.y + 34f, panel.width - 36f, 20f),
-                "Wheel  Rotate    •    Q  Put down",
+                held != null ? "Wheel  Rotate    •    Q  Put down" : "Q  Put down",
                 smallStyle);
+        }
+
+        private void DrawBuildMode(float width)
+        {
+            if (fixturePlacementMode == null ||
+                !fixturePlacementMode.IsBuildModeActive)
+            {
+                return;
+            }
+
+            Rect panel = new(width - 230f, 104f, 198f, 40f);
+            DrawPanel(panel, NightSoft);
+            DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Teal);
+            GUI.Label(
+                new Rect(panel.x + 17f, panel.y + 8f, panel.width - 28f, 24f),
+                "BUILD MODE  •  B EXIT",
+                eyebrowStyle);
         }
 
         private void DrawFeedback(float width, float height)
@@ -621,7 +654,7 @@ namespace Margins
 
         private void DrawHelp(float height)
         {
-            Rect panel = new(30f, height - 294f, 430f, 252f);
+            Rect panel = new(30f, height - 325f, 430f, 283f);
             DrawPanel(panel, Night);
             DrawPanel(new Rect(panel.x, panel.y, 6f, panel.height), Teal);
             GUI.Label(
@@ -630,11 +663,12 @@ namespace Margins
                 titleStyle);
             DrawHelpLine(panel, 0, "MOVE", "WASD   •   Shift brisk walk");
             DrawHelpLine(panel, 1, "USE", "E interact   •   Q back / put down");
-            DrawHelpLine(panel, 2, "HANDLE", "Mouse wheel rotates held objects");
-            DrawHelpLine(panel, 3, "COMPANY", "Tab management   •   Esc menu");
-            DrawHelpLine(panel, 4, "SAVE", "F5 save   •   F9 twice to reload");
+            DrawHelpLine(panel, 2, "BUILD", "B mode   •   E select   •   Q place / cancel");
+            DrawHelpLine(panel, 3, "ROTATE", "Mouse wheel rotates held objects");
+            DrawHelpLine(panel, 4, "COMPANY", "Tab management   •   Esc menu");
+            DrawHelpLine(panel, 5, "SAVE", "F5 save   •   F9 twice to reload");
             GUI.Label(
-                new Rect(panel.x + 24f, panel.y + 220f, 370f, 20f),
+                new Rect(panel.x + 24f, panel.y + 251f, 370f, 20f),
                 "Press H to close",
                 smallStyle);
         }
@@ -846,6 +880,14 @@ namespace Margins
             return action;
         }
 
+        private static bool IsImportantSuccess(string action)
+        {
+            return !string.IsNullOrWhiteSpace(action) &&
+                   (action.Contains("Build Mode", StringComparison.OrdinalIgnoreCase) ||
+                    action.Contains("Open store", StringComparison.OrdinalIgnoreCase) ||
+                    action.Contains("Begin closing", StringComparison.OrdinalIgnoreCase));
+        }
+
         private static string FriendlyFailure(string diagnostic)
         {
             string value = diagnostic ?? string.Empty;
@@ -866,7 +908,7 @@ namespace Margins
             if (value.Contains("outside", StringComparison.OrdinalIgnoreCase) ||
                 value.Contains("bounds", StringComparison.OrdinalIgnoreCase))
             {
-                return "Keep the whole fixture inside the floor area.";
+                return "Keep the whole fixture on supported owned property.";
             }
             if (value.Contains("sealed", StringComparison.OrdinalIgnoreCase))
             {

@@ -40,11 +40,16 @@ namespace Margins.Tests
             DeliveryBoxWorldInteractionTarget deliveryBoxTarget =
                 Require("Mixed Starter Delivery")
                     .GetComponent<DeliveryBoxWorldInteractionTarget>();
-            Assert.That(Require("World Checkout Interaction").GetComponent<StagedCheckoutWorldInteractionTarget>(), Is.Not.Null);
+            Assert.That(
+                Require("Essential Checkout Fixture")
+                    .GetComponent<CustomerCheckoutWorldInteractionTarget>(),
+                Is.Not.Null);
             Assert.That(Require("World Cleaning Interaction").GetComponent<CleaningWorldInteractionTarget>(), Is.Not.Null);
             Assert.That(Require("World Store Operating Control").GetComponent<StoreOperatingWorldInteractionTarget>(), Is.Not.Null);
             Assert.That(Require("Mixed Starter Delivery").transform.Find("Delivery Content Cola Target"), Is.Not.Null);
             Assert.That(Require("fixture-shelf-cola-validation").GetComponent<ShelfFixtureWorldInteractionTarget>(), Is.Not.Null);
+            Assert.That(Require("Mop Tool").GetComponent<CarryableToolComponent>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<OwnedPropertyPlacementArea>(), Is.Not.Null);
             Assert.That(presenter, Is.Not.Null);
 
             AimAt(Camera.main, deliveryBoxTarget.transform);
@@ -52,6 +57,32 @@ namespace Margins.Tests
             StringAssert.Contains("[E] Pick up delivery", interaction.CurrentPromptText);
             StringAssert.Contains("sealed container", interaction.CurrentPromptText);
             Assert.That(presenter.CurrentPromptText, Is.EqualTo(interaction.CurrentPromptText));
+        }
+
+        [UnityTest]
+        public IEnumerator SpecificDeliveryProductChildOverridesWholeBoxSemanticTarget()
+        {
+            yield return LoadValidationScene();
+
+            FirstStoreInteractionController interaction =
+                Object.FindAnyObjectByType<FirstStoreInteractionController>();
+            DeliveryBoxComponent delivery =
+                Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
+            DeliveryBoxWorldInteractionTarget boxTarget =
+                delivery.GetComponent<DeliveryBoxWorldInteractionTarget>();
+            DeliveryProductWorldInteractionTarget colaTarget =
+                delivery.transform.Find("Delivery Content Cola Target")
+                    .GetComponent<DeliveryProductWorldInteractionTarget>();
+
+            Assert.That(boxTarget.TryPrimary(out string error), Is.True, error);
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(boxTarget.TryCancel(out error), Is.True, error);
+            yield return null;
+            AimAt(Camera.main, colaTarget.transform);
+
+            Assert.That(interaction.RefreshFocus(), Is.True);
+            Assert.That(interaction.FocusedTargetId, Is.EqualTo(colaTarget.StableTargetId));
+            StringAssert.Contains("Take", interaction.CurrentPromptText);
         }
 
         [UnityTest]
@@ -203,24 +234,35 @@ namespace Margins.Tests
                     .GetComponent<StoreOperatingWorldInteractionTarget>();
             StoreOperatingController store =
                 Object.FindAnyObjectByType<StoreOperatingController>();
+            CarryableToolComponent mop =
+                Require("Mop Tool").GetComponent<CarryableToolComponent>();
+            PlayerCarryableToolController carrier =
+                Object.FindAnyObjectByType<PlayerCarryableToolController>();
 
-            Assert.That(cleaning.NeedsCleaning, Is.False);
-            Assert.That(cleaningTarget.IsAvailable, Is.False);
-            Assert.That(cleaning.TryCreateMess(), Is.True);
-            yield return null;
+            Assert.That(cleaning.NeedsCleaning, Is.True);
             Assert.That(cleaningTarget.IsAvailable, Is.True);
+            StringAssert.Contains("compatible cleaning tool", cleaningTarget.Prompt.FormattedText);
+            Assert.That(cleaningTarget.TryPrimary(out string blocker), Is.False);
+            StringAssert.Contains("Pick up", blocker);
+            Assert.That(mop.TryPrimary(out string error), Is.True, error);
+            Assert.That(carrier.HeldTool, Is.SameAs(mop));
             StringAssert.Contains("0/4", cleaningTarget.Prompt.FormattedText);
             for (int index = 0; index < cleaning.RequiredProgressUnits; index++)
             {
-                Assert.That(cleaningTarget.TryPrimary(out string error), Is.True, error);
+                Assert.That(cleaningTarget.TryPrimary(out error), Is.True, error);
             }
             Assert.That(cleaning.NeedsCleaning, Is.False);
             Assert.That(cleaningTarget.IsAvailable, Is.False);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Closed));
+            Assert.That(store.IsContinuousOperation, Is.False);
+            Assert.That(storeTarget.IsAvailable, Is.True);
+            StringAssert.Contains("Stock a checkout product", storeTarget.Prompt.FormattedText);
+
+            Assert.That(carrier.TrySetDownHeldTool(out error), Is.True, error);
+            StockOneColaFromDelivery(out error);
+            Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
             Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
-            Assert.That(store.IsContinuousOperation, Is.True);
-            Assert.That(storeTarget.IsAvailable, Is.False);
-            Assert.That(storeTarget.TryPrimary(out string unavailable), Is.False);
-            StringAssert.Contains("unavailable", unavailable);
+            StringAssert.Contains("Begin closing", storeTarget.Prompt.FormattedText);
         }
 
         [UnityTest]
@@ -235,8 +277,7 @@ namespace Margins.Tests
             CleaningWorldInteractionTarget cleaningTarget =
                 Require("World Cleaning Interaction")
                     .GetComponent<CleaningWorldInteractionTarget>();
-            Assert.That(cleaning.TryCreateMess(), Is.True);
-            yield return null;
+            Assert.That(cleaning.NeedsCleaning, Is.True);
             AimAt(Camera.main, cleaningTarget.transform);
             Assert.That(interaction.RefreshFocus(), Is.True);
             Assert.That(interaction.CurrentPromptText, Is.Not.Empty);
@@ -256,6 +297,26 @@ namespace Margins.Tests
             Assert.That(cleaning.CompletedProgressUnits, Is.EqualTo(before));
             Assert.That(interaction.TryPrimaryInteraction(out string error), Is.False);
             StringAssert.Contains("store", error);
+        }
+
+        private static void StockOneColaFromDelivery(out string error)
+        {
+            DeliveryBoxComponent delivery =
+                Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
+            DeliveryBoxWorldInteractionTarget boxTarget =
+                delivery.GetComponent<DeliveryBoxWorldInteractionTarget>();
+            DeliveryProductWorldInteractionTarget colaTarget =
+                delivery.transform.Find("Delivery Content Cola Target")
+                    .GetComponent<DeliveryProductWorldInteractionTarget>();
+            ShelfFixtureWorldInteractionTarget shelfTarget =
+                Require("fixture-shelf-cola-validation")
+                    .GetComponent<ShelfFixtureWorldInteractionTarget>();
+
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(boxTarget.TryCancel(out error), Is.True, error);
+            Assert.That(colaTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(shelfTarget.TryPrimary(out error), Is.True, error);
         }
 
         private static IEnumerator LoadValidationScene()

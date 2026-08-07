@@ -18,6 +18,7 @@ namespace Margins
         [SerializeField] private ProductDefinition chipsProduct;
         [SerializeField] private FirstPersonController firstPersonController;
         [SerializeField] private PortfolioProgressionController portfolioProgression;
+        [SerializeField] private bool enableDevelopmentHud;
 
         private int transactionOrdinal = 1;
         private string lastCompletedTransactionId;
@@ -25,6 +26,7 @@ namespace Margins
 
         public string LastAction => lastAction;
         public bool IsHudModeActive =>
+            enableDevelopmentHud &&
             !GamePauseMenuController.IsAnyMenuOpen &&
             firstPersonController != null &&
             !firstPersonController.IsGameplayMode &&

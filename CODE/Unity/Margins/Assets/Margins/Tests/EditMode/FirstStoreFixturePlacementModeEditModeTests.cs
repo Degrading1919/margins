@@ -28,7 +28,8 @@ namespace Margins.Tests
         {
             PlacementRig rig = CreateRig();
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
-            StringAssert.Contains("Q cancels", rig.Mode.Prompt.FormattedText);
+            StringAssert.Contains("[Q]", rig.Mode.Prompt.FormattedText);
+            StringAssert.Contains("mouse wheel rotates", rig.Mode.Prompt.FormattedText);
 
             Ray ray = new(new Vector3(1.99f, 2f, 2.01f), Vector3.down);
             Assert.That(rig.Mode.TryRefreshPreview(ray, out error), Is.True, error);
@@ -167,6 +168,91 @@ namespace Margins.Tests
             Assert.That(placement.gridPosition, Is.EqualTo(new GridPosition(3, 1)));
         }
 
+        [Test]
+        public void FixtureSelectionRequiresBuildMode()
+        {
+            PlacementRig rig = CreateRig();
+            Assert.That(rig.Mode.TrySetBuildMode(false, out string error), Is.True, error);
+
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out error), Is.False);
+            StringAssert.Contains("Build Mode", error);
+            Assert.That(rig.Controller.PlacedCount, Is.Zero);
+
+            Assert.That(rig.Mode.TrySetBuildMode(true, out error), Is.True, error);
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out error), Is.True, error);
+        }
+
+        [Test]
+        public void LeavingOwnedPropertyExitsBuildModeAndRestoresAcceptedPlacement()
+        {
+            PlacementRig rig = CreateRig();
+            Assert.That(
+                rig.Controller.TryPlace(rig.Fixture, new GridPosition(1, 1), 0).IsSuccess,
+                Is.True);
+            Vector3 accepted = rig.Fixture.transform.position;
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 3.2f), out error),
+                Is.True,
+                error);
+            Assert.That(rig.Fixture.transform.position, Is.Not.EqualTo(accepted));
+
+            rig.Player.position = new Vector3(20f, 1f, 20f);
+            Assert.That(rig.Mode.RefreshOwnedPropertyPresence(), Is.False);
+
+            Assert.That(rig.Mode.IsBuildModeActive, Is.False);
+            Assert.That(rig.Mode.IsActive, Is.False);
+            Assert.That(rig.Fixture.transform.position, Is.EqualTo(accepted));
+            Assert.That(
+                rig.Controller.TryGetPlacement("fixture-test-01", out FixturePlacementSnapshot placement),
+                Is.True);
+            Assert.That(placement.gridPosition, Is.EqualTo(new GridPosition(1, 1)));
+        }
+
+        [Test]
+        public void PreviewRejectsFixtureWhoseFootprintLosesOwnedPropertySupport()
+        {
+            PlacementRig rig = CreateRig();
+            rig.Bounds.size = new Vector3(2f, 4f, 2f);
+            Physics.SyncTransforms();
+
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 1.2f), out error),
+                Is.False);
+            Assert.That(
+                rig.Mode.PreviewResult.Failure,
+                Is.EqualTo(FixturePlacementFailure.InvalidSupport));
+            StringAssert.Contains("supported owned property", error);
+            Assert.That(rig.Controller.PlacedCount, Is.Zero);
+        }
+
+        [Test]
+        public void PreviewRejectsCollisionWithConfiguredStructure()
+        {
+            PlacementRig rig = CreateRig();
+            GameObject obstacleObject = CreateGameObject("Structural Obstacle");
+            obstacleObject.transform.position = new Vector3(3f, 0.5f, 2.5f);
+            BoxCollider obstacle = obstacleObject.AddComponent<BoxCollider>();
+            obstacle.size = new Vector3(0.5f, 1f, 0.5f);
+            SerializedObject areaSerialized = new(rig.PropertyArea);
+            SerializedProperty obstacles = areaSerialized.FindProperty("structuralObstacles");
+            obstacles.arraySize = 1;
+            obstacles.GetArrayElementAtIndex(0).objectReferenceValue = obstacle;
+            areaSerialized.ApplyModifiedPropertiesWithoutUndo();
+            Physics.SyncTransforms();
+
+            Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(new Vector3(2.2f, 0f, 2.2f), out error),
+                Is.False);
+            Assert.That(
+                rig.Mode.PreviewResult.Failure,
+                Is.EqualTo(FixturePlacementFailure.StructuralCollision));
+            StringAssert.Contains("collides", error);
+            Assert.That(rig.Controller.PlacedCount, Is.Zero);
+        }
+
         private PlacementRig CreateRig()
         {
             Transform origin = CreateGameObject("Grid Origin").transform;
@@ -175,8 +261,34 @@ namespace Margins.Tests
             BoxCollider floor = CreateGameObject("Placement Floor").AddComponent<BoxCollider>();
             floor.center = new Vector3(3f, -0.05f, 3f);
             floor.size = new Vector3(6f, 0.1f, 6f);
-            FirstStoreFixturePlacementModeController mode = CreateMode(controller, floor);
-            return new PlacementRig(origin, fixture, controller, mode);
+            Transform player = CreateGameObject("Player").transform;
+            player.position = new Vector3(1f, 1f, 1f);
+            BoxCollider bounds = CreateGameObject("Owned Property Bounds")
+                .AddComponent<BoxCollider>();
+            bounds.center = new Vector3(3f, 1.5f, 3f);
+            bounds.size = new Vector3(6f, 4f, 6f);
+            bounds.isTrigger = true;
+            OwnedPropertyPlacementArea propertyArea =
+                CreateGameObject("Owned Property").AddComponent<OwnedPropertyPlacementArea>();
+            SerializedObject areaSerialized = new(propertyArea);
+            areaSerialized.FindProperty("ownedPropertyBounds").objectReferenceValue = bounds;
+            areaSerialized.FindProperty("placementSurface").objectReferenceValue = floor;
+            areaSerialized.FindProperty("player").objectReferenceValue = player;
+            areaSerialized.FindProperty("structuralObstacles").arraySize = 0;
+            areaSerialized.ApplyModifiedPropertiesWithoutUndo();
+            FirstStoreFixturePlacementModeController mode = CreateMode(
+                controller,
+                floor,
+                propertyArea);
+            Assert.That(mode.TrySetBuildMode(true, out string error), Is.True, error);
+            return new PlacementRig(
+                origin,
+                fixture,
+                controller,
+                mode,
+                player,
+                propertyArea,
+                bounds);
         }
 
         private PlaceableFixtureComponent CreateFixture()
@@ -188,6 +300,9 @@ namespace Margins.Tests
             serialized.FindProperty("footprintWidthCells").intValue = 2;
             serialized.FindProperty("footprintDepthCells").intValue = 1;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            BoxCollider collider = fixture.gameObject.AddComponent<BoxCollider>();
+            collider.center = new Vector3(0f, 0.5f, 0f);
+            collider.size = new Vector3(2f, 1f, 1f);
             return fixture;
         }
 
@@ -212,7 +327,8 @@ namespace Margins.Tests
 
         private FirstStoreFixturePlacementModeController CreateMode(
             FixturePlacementController controller,
-            Collider floor)
+            Collider floor,
+            OwnedPropertyPlacementArea propertyArea)
         {
             FirstStoreFixturePlacementModeController mode =
                 CreateGameObject("Placement Mode")
@@ -221,6 +337,7 @@ namespace Margins.Tests
             serialized.FindProperty("stableTargetId").stringValue = "target-placement-mode";
             serialized.FindProperty("fixturePlacement").objectReferenceValue = controller;
             serialized.FindProperty("placementFloor").objectReferenceValue = floor;
+            serialized.FindProperty("propertyArea").objectReferenceValue = propertyArea;
             serialized.FindProperty("maximumRayDistance").floatValue = 10f;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return mode;
@@ -239,18 +356,27 @@ namespace Margins.Tests
                 Transform origin,
                 PlaceableFixtureComponent fixture,
                 FixturePlacementController controller,
-                FirstStoreFixturePlacementModeController mode)
+                FirstStoreFixturePlacementModeController mode,
+                Transform player,
+                OwnedPropertyPlacementArea propertyArea,
+                BoxCollider bounds)
             {
                 Origin = origin;
                 Fixture = fixture;
                 Controller = controller;
                 Mode = mode;
+                Player = player;
+                PropertyArea = propertyArea;
+                Bounds = bounds;
             }
 
             public Transform Origin { get; }
             public PlaceableFixtureComponent Fixture { get; }
             public FixturePlacementController Controller { get; }
             public FirstStoreFixturePlacementModeController Mode { get; }
+            public Transform Player { get; }
+            public OwnedPropertyPlacementArea PropertyArea { get; }
+            public BoxCollider Bounds { get; }
         }
     }
 }

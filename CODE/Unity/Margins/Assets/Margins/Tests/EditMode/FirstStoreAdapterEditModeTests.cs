@@ -472,7 +472,7 @@ namespace Margins.Tests
         }
 
         [Test]
-        public void EssentialFixtureMoveAndRemovalAreRejectedWhileOpenAndClosing()
+        public void FixtureMoveAndRemovalAreRejectedWhileOpenAndClosing()
         {
             AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
             StockOne(rig, rig.Cola);
@@ -483,8 +483,8 @@ namespace Margins.Tests
                     0).IsSuccess,
                 Is.True);
             Assert.That(rig.Cleaning.TryApplyProgress(4), Is.EqualTo(CleaningProgressResult.Completed));
-            Assert.That(rig.Store.TryBeginPreparation(out string error), Is.True, error);
-            Assert.That(rig.Store.TryOpenStore(out error), Is.True, error);
+            Assert.That(rig.Store.TryOpenStore(out string error), Is.True, error);
+            Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.Open));
 
             AssertRestrictedFixtureChanges(rig);
             Assert.That(rig.Store.TryBeginClosing(out error), Is.True, error);
@@ -598,6 +598,8 @@ namespace Margins.Tests
             CompleteSale(rig, "transaction-result-001", rig.Cola, 2);
             CompleteSale(rig, "transaction-result-002", rig.Chips, 1);
             Assert.That(rig.Store.TryBeginClosing(out error), Is.True, error);
+            StoreSessionTotals postedReport = null;
+            rig.Store.ReportPosted += totals => postedReport = totals;
             Assert.That(rig.Store.TryFinishClosing(out error), Is.True, error);
 
             StoreSessionTotals totals = rig.Store.ResultTotals;
@@ -607,7 +609,9 @@ namespace Margins.Tests
             Assert.That(totals.contributionAfterCostOfGoodsCents, Is.EqualTo(287));
             Assert.That(totals.unitsSold, Is.EqualTo(3));
             Assert.That(totals.transactionCount, Is.EqualTo(2));
-            Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+            Assert.That(rig.Store.State, Is.EqualTo(StoreOperatingState.Closed));
+            Assert.That(postedReport, Is.Not.Null);
+            Assert.That(postedReport, Is.EqualTo(totals));
         }
 
         [Test]

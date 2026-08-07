@@ -31,19 +31,24 @@ namespace Margins
                 switch (operatingController.State)
                 {
                     case StoreOperatingState.Closed:
-                        return new FirstStoreWorldInteractionPrompt("E", "Begin preparation");
+                        return CreateOpenPrompt();
 
                     case StoreOperatingState.Preparing:
-                        return CreatePreparingPrompt();
+                        return CreateOpenPrompt();
 
                     case StoreOperatingState.Open:
                         return new FirstStoreWorldInteractionPrompt("E", "Begin closing");
 
                     case StoreOperatingState.Closing:
-                        return CreateClosingPrompt();
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Closing store",
+                            "new customer intake stopped; report posts automatically");
 
                     case StoreOperatingState.ClosedWithResultPending:
-                        return CreateResultPrompt();
+                        return new FirstStoreWorldInteractionPrompt(
+                            "E",
+                            "Posting shift report");
 
                     default:
                         return new FirstStoreWorldInteractionPrompt(
@@ -66,8 +71,8 @@ namespace Margins
             {
                 case StoreOperatingState.Closed:
                     return TryOperatingAction(
-                        operatingController.TryBeginPreparation,
-                        "Store preparation cannot begin right now.",
+                        operatingController.TryOpenStore,
+                        "Store cannot open right now.",
                         out error);
 
                 case StoreOperatingState.Preparing:
@@ -87,20 +92,15 @@ namespace Margins
                         out error);
 
                 case StoreOperatingState.Closing:
-                    if (operatingController.TryGetFirstFinalCloseBlocker(out error))
-                    {
-                        return false;
-                    }
-                    return TryOperatingAction(
-                        operatingController.TryFinishClosing,
-                        "Store closing cannot complete right now.",
-                        out error);
+                    error = operatingController.TryGetFirstFinalCloseBlocker(
+                        out string closingBlocker)
+                        ? closingBlocker
+                        : "The shift report is posting automatically.";
+                    return false;
 
                 case StoreOperatingState.ClosedWithResultPending:
-                    return TryOperatingAction(
-                        operatingController.TryAcknowledgeResult,
-                        "Store result cannot be acknowledged right now.",
-                        out error);
+                    error = "The shift report is posting automatically.";
+                    return false;
 
                 default:
                     error = "Store control is unavailable.";
@@ -114,7 +114,7 @@ namespace Margins
             return false;
         }
 
-        private FirstStoreWorldInteractionPrompt CreatePreparingPrompt()
+        private FirstStoreWorldInteractionPrompt CreateOpenPrompt()
         {
             if (operatingController.TryGetFirstOpenBlocker(out string blocker))
             {
@@ -124,66 +124,20 @@ namespace Margins
             return new FirstStoreWorldInteractionPrompt("E", "Open store", "ready");
         }
 
-        private FirstStoreWorldInteractionPrompt CreateClosingPrompt()
-        {
-            if (operatingController.TryGetFirstFinalCloseBlocker(out string blocker))
-            {
-                return new FirstStoreWorldInteractionPrompt("E", "Finalize closing", blocker);
-            }
-
-            return new FirstStoreWorldInteractionPrompt("E", "Finalize closing", "ready");
-        }
-
-        private FirstStoreWorldInteractionPrompt CreateResultPrompt()
-        {
-            StoreSessionTotals totals = operatingController.ResultTotals;
-            if (totals == null)
-            {
-                return new FirstStoreWorldInteractionPrompt(
-                    "E",
-                    "Acknowledge result",
-                    "result unavailable");
-            }
-
-            operatingController.TryGetResultCausalNote(out string note);
-            string summary =
-                $"Gross {FormatCents(totals.grossSalesCents)}; " +
-                $"COGS {FormatCents(totals.costOfGoodsSoldCents)}; " +
-                $"expenses {FormatCents(totals.includedOperatingExpensesCents)}; " +
-                $"contribution {FormatCents(totals.contributionAfterCostOfGoodsCents)}; " +
-                $"{totals.unitsSold} units; {totals.transactionCount} transactions";
-            if (!string.IsNullOrWhiteSpace(note))
-            {
-                summary = $"{summary}. {note}";
-            }
-
-            return new FirstStoreWorldInteractionPrompt("E", "Acknowledge result", summary);
-        }
-
         private static bool TryOperatingAction(
             OperatingAction action,
             string genericError,
             out string error)
         {
-            if (action(out _))
+            if (action(out error))
             {
                 error = null;
                 return true;
             }
 
-            error = genericError;
+            error = string.IsNullOrWhiteSpace(error) ? genericError : error;
             return false;
         }
 
-        private static string FormatCents(long cents)
-        {
-            bool isNegative = cents < 0;
-            ulong absoluteCents = isNegative
-                ? (ulong)(-(cents + 1)) + 1UL
-                : (ulong)cents;
-            return isNegative
-                ? $"-${absoluteCents / 100}.{absoluteCents % 100:00}"
-                : $"${absoluteCents / 100}.{absoluteCents % 100:00}";
-        }
     }
 }

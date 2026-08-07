@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 namespace Margins.Editor
@@ -56,6 +57,8 @@ namespace Margins.Editor
                 "Assets/Margins/Content/FirstStoreValidation/ValidationFixture.mat");
             Material validMaterial = AssetDatabase.LoadAssetAtPath<Material>(
                 "Assets/Margins/Content/FirstStoreValidation/ValidationValid.mat");
+            InputActionAsset inputActions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(
+                "Assets/InputSystem_Actions.inputactions");
 
             RequireReferences(
                 delivery,
@@ -70,19 +73,76 @@ namespace Margins.Editor
                 interaction,
                 placementFloor,
                 cola,
-                chips);
+                chips,
+                inputActions);
 
-            ConfigureInitialFixturePlacement(fixturePlacement, requiredFixture);
-            SetBoolean(store, "continuousOperation", true);
+            DestroySceneObjectsNamed("Essential Checkout Fixture Placement Handle");
+            DestroySceneObjectsNamed("Stockroom Delivery Drop");
+            GameObject deliveryDropObject = new("Stockroom Delivery Drop");
+            deliveryDropObject.transform.SetPositionAndRotation(
+                new Vector3(-0.5f, 0f, 2.5f),
+                Quaternion.identity);
+
+            PlaceableFixtureComponent colaShelfFixture =
+                GetOrAdd<PlaceableFixtureComponent>(colaShelfObject);
+            PlaceableFixtureComponent chipsShelfFixture =
+                GetOrAdd<PlaceableFixtureComponent>(chipsShelfObject);
+            PlaceableFixtureComponent deliveryDropFixture =
+                GetOrAdd<PlaceableFixtureComponent>(deliveryDropObject);
+            ConfigurePlaceableFixture(
+                requiredFixture,
+                "fixture-checkout-essential-01",
+                2,
+                1);
+            ConfigurePlaceableFixture(
+                colaShelfFixture,
+                colaShelf.StableFixtureId,
+                3,
+                1);
+            ConfigurePlaceableFixture(
+                chipsShelfFixture,
+                chipsShelf.StableFixtureId,
+                3,
+                1);
+            ConfigurePlaceableFixture(
+                deliveryDropFixture,
+                "fixture-delivery-drop-01",
+                1,
+                1);
+
+            ConfigurePropertyGrid(
+                fixtureControllerObject,
+                fixturePlacement,
+                placementFloorObject,
+                requiredFixture,
+                colaShelfFixture,
+                chipsShelfFixture,
+                deliveryDropFixture);
+            ConfigureInitialFixturePlacement(
+                fixturePlacement,
+                requiredFixture,
+                colaShelfFixture,
+                chipsShelfFixture,
+                deliveryDropFixture);
+
+            SetBoolean(store, "continuousOperation", false);
             SetInteger(store, "includedOperatingExpensesCents", 9_000);
-            SetBoolean(cleaning, "startsDirty", false);
+            SetBoolean(cleaning, "startsDirty", true);
+
+            OwnedPropertyPlacementArea propertyArea =
+                ConfigureOwnedPropertyArea(
+                    fixtureControllerObject,
+                    placementFloor,
+                    playerObject.transform);
 
             FirstStoreFixturePlacementModeController placementMode =
                 GetOrAdd<FirstStoreFixturePlacementModeController>(fixtureControllerObject);
             SetObject(placementMode, "stableTargetId", "target-fixture-placement-mode-01");
             SetObject(placementMode, "fixturePlacement", fixturePlacement);
             SetObject(placementMode, "placementFloor", placementFloor);
+            SetObject(placementMode, "propertyArea", propertyArea);
             SetObject(interaction, "fixturePlacementMode", placementMode);
+            SetObject(interaction, "inputActions", inputActions);
 
             FixturePlacementWorldInteractionTarget placedFixtureTarget =
                 GetOrAdd<FixturePlacementWorldInteractionTarget>(requiredFixtureObject);
@@ -94,22 +154,21 @@ namespace Margins.Editor
             SetObject(placedFixtureTarget, "fixture", requiredFixture);
             SetBoolean(placedFixtureTarget, "allowsUnplacedFixture", false);
 
-            GameObject fixtureHandleObject = CreateWorldShape(
-                "Essential Checkout Fixture Placement Handle",
-                PrimitiveType.Cube,
-                new Vector3(0f, 0.2f, -0.25f),
-                new Vector3(0.8f, 0.4f, 0.8f),
-                validMaterial,
-                "FIXTURE HANDLE");
-            FixturePlacementWorldInteractionTarget fixtureHandleTarget =
-                GetOrAdd<FixturePlacementWorldInteractionTarget>(fixtureHandleObject);
-            SetObject(
-                fixtureHandleTarget,
-                "stableTargetId",
-                "target-fixture-checkout-handle-01");
-            SetObject(fixtureHandleTarget, "placementMode", placementMode);
-            SetObject(fixtureHandleTarget, "fixture", requiredFixture);
-            SetBoolean(fixtureHandleTarget, "allowsUnplacedFixture", true);
+            ConfigureFixtureTarget(
+                colaShelfObject,
+                "target-fixture-shelf-cola-01",
+                placementMode,
+                colaShelfFixture);
+            ConfigureFixtureTarget(
+                chipsShelfObject,
+                "target-fixture-shelf-chips-01",
+                placementMode,
+                chipsShelfFixture);
+            ConfigureFixtureTarget(
+                deliveryDropObject,
+                "target-fixture-delivery-drop-01",
+                placementMode,
+                deliveryDropFixture);
 
             ConfigureDelivery(
                 deliveryObject,
@@ -167,6 +226,17 @@ namespace Margins.Editor
                 playerObject.GetComponent<FirstPersonController>());
             SetObject(gameMenu, "persistence", diskPersistence);
 
+            Transform toolHoldPoint = CreateCarryPoint(
+                playerObject.GetComponentInChildren<Camera>().transform,
+                "Tool Carry Point",
+                new Vector3(0.42f, -0.62f, 1.05f));
+            PlayerCarryableToolController toolCarrier =
+                GetOrAdd<PlayerCarryableToolController>(playerObject);
+            SetObject(toolCarrier, "holdPoint", toolHoldPoint);
+            SetObject(toolCarrier, "playerBody", playerObject.transform);
+            SetObject(toolCarrier, "stocking", stocking);
+            SetObject(interaction, "toolCarrier", toolCarrier);
+
             PortfolioProgressionController portfolio =
                 UnityEngine.Object.FindAnyObjectByType<PortfolioProgressionController>() ??
                 throw new InvalidOperationException(
@@ -180,6 +250,9 @@ namespace Margins.Editor
                 cleaning,
                 cola,
                 chips,
+                requiredFixtureObject.transform,
+                deliveryDropObject.transform,
+                colaShelfObject.transform,
                 validMaterial,
                 fixtureMaterial,
                 chipsMaterial);
@@ -201,6 +274,8 @@ namespace Margins.Editor
                 GetOrAdd<CleaningWorldInteractionTarget>(cleaningTargetObject);
             SetObject(cleaningTarget, "stableTargetId", "target-cleaning-spill-01");
             SetObject(cleaningTarget, "cleaningTask", cleaning);
+            SetObject(cleaningTarget, "toolCarrier", toolCarrier);
+            SetObject(cleaningTarget, "requiredToolCapabilityId", "clean-floor");
 
             GameObject operatingTargetObject = CreateWorldShape(
                 "World Store Operating Control",
@@ -218,9 +293,11 @@ namespace Margins.Editor
                 GetOrAdd<FirstStorePromptPresenter>(controlsObject);
             SetObject(presenter, "interaction", interaction);
             SetObject(presenter, "fixturePlacement", fixturePlacement);
+            SetObject(presenter, "fixturePlacementMode", placementMode);
             SetArray(presenter, "requiredFixtures", requiredFixture);
             SetObject(presenter, "delivery", delivery);
             SetObject(presenter, "stocking", stocking);
+            SetObject(presenter, "toolCarrier", toolCarrier);
             SetObject(presenter, "checkout", checkout);
             SetObject(presenter, "stagedCheckout", staged);
             SetObject(presenter, "cleaning", cleaning);
@@ -231,6 +308,18 @@ namespace Margins.Editor
             SetObject(presenter, "chipsProduct", chips);
 
             FirstStoreExperienceSceneSetup.Apply(scene);
+
+            ConfigureCarryableMop(
+                Require("Mop Tool"),
+                toolCarrier);
+            ConfigureOwnedPropertyObstacles(
+                propertyArea,
+                Require("First Store Presentation").transform,
+                requiredFixtureObject.transform,
+                colaShelfObject.transform,
+                chipsShelfObject.transform,
+                deliveryDropObject.transform,
+                Require("Mop Tool").transform);
 
             ConfigureCheckoutProductTarget(
                 requiredFixtureObject.transform.Find("Experience Checkout Cola Prop")?.gameObject,
@@ -413,6 +502,9 @@ namespace Margins.Editor
             CleaningTaskComponent cleaning,
             ProductDefinition cola,
             ProductDefinition chips,
+            Transform checkoutFixture,
+            Transform deliveryDropFixture,
+            Transform fallbackShelfFixture,
             Material cashierMaterial,
             Material stockerMaterial,
             Material managerMaterial)
@@ -433,18 +525,21 @@ namespace Margins.Editor
                 managerMaterial,
                 out TextMesh managerLabel);
 
-            Transform cashierWork = CreateWorkPoint(
+            Transform cashierWork = CreateAttachedWorkPoint(
+                checkoutFixture,
                 "Cashier Work Point",
-                new Vector3(2.85f, 0.9f, -2.05f));
+                new Vector3(-0.15f, 0.9f, -1.55f));
             Transform deliveryWork = CreateWorkPoint(
                 "Receiving Work Point",
                 new Vector3(-3.45f, 0.9f, 4.62f));
-            Transform deliveryDrop = CreateWorkPoint(
-                "Stockroom Delivery Drop",
-                new Vector3(-0.35f, 0.48f, 2.75f));
-            Transform shelfWork = CreateWorkPoint(
+            Transform deliveryDrop = CreateAttachedWorkPoint(
+                deliveryDropFixture,
+                "Stockroom Delivery Setdown Point",
+                new Vector3(0f, 0.48f, 0f));
+            Transform shelfWork = CreateAttachedWorkPoint(
+                fallbackShelfFixture,
                 "Shelf Stocking Work Point",
-                new Vector3(0f, 0.9f, 1.8f));
+                new Vector3(0f, 0.9f, -1f));
             Transform managerWork = CreateWorkPoint(
                 "Manager Work Point",
                 new Vector3(-2.6f, 0.9f, -2.25f));
@@ -481,23 +576,194 @@ namespace Margins.Editor
             return controller;
         }
 
+        private static void ConfigurePlaceableFixture(
+            PlaceableFixtureComponent fixture,
+            string stableFixtureInstanceId,
+            int footprintWidth,
+            int footprintDepth)
+        {
+            SetObject(fixture, "stableFixtureInstanceId", stableFixtureInstanceId);
+            SetInteger(fixture, "footprintWidthCells", footprintWidth);
+            SetInteger(fixture, "footprintDepthCells", footprintDepth);
+        }
+
+        private static void ConfigureFixtureTarget(
+            GameObject targetObject,
+            string stableTargetId,
+            FirstStoreFixturePlacementModeController placementMode,
+            PlaceableFixtureComponent fixture)
+        {
+            FixturePlacementWorldInteractionTarget target =
+                GetOrAdd<FixturePlacementWorldInteractionTarget>(targetObject);
+            SetObject(target, "stableTargetId", stableTargetId);
+            SetObject(target, "placementMode", placementMode);
+            SetObject(target, "fixture", fixture);
+            SetBoolean(target, "allowsUnplacedFixture", false);
+        }
+
+        private static void ConfigurePropertyGrid(
+            GameObject fixtureControllerObject,
+            FixturePlacementController fixturePlacement,
+            GameObject placementFloorObject,
+            params PlaceableFixtureComponent[] fixtures)
+        {
+            Transform origin = fixtureControllerObject.transform.Find(
+                "Owned Property Grid Origin");
+            if (origin == null)
+            {
+                origin = new GameObject("Owned Property Grid Origin").transform;
+                origin.SetParent(fixtureControllerObject.transform, false);
+            }
+            origin.SetPositionAndRotation(
+                new Vector3(-12f, 0f, -21f),
+                Quaternion.identity);
+
+            placementFloorObject.transform.SetPositionAndRotation(
+                new Vector3(0f, -0.05f, -7.5f),
+                Quaternion.identity);
+            placementFloorObject.transform.localScale =
+                new Vector3(24f, 0.1f, 27f);
+
+            SerializedObject serialized = new(fixturePlacement);
+            serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
+            serialized.FindProperty("gridWidthCells").intValue = 24;
+            serialized.FindProperty("gridDepthCells").intValue = 27;
+            serialized.FindProperty("cellSize").floatValue = 1f;
+            SerializedProperty fixtureReferences = serialized.FindProperty("fixtures");
+            fixtureReferences.arraySize = fixtures.Length;
+            for (int index = 0; index < fixtures.Length; index++)
+            {
+                fixtureReferences.GetArrayElementAtIndex(index).objectReferenceValue =
+                    fixtures[index];
+            }
+            serialized.FindProperty("legacyGridWidthCells").intValue = 8;
+            serialized.FindProperty("legacyGridDepthCells").intValue = 6;
+            SerializedProperty legacyOffset = serialized.FindProperty("legacyGridOffset");
+            legacyOffset.FindPropertyRelative("x").intValue = 8;
+            legacyOffset.FindPropertyRelative("z").intValue = 19;
+            SerializedProperty legacyIds = serialized.FindProperty(
+                "legacyFixtureInstanceIds");
+            legacyIds.arraySize = 1;
+            legacyIds.GetArrayElementAtIndex(0).stringValue =
+                "fixture-checkout-essential-01";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(fixturePlacement);
+        }
+
+        private static OwnedPropertyPlacementArea ConfigureOwnedPropertyArea(
+            GameObject fixtureControllerObject,
+            Collider placementSurface,
+            Transform player)
+        {
+            DestroySceneObjectsNamed("Owned Property Bounds");
+            GameObject boundsObject = new("Owned Property Bounds");
+            boundsObject.transform.SetParent(fixtureControllerObject.transform, false);
+            boundsObject.transform.SetPositionAndRotation(
+                new Vector3(0f, 1.75f, -7.5f),
+                Quaternion.identity);
+            BoxCollider bounds = boundsObject.AddComponent<BoxCollider>();
+            bounds.size = new Vector3(24f, 3.5f, 27f);
+            bounds.isTrigger = true;
+
+            OwnedPropertyPlacementArea area =
+                GetOrAdd<OwnedPropertyPlacementArea>(fixtureControllerObject);
+            SetObject(area, "ownedPropertyBounds", bounds);
+            SetObject(area, "placementSurface", placementSurface);
+            SetObject(area, "player", player);
+            SetArray<Collider>(area, "structuralObstacles");
+            return area;
+        }
+
+        private static void ConfigureOwnedPropertyObstacles(
+            OwnedPropertyPlacementArea propertyArea,
+            Transform presentationRoot,
+            params Transform[] movableRoots)
+        {
+            Collider[] obstacles = presentationRoot
+                .GetComponentsInChildren<Collider>(true)
+                .Where(collider =>
+                    collider != null &&
+                    collider.enabled &&
+                    !collider.isTrigger &&
+                    !string.Equals(collider.name, "Parking Lot", StringComparison.Ordinal) &&
+                    !string.Equals(collider.name, "Front Sidewalk", StringComparison.Ordinal) &&
+                    !movableRoots.Any(root =>
+                        root != null && collider.transform.IsChildOf(root)))
+                .Distinct()
+                .ToArray();
+            SetArray(propertyArea, "structuralObstacles", obstacles);
+        }
+
+        private static void ConfigureCarryableMop(
+            GameObject mopObject,
+            PlayerCarryableToolController carrier)
+        {
+            CarryableToolComponent mop = GetOrAdd<CarryableToolComponent>(mopObject);
+            SerializedObject serialized = new(mop);
+            serialized.FindProperty("stableToolId").stringValue = "tool-mop-01";
+            serialized.FindProperty("capabilityId").stringValue = "clean-floor";
+            serialized.FindProperty("displayName").stringValue = "mop";
+            serialized.FindProperty("carrier").objectReferenceValue = carrier;
+            serialized.FindProperty("carriedLocalPosition").vector3Value =
+                new Vector3(0.15f, -0.15f, 0.2f);
+            serialized.FindProperty("carriedLocalEulerAngles").vector3Value =
+                new Vector3(12f, 0f, -18f);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(mop);
+        }
+
         private static void ConfigureInitialFixturePlacement(
             FixturePlacementController fixturePlacement,
-            PlaceableFixtureComponent checkoutFixture)
+            PlaceableFixtureComponent checkoutFixture,
+            PlaceableFixtureComponent colaShelfFixture,
+            PlaceableFixtureComponent chipsShelfFixture,
+            PlaceableFixtureComponent deliveryDropFixture)
         {
             SerializedObject serialized = new(fixturePlacement);
             SerializedProperty placements = serialized.FindProperty("initialPlacements") ??
                 throw new InvalidOperationException(
                     "Fixture placement initial-placement configuration is missing.");
-            placements.arraySize = 1;
-            SerializedProperty placement = placements.GetArrayElementAtIndex(0);
-            placement.FindPropertyRelative("fixture").objectReferenceValue = checkoutFixture;
-            SerializedProperty grid = placement.FindPropertyRelative("gridPosition");
-            grid.FindPropertyRelative("x").intValue = 6;
-            grid.FindPropertyRelative("z").intValue = 1;
-            placement.FindPropertyRelative("quarterTurns").intValue = 0;
+            placements.arraySize = 4;
+            ConfigureInitialPlacement(
+                placements.GetArrayElementAtIndex(0),
+                checkoutFixture,
+                14,
+                20,
+                0);
+            ConfigureInitialPlacement(
+                placements.GetArrayElementAtIndex(1),
+                colaShelfFixture,
+                8,
+                22,
+                0);
+            ConfigureInitialPlacement(
+                placements.GetArrayElementAtIndex(2),
+                chipsShelfFixture,
+                13,
+                22,
+                0);
+            ConfigureInitialPlacement(
+                placements.GetArrayElementAtIndex(3),
+                deliveryDropFixture,
+                11,
+                23,
+                0);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(fixturePlacement);
+        }
+
+        private static void ConfigureInitialPlacement(
+            SerializedProperty placement,
+            PlaceableFixtureComponent fixture,
+            int x,
+            int z,
+            int quarterTurns)
+        {
+            placement.FindPropertyRelative("fixture").objectReferenceValue = fixture;
+            SerializedProperty grid = placement.FindPropertyRelative("gridPosition");
+            grid.FindPropertyRelative("x").intValue = x;
+            grid.FindPropertyRelative("z").intValue = z;
+            placement.FindPropertyRelative("quarterTurns").intValue = quarterTurns;
         }
 
         private static void ConfigureBasket(
@@ -627,6 +893,19 @@ namespace Margins.Editor
             DestroySceneObjectsNamed(objectName);
             GameObject point = new(objectName);
             point.transform.SetPositionAndRotation(position, Quaternion.identity);
+            return point.transform;
+        }
+
+        private static Transform CreateAttachedWorkPoint(
+            Transform parent,
+            string objectName,
+            Vector3 localPosition)
+        {
+            DestroySceneObjectsNamed(objectName);
+            GameObject point = new(objectName);
+            point.transform.SetParent(parent, false);
+            point.transform.localPosition = localPosition;
+            point.transform.localRotation = Quaternion.identity;
             return point.transform;
         }
 

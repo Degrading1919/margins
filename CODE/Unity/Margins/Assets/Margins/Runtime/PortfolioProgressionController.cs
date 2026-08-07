@@ -1071,18 +1071,6 @@ namespace Margins
                 }
             }
 
-            if (firstStore.State == StoreOperatingState.ClosedWithResultPending)
-            {
-                GUILayout.Space(12f);
-                if (GUILayout.Button("ACKNOWLEDGE FIRST-SHIFT RESULT", GUILayout.Height(34f)))
-                {
-                    bool success = firstStore.TryAcknowledgeResult(out string error);
-                    RecordResult(
-                        success,
-                        success ? "First-shift result acknowledged; management remains available from Tab." : error);
-                }
-            }
-
             GUILayout.Space(16f);
             DrawPortfolioSummary(snapshot);
         }
@@ -1758,20 +1746,7 @@ namespace Margins
             string detail;
             string action;
             Action onAction;
-            if (firstStore.State == StoreOperatingState.ClosedWithResultPending)
-            {
-                title = "Close out the first shift";
-                detail = "Review the result, then return here to grow the company.";
-                action = "Acknowledge result";
-                onAction = () =>
-                {
-                    bool success = firstStore.TryAcknowledgeResult(out string error);
-                    RecordResult(
-                        success,
-                        success ? "First shift closed out." : error);
-                };
-            }
-            else if (!firstStaffed)
+            if (!firstStaffed)
             {
                 title = "Build the first store team";
                 detail = "Hire a cashier, stock clerk, and manager before operating off-site.";

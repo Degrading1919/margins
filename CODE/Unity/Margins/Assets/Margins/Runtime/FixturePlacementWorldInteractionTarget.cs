@@ -27,6 +27,7 @@ namespace Margins
             FirstStoreIdentifier.IsValid(stableTargetId) &&
             placementMode != null &&
             fixture != null &&
+            placementMode.IsBuildModeActive &&
             (allowsUnplacedFixture || placementMode.ActiveFixture == fixture || fixture.gameObject.activeInHierarchy);
 
         public FirstStoreWorldInteractionPrompt Prompt
@@ -47,9 +48,12 @@ namespace Margins
                         ? placementMode.PreviewReason ?? "valid grid position"
                         : "aim at the placement floor";
                     return new FirstStoreWorldInteractionPrompt(
-                        "E",
-                        "Confirm fixture",
-                        $"{previewState}; mouse wheel rotates; Q cancels");
+                        "Q",
+                        placementMode.HasPreview && placementMode.PreviewResult != null &&
+                        placementMode.PreviewResult.IsSuccess
+                            ? "Place fixture"
+                            : "Cancel fixture move",
+                        $"{previewState}; mouse wheel rotates");
                 }
 
                 string action = placementMode.IsPlaced(fixture)
@@ -60,8 +64,8 @@ namespace Margins
                     out string blocker)
                         ? blocker
                         : placementMode.IsPlaced(fixture)
-                            ? "Backspace removes; mouse wheel rotates after selection; Q cancels"
-                            : "mouse wheel rotates after selection; Q cancels";
+                        ? "mouse wheel rotates after selection; Q places or cancels"
+                            : "mouse wheel rotates after selection; Q places or cancels";
                 return new FirstStoreWorldInteractionPrompt(
                     "E",
                     action,

@@ -18,6 +18,8 @@ namespace Margins
 
         private long livePayrollCents;
 
+        public event Action<StoreSessionTotals> ReportPosted;
+
         internal StoreOperatingSession Session { get; private set; }
         public StoreOperatingState State =>
             Session?.State ?? StoreOperatingState.Closed;
@@ -82,6 +84,19 @@ namespace Margins
             if (!TryInitialize(out string error))
             {
                 Debug.LogError($"Store operating initialization failed: {error}", this);
+            }
+        }
+
+        private void Update()
+        {
+            if (State == StoreOperatingState.Closing &&
+                !TryGetFirstFinalCloseBlocker(out _))
+            {
+                TryFinishClosing(out _);
+            }
+            else if (State == StoreOperatingState.ClosedWithResultPending)
+            {
+                TryPostPendingReport(out _);
             }
         }
 
@@ -290,6 +305,20 @@ namespace Margins
                 return false;
             }
 
+            if (State == StoreOperatingState.Closed)
+            {
+                if (!TryTransition(StoreOperatingState.Preparing, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (State != StoreOperatingState.Preparing)
+            {
+                error = "The store can only open while closed.";
+                return false;
+            }
+
             return TryTransition(StoreOperatingState.Open, out error);
         }
 
@@ -333,6 +362,12 @@ namespace Margins
 
         public bool TryFinishClosing(out string error)
         {
+            if (Session == null)
+            {
+                error = "Store operating controller is not initialized.";
+                return false;
+            }
+
             if (customerFlow != null && customerFlow.HasCustomersInStore)
             {
                 error = "Wait for all customers to complete checkout or leave before closing.";
@@ -366,8 +401,7 @@ namespace Margins
                 return false;
             }
 
-            error = null;
-            return true;
+            return TryPostPendingReport(out error);
         }
 
         public bool TryGetFirstFinalCloseBlocker(out string blocker)
@@ -415,7 +449,8 @@ namespace Margins
         public bool TryGetResultCausalNote(out string note)
         {
             StoreSessionTotals totals = ResultTotals;
-            if (State != StoreOperatingState.ClosedWithResultPending || totals == null)
+            if ((State != StoreOperatingState.ClosedWithResultPending &&
+                 State != StoreOperatingState.Closed) || totals == null)
             {
                 note = null;
                 return false;
@@ -429,7 +464,7 @@ namespace Margins
 
         public bool TryAcknowledgeResult(out string error)
         {
-            return TryTransition(StoreOperatingState.Closed, out error);
+            return TryPostPendingReport(out error);
         }
 
         public bool IsFixtureModificationRestricted(string fixtureInstanceId)
@@ -439,23 +474,8 @@ namespace Margins
                 return false;
             }
 
-            if (State != StoreOperatingState.Open &&
-                State != StoreOperatingState.Closing)
-            {
-                return false;
-            }
-
-            foreach (string requiredFixtureId in requiredFixtureInstanceIds)
-            {
-                if (string.Equals(
-                        requiredFixtureId,
-                        fixtureInstanceId,
-                        StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return State == StoreOperatingState.Open ||
+                   State == StoreOperatingState.Closing;
         }
 
         public bool CanApplySnapshot(
@@ -516,6 +536,27 @@ namespace Margins
                 return false;
             }
 
+            error = null;
+            return true;
+        }
+
+        private bool TryPostPendingReport(out string error)
+        {
+            if (Session == null ||
+                State != StoreOperatingState.ClosedWithResultPending ||
+                ResultTotals == null)
+            {
+                error = "No completed store report is waiting to post.";
+                return false;
+            }
+
+            StoreSessionTotals report = ResultTotals;
+            if (!TryTransition(StoreOperatingState.Closed, out error))
+            {
+                return false;
+            }
+
+            ReportPosted?.Invoke(report);
             error = null;
             return true;
         }

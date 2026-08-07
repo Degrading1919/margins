@@ -519,7 +519,7 @@ namespace Margins.Tests
             int transactionCountBefore = checkout.CompletedTransactionCount;
             int inventoryBefore = TotalInventory(inventory, checkout);
             employeeWork.enabled = false;
-            Assert.That(cleaning.TryCreateMess(), Is.True);
+            Assert.That(cleaning.NeedsCleaning, Is.True);
             Assert.That(
                 flow.TryAdmitCustomerNow(out _, out string error),
                 Is.True,
@@ -537,7 +537,9 @@ namespace Margins.Tests
             employeeWork.enabled = true;
 
             deadline = Time.realtimeSinceStartup + 18f;
-            while ((flow.HasCustomersInStore || !cleaning.IsComplete) &&
+            while ((flow.HasCustomersInStore ||
+                    !cleaning.IsComplete ||
+                    store.State != StoreOperatingState.Closed) &&
                    Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
@@ -551,10 +553,9 @@ namespace Margins.Tests
             Assert.That(
                 TotalInventory(inventory, checkout),
                 Is.EqualTo(inventoryBefore - 1));
-            Assert.That(store.TryFinishClosing(out error), Is.True, error);
             Assert.That(
                 store.State,
-                Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
+                Is.EqualTo(StoreOperatingState.Closed));
         }
 
         [UnityTest]
@@ -594,18 +595,16 @@ namespace Margins.Tests
                 cleaning.TryApplyProgress(1);
             }
             Assert.That(cleaning.IsComplete, Is.True);
-            Assert.That(store.TryFinishClosing(out error), Is.True, error);
-            Assert.That(
-                store.State,
-                Is.EqualTo(StoreOperatingState.ClosedWithResultPending));
 
             deadline = Time.realtimeSinceStartup + 8f;
-            while (employeeWork.IsHandlingInventory &&
+            while ((employeeWork.IsHandlingInventory ||
+                    store.State != StoreOperatingState.Closed) &&
                    Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
             }
 
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Closed));
             Assert.That(delivery.IsCarried, Is.False);
             Assert.That(employeeWork.IsHandlingInventory, Is.False);
         }
@@ -784,7 +783,6 @@ namespace Margins.Tests
                     placementResult.Failure.ToString());
             }
 
-            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
             string error;
             DeliveryBoxComponent delivery =
                 Object.FindAnyObjectByType<DeliveryBoxComponent>();
@@ -808,6 +806,8 @@ namespace Margins.Tests
                 error);
             Assert.That(stocking.TryPickUpLooseUnit(loose, out _, out error), Is.True, error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
             Assert.That(checkout.TryBeginSession("transaction-portfolio-001", out error), Is.True, error);
             Assert.That(
                 checkout.TryScan(cola, 1, out CheckoutFailure scanFailure),
