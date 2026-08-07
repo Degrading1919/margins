@@ -173,6 +173,161 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator ProcurementDeliveryCanBePartiallyStockedSavedAndResumedExactlyOnce()
+        {
+            CompletePhysicalFirstShift();
+            FirstStoreInventoryComponent inventory =
+                Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            ProductDefinition cola = GetProduct(
+                ConvenienceStoreProcurement.ColaProductId);
+            ProductDefinition chips = GetProduct(
+                ConvenienceStoreProcurement.ChipsProductId);
+            RemoveAllFromDelivery(delivery, inventory, cola, chips);
+
+            int inventoryBeforeOrder = TotalInventory(
+                inventory,
+                Object.FindAnyObjectByType<CheckoutStationComponent>());
+            long cashBeforeOrder = portfolio.Progression.CashCents;
+            Assert.That(
+                portfolio.TryPlaceManualPurchaseOrder(
+                    PortfolioProgressionRules.FirstLocationId,
+                    out string error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot placed = portfolio.Progression.PurchaseOrders.Single();
+            Assert.That(placed.status, Is.EqualTo(PurchaseOrderStatus.Pending));
+            Assert.That(
+                portfolio.Progression.CashCents,
+                Is.EqualTo(cashBeforeOrder - placed.totalCostCents));
+
+            Assert.That(
+                portfolio.Progression.TryAdvanceProcurementTicks(
+                    ConvenienceStoreProcurement.FulfillmentDelayTicks,
+                    out int fulfilled,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(fulfilled, Is.EqualTo(1));
+            Assert.That(
+                portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot delivered = portfolio.Progression.PurchaseOrders.Single();
+            Assert.That(delivered.status, Is.EqualTo(PurchaseOrderStatus.Delivered));
+            Assert.That(delivery.IsSealed, Is.True);
+            Assert.That(
+                inventory.Inventory.GetQuantity(
+                    delivery.InventoryLocationId,
+                    cola.StableProductId),
+                Is.EqualTo(4));
+            Assert.That(
+                inventory.Inventory.GetQuantity(
+                    delivery.InventoryLocationId,
+                    chips.StableProductId),
+                Is.EqualTo(4));
+            Assert.That(
+                TotalInventory(
+                    inventory,
+                    Object.FindAnyObjectByType<CheckoutStationComponent>()),
+                Is.EqualTo(inventoryBeforeOrder + 8));
+
+            Assert.That(delivery.TryOpen(out _, out error), Is.True, error);
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    cola,
+                    out ProductItem receivedCola,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                stocking.TryPickUpLooseUnit(receivedCola, out _, out error),
+                Is.True,
+                error);
+            Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            Assert.That(
+                portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot partial = portfolio.Progression.PurchaseOrders.Single();
+            Assert.That(partial.status, Is.EqualTo(PurchaseOrderStatus.PartiallyReceived));
+            Assert.That(partial.ReceivedQuantityUnits, Is.EqualTo(1));
+
+            long paidCash = portfolio.Progression.CashCents;
+            Assert.That(disk.TrySaveToPath(savePath), Is.True, disk.LastDiagnostic);
+            Assert.That(
+                FirstStoreDiskSaveCodec.TryFromJson(
+                    File.ReadAllText(savePath),
+                    out FirstStoreDiskSaveData encoded,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                encoded.portfolio.procurement.orders.Single().status,
+                Is.EqualTo(PurchaseOrderStatus.PartiallyReceived));
+            Assert.That(
+                encoded.portfolio.procurement.orders.Single().ReceivedQuantityUnits,
+                Is.EqualTo(1));
+
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    cola,
+                    out _,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.Progression.PurchaseOrders.Single().ReceivedQuantityUnits,
+                Is.EqualTo(2));
+
+            Assert.That(disk.TryLoadFromPath(savePath), Is.True, disk.LastDiagnostic);
+            PurchaseOrderSnapshot restored = portfolio.Progression.PurchaseOrders.Single();
+            Assert.That(restored.status, Is.EqualTo(PurchaseOrderStatus.PartiallyReceived));
+            Assert.That(restored.ReceivedQuantityUnits, Is.EqualTo(1));
+            Assert.That(portfolio.Progression.CashCents, Is.EqualTo(paidCash));
+            Assert.That(
+                inventory.Inventory.GetQuantity(
+                    delivery.InventoryLocationId,
+                    cola.StableProductId),
+                Is.EqualTo(3));
+            Assert.That(
+                inventory.Inventory.GetQuantity(
+                    delivery.InventoryLocationId,
+                    chips.StableProductId),
+                Is.EqualTo(4));
+
+            RemoveAllFromDelivery(delivery, inventory, cola, chips);
+            Assert.That(
+                portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot completed = portfolio.Progression.PurchaseOrders.Single();
+            Assert.That(completed.status, Is.EqualTo(PurchaseOrderStatus.Completed));
+            Assert.That(completed.ReceivedQuantityUnits, Is.EqualTo(8));
+            Assert.That(portfolio.Progression.CashCents, Is.EqualTo(paidCash));
+            Assert.That(
+                portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.Progression.PurchaseOrders.Single().completionReceiptId,
+                Is.EqualTo(completed.completionReceiptId));
+            Assert.That(portfolio.Progression.CashCents, Is.EqualTo(paidCash));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator HiredTeamServesLiveCustomerRestocksCleansAndRoundTripsOnce()
         {
             CompletePhysicalFirstShift();
@@ -751,6 +906,31 @@ namespace Margins.Tests
                 Is.True,
                 error);
             Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+        }
+
+        private static void RemoveAllFromDelivery(
+            DeliveryBoxComponent delivery,
+            FirstStoreInventoryComponent inventory,
+            params ProductDefinition[] products)
+        {
+            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            foreach (ProductDefinition product in products)
+            {
+                while (inventory.Inventory.GetQuantity(
+                           delivery.InventoryLocationId,
+                           product.StableProductId) > 0)
+                {
+                    Assert.That(
+                        delivery.TryRemoveOneUnit(
+                            product,
+                            out _,
+                            out _,
+                            out _,
+                            out error),
+                        Is.True,
+                        error);
+                }
+            }
         }
 
         private static int TotalInventory(

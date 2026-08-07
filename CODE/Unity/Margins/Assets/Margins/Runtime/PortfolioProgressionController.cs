@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -41,6 +42,8 @@ namespace Margins
         [SerializeField] private FirstPersonController firstPersonController;
         [SerializeField] private StoreOperatingController firstStore;
         [SerializeField] private FirstStoreInventoryComponent firstStoreInventory;
+        [SerializeField] private DeliveryBoxComponent firstStoreDeliveryBox;
+        [SerializeField, Min(0.25f)] private float procurementTickSeconds = 5f;
 
         private PortfolioProgression progression;
         private DeskPage page;
@@ -51,6 +54,7 @@ namespace Margins
         private Vector2 peopleScroll;
         private Vector2 reportScroll;
         private float lastActionUntil;
+        private float nextProcurementTickAt;
         private GUIStyle humanBrandStyle;
         private GUIStyle humanTitleStyle;
         private GUIStyle humanSectionStyle;
@@ -84,6 +88,7 @@ namespace Margins
                 Debug.LogError(error, this);
                 enabled = false;
             }
+            nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
         }
 
         private void Update()
@@ -93,6 +98,25 @@ namespace Margins
                 Record(payrollError, false);
             }
             TrySynchronizeDetailedShift(out _);
+            if (!TrySynchronizeDetailedProcurement(out string procurementError))
+            {
+                Record(procurementError, false);
+            }
+            if (progression != null && progression.FirstShiftCompleted &&
+                !GamePauseMenuController.IsAnyMenuOpen &&
+                Time.unscaledTime >= nextProcurementTickAt)
+            {
+                nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
+                if (!progression.TryAdvanceProcurementTicks(
+                        1,
+                        out _,
+                        out procurementError) ||
+                    !TrySynchronizeDetailedProcurement(out procurementError) ||
+                    !TryApplyDetailedReorderPolicy(out procurementError))
+                {
+                    Record(procurementError, false);
+                }
+            }
             if (!hasOpenedDeskAfterFirstShift &&
                 progression != null &&
                 progression.FirstShiftCompleted &&
@@ -160,9 +184,13 @@ namespace Margins
             if (firstPersonController == null ||
                 firstStore == null ||
                 firstStoreInventory == null ||
-                !firstStoreInventory.TryInitialize(out error))
+                firstStoreDeliveryBox == null ||
+                procurementTickSeconds <= 0f ||
+                !firstStoreInventory.TryInitialize(out error) ||
+                !firstStoreDeliveryBox.TryInitialize(out error) ||
+                firstStoreDeliveryBox.InventoryComponent != firstStoreInventory)
             {
-                error ??= "Portfolio progression requires explicit player, first-store, and inventory references.";
+                error ??= "Portfolio progression requires explicit player, first-store, inventory, and delivery references.";
                 return false;
             }
 
@@ -235,6 +263,382 @@ namespace Margins
             return success;
         }
 
+        public bool TrySynchronizeDetailedProcurement(out string error)
+        {
+            if (progression == null || !progression.FirstShiftCompleted)
+            {
+                error = null;
+                return true;
+            }
+
+            PortfolioLocationSnapshot firstLocation = progression.Locations
+                .FirstOrDefault(location => string.Equals(
+                    location.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            if (firstLocation == null)
+            {
+                error = "The first location is unavailable for procurement reconciliation.";
+                return false;
+            }
+
+            if (firstLocation.delegatedDaysOperating > 0)
+            {
+                // Aggregate inventory is authoritative after delegated operation.
+                error = null;
+                return true;
+            }
+
+            PurchaseOrderSnapshot order = progression.PurchaseOrders
+                .FirstOrDefault(value =>
+                    !value.IsTerminal &&
+                    string.Equals(
+                        value.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal));
+            if (order == null || order.status == PurchaseOrderStatus.Pending)
+            {
+                error = null;
+                return true;
+            }
+
+            if (order.status == PurchaseOrderStatus.Fulfilled)
+            {
+                if (!TryMaterializeDetailedDelivery(order, out error))
+                {
+                    return false;
+                }
+
+                order = progression.PurchaseOrders.First(value =>
+                    string.Equals(
+                        value.orderId,
+                        order.orderId,
+                        StringComparison.Ordinal));
+            }
+
+            if (order.status != PurchaseOrderStatus.Delivered &&
+                order.status != PurchaseOrderStatus.PartiallyReceived)
+            {
+                error = null;
+                return true;
+            }
+
+            Dictionary<string, int> received = new(StringComparer.Ordinal);
+            foreach (PurchaseOrderLineSnapshot line in order.lines)
+            {
+                int remaining = firstStoreInventory.Inventory.GetQuantity(
+                    firstStoreDeliveryBox.InventoryLocationId,
+                    line.resourceId);
+                if (remaining < 0 || remaining > line.orderedQuantityUnits)
+                {
+                    error =
+                        $"Physical delivery quantity for '{line.resourceId}' does not reconcile to order '{order.orderId}'.";
+                    return false;
+                }
+                received.Add(
+                    line.resourceId,
+                    line.orderedQuantityUnits - remaining);
+            }
+
+            if (!progression.TryRecordPurchaseOrderReceipt(
+                    order.orderId,
+                    received,
+                    out PurchaseOrderSnapshot updated,
+                    out bool unchanged,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!unchanged && updated.status == PurchaseOrderStatus.Completed)
+            {
+                Record($"Received {updated.orderId}; its physical units are ready to stock.", true);
+            }
+            return true;
+        }
+
+        public bool TryPlaceManualPurchaseOrder(
+            string locationId,
+            out string error)
+        {
+            if (progression == null)
+            {
+                error = "Company procurement is unavailable.";
+                return false;
+            }
+
+            PortfolioLocationSnapshot location = progression.Locations
+                .FirstOrDefault(value => string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            if (location == null)
+            {
+                error = "Purchase order location is unavailable.";
+                return false;
+            }
+
+            IReadOnlyList<ProcurementOrderRequestLine> lines;
+            bool detailedFirstLocation =
+                string.Equals(
+                    locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal) &&
+                location.delegatedDaysOperating == 0;
+            if (detailedFirstLocation)
+            {
+                lines = ConvenienceStoreProcurement.DetailedCase;
+            }
+            else
+            {
+                float targetRatio = location.reorderPolicy switch
+                {
+                    PortfolioReorderPolicy.Lean => 0.48f,
+                    PortfolioReorderPolicy.Resilient => 0.9f,
+                    _ => 0.72f
+                };
+                int reorderTarget = Math.Min(
+                    location.inventoryCapacityUnits,
+                    (int)Math.Round(
+                        location.inventoryCapacityUnits * targetRatio));
+                int requestedUnits = Math.Max(
+                    0,
+                    reorderTarget - location.inventoryUnits);
+                if (requestedUnits == 0)
+                {
+                    error = "Current inventory already meets the configured reorder target.";
+                    Record(error, false);
+                    return false;
+                }
+
+                lines = new[]
+                {
+                    new ProcurementOrderRequestLine(
+                        ConvenienceStoreProcurement.AggregateResourceId,
+                        requestedUnits)
+                };
+            }
+
+            bool success = progression.TryPlacePurchaseOrder(
+                locationId,
+                ConvenienceStoreProcurement.SupplierId,
+                lines,
+                out PurchaseOrderSnapshot order,
+                out error);
+            RecordResult(
+                success,
+                success
+                    ? $"Placed {order.orderId} for {LocationName(locationId)}; charged {FormatCents(order.totalCostCents)} once."
+                    : error);
+            return success;
+        }
+
+        public bool TryCancelPurchaseOrder(
+            string orderId,
+            out string error)
+        {
+            error = null;
+            bool unchanged = false;
+            bool success = progression != null &&
+                           progression.TryCancelPurchaseOrder(
+                               orderId,
+                               out unchanged,
+                               out error);
+            if (progression == null)
+            {
+                error = "Company procurement is unavailable.";
+            }
+            RecordResult(
+                success,
+                success
+                    ? unchanged
+                        ? $"{orderId} was already canceled."
+                        : $"Canceled {orderId}; its payment was refunded once."
+                    : error);
+            return success;
+        }
+
+        private bool TryApplyDetailedReorderPolicy(out string error)
+        {
+            error = null;
+            if (progression == null || !progression.FirstShiftCompleted)
+            {
+                return true;
+            }
+
+            PortfolioLocationSnapshot location = progression.Locations
+                .First(value => string.Equals(
+                    value.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            if (location.delegatedDaysOperating > 0 ||
+                progression.PurchaseOrders.Any(order =>
+                    !order.IsTerminal &&
+                    string.Equals(
+                        order.locationId,
+                        location.locationId,
+                        StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
+            int totalUnits = 0;
+            foreach (InventoryLocationSnapshot inventoryLocation in
+                     firstStoreInventory.Inventory.CreateSnapshot().locations)
+            {
+                totalUnits = checked(totalUnits +
+                    inventoryLocation.quantities.Sum(quantity =>
+                        quantity.quantityUnits));
+            }
+
+            int reorderPoint = location.reorderPolicy switch
+            {
+                PortfolioReorderPolicy.Lean => 2,
+                PortfolioReorderPolicy.Resilient => 6,
+                _ => 4
+            };
+            if (totalUnits > reorderPoint)
+            {
+                return true;
+            }
+
+            bool success = progression.TryPlacePurchaseOrder(
+                location.locationId,
+                ConvenienceStoreProcurement.SupplierId,
+                ConvenienceStoreProcurement.DetailedCase,
+                out PurchaseOrderSnapshot order,
+                out error);
+            if (success)
+            {
+                Record(
+                    $"{location.reorderPolicy} policy placed {order.orderId}; charged {FormatCents(order.totalCostCents)}.",
+                    true);
+            }
+            return success;
+        }
+
+        private bool TryMaterializeDetailedDelivery(
+            PurchaseOrderSnapshot order,
+            out string error)
+        {
+            if (order == null ||
+                order.status != PurchaseOrderStatus.Fulfilled)
+            {
+                error = "The fulfilled order is unavailable for physical delivery.";
+                return false;
+            }
+
+            if (firstStoreDeliveryBox.IsCarried)
+            {
+                error = null;
+                return true;
+            }
+
+            FirstStoreInventorySnapshot previousInventory =
+                firstStoreInventory.Inventory.CreateSnapshot();
+            InventoryLocationSnapshot deliveryLocation = previousInventory.locations
+                .FirstOrDefault(location => string.Equals(
+                    location.locationId,
+                    firstStoreDeliveryBox.InventoryLocationId,
+                    StringComparison.Ordinal));
+            if (deliveryLocation == null ||
+                deliveryLocation.quantities.Any(quantity =>
+                    quantity.quantityUnits > 0))
+            {
+                error = null;
+                return true;
+            }
+
+            Dictionary<string, int> received = new(StringComparer.Ordinal);
+            foreach (PurchaseOrderLineSnapshot line in order.lines)
+            {
+                received.Add(line.resourceId, line.orderedQuantityUnits);
+            }
+
+            InventoryReceiptFailure receiptFailure = InventoryReceiptFailure.None;
+            if (!FirstStoreInventory.TryRestore(
+                    previousInventory,
+                    out FirstStoreInventory candidateInventory,
+                    out error) ||
+                !candidateInventory.TryReceiveDelivery(
+                    firstStoreDeliveryBox.InventoryLocationId,
+                    received,
+                    out receiptFailure))
+            {
+                error ??=
+                    $"The receiving container rejected order '{order.orderId}' ({receiptFailure}).";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot previousPortfolio =
+                progression.CreateSnapshot();
+            DeliveryContainerSnapshot previousContainer =
+                firstStoreDeliveryBox.Container.CreateSnapshot();
+            if (!firstStoreInventory.TryApplyRestoredInventory(
+                    candidateInventory,
+                    out error) ||
+                !firstStoreDeliveryBox.TryPrepareProcurementDelivery(out error) ||
+                !progression.TryCreatePurchaseOrderDelivery(
+                    order.orderId,
+                    out _,
+                    out _,
+                    out error) ||
+                !TrySynchronizeDetailedShift(out error))
+            {
+                string materializationError = error;
+                if (!TryRollbackDetailedDelivery(
+                        previousInventory,
+                        previousContainer,
+                        previousPortfolio,
+                        out string rollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"Detailed delivery failed ('{materializationError}') and rollback failed ('{rollbackError}').");
+                }
+
+                error = materializationError;
+                return false;
+            }
+
+            Record($"{order.orderId} arrived in a sealed physical container.", true);
+            error = null;
+            return true;
+        }
+
+        private bool TryRollbackDetailedDelivery(
+            FirstStoreInventorySnapshot inventorySnapshot,
+            DeliveryContainerSnapshot containerSnapshot,
+            PortfolioProgressionSnapshot portfolioSnapshot,
+            out string error)
+        {
+            if (!FirstStoreInventory.TryRestore(
+                    inventorySnapshot,
+                    out FirstStoreInventory restoredInventory,
+                    out error) ||
+                !firstStoreInventory.TryApplyRestoredInventory(
+                    restoredInventory,
+                    out error) ||
+                !DeliveryContainer.TryRestore(
+                    restoredInventory,
+                    containerSnapshot,
+                    out DeliveryContainer restoredContainer,
+                    out error) ||
+                !firstStoreDeliveryBox.TryApplyRestoredContainer(
+                    restoredContainer,
+                    out error) ||
+                !PortfolioProgression.TryRestore(
+                    portfolioSnapshot,
+                    out PortfolioProgression restoredPortfolio,
+                    out error))
+            {
+                return false;
+            }
+
+            progression = restoredPortfolio;
+            error = null;
+            return true;
+        }
+
         public bool TryCaptureSnapshot(
             out PortfolioProgressionSnapshot snapshot,
             out string error)
@@ -243,6 +647,11 @@ namespace Margins
             if (progression == null)
             {
                 error = "Portfolio progression is not initialized.";
+                return false;
+            }
+
+            if (!TrySynchronizeDetailedProcurement(out error))
+            {
                 return false;
             }
 
@@ -255,6 +664,89 @@ namespace Margins
             out string error)
         {
             return PortfolioProgression.TryValidateSnapshot(snapshot, out error);
+        }
+
+        public bool TryValidateDetailedProcurementReconciliation(
+            FirstStoreSnapshot firstStoreSnapshot,
+            PortfolioProgressionSnapshot portfolioSnapshot,
+            out string error)
+        {
+            error = null;
+            if (firstStoreSnapshot?.inventory == null ||
+                !PortfolioProgression.TryRestore(
+                    portfolioSnapshot,
+                    out PortfolioProgression restored,
+                    out error))
+            {
+                error ??= "Detailed procurement reconciliation is missing store or portfolio state.";
+                return false;
+            }
+
+            PortfolioLocationSnapshot firstLocation = restored.Locations
+                .First(location => string.Equals(
+                    location.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            if (firstLocation.delegatedDaysOperating > 0)
+            {
+                error = null;
+                return true;
+            }
+
+            PurchaseOrderSnapshot order = restored.PurchaseOrders
+                .FirstOrDefault(value =>
+                    !value.IsTerminal &&
+                    string.Equals(
+                        value.locationId,
+                        firstLocation.locationId,
+                        StringComparison.Ordinal));
+            if (order == null ||
+                (order.status != PurchaseOrderStatus.Delivered &&
+                 order.status != PurchaseOrderStatus.PartiallyReceived))
+            {
+                error = null;
+                return true;
+            }
+
+            InventoryLocationSnapshot delivery = firstStoreSnapshot.inventory.locations?.FirstOrDefault(
+                location => string.Equals(
+                    location.locationId,
+                    firstStoreDeliveryBox.InventoryLocationId,
+                    StringComparison.Ordinal));
+            if (delivery?.quantities == null)
+            {
+                error = "Saved detailed delivery location is missing.";
+                return false;
+            }
+
+            Dictionary<string, int> expected = order.lines.ToDictionary(
+                line => line.resourceId,
+                line => line.orderedQuantityUnits - line.receivedQuantityUnits,
+                StringComparer.Ordinal);
+            foreach (InventoryQuantitySnapshot quantity in delivery.quantities)
+            {
+                if (quantity == null ||
+                    !expected.TryGetValue(
+                        quantity.productId,
+                        out int expectedQuantity) ||
+                    quantity.quantityUnits != expectedQuantity)
+                {
+                    error =
+                        $"Saved physical delivery does not reconcile to purchase order '{order.orderId}'.";
+                    return false;
+                }
+                expected.Remove(quantity.productId);
+            }
+
+            if (expected.Any(value => value.Value != 0))
+            {
+                error =
+                    $"Saved physical delivery is missing units from purchase order '{order.orderId}'.";
+                return false;
+            }
+
+            error = null;
+            return true;
         }
 
         public bool TryRestoreSnapshot(
@@ -270,6 +762,7 @@ namespace Margins
             }
 
             progression = restored;
+            nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
             if (!progression.Locations.Any(location => string.Equals(
                     location.locationId,
                     selectedLocationId,
@@ -415,6 +908,14 @@ namespace Margins
 
         public bool TryAdvanceDelegatedDay(out string error)
         {
+            if (!TrySynchronizeLivePayroll(out error) ||
+                !TrySynchronizeDetailedProcurement(out error) ||
+                !TrySynchronizeDetailedShift(out error))
+            {
+                RecordResult(false, error);
+                return false;
+            }
+
             bool success = progression.TryAdvanceDelegatedDay(out error);
             RecordResult(
                 success,
@@ -822,7 +1323,7 @@ namespace Margins
                         $"Sales {FormatCents(report.grossSalesCents)} - COGS {FormatCents(report.costOfGoodsSoldCents)} - " +
                         $"payroll {FormatCents(report.payrollCents)} - rent {FormatCents(report.rentCents)} = " +
                         $"operating profit {FormatCents(report.operatingProfitCents)}\n" +
-                        $"Reordered {report.reorderedUnits} units for {FormatCents(report.inventoryPurchaseCents)}; " +
+                        $"Ordered {report.reorderedUnits} units for {FormatCents(report.inventoryPurchaseCents)} plus {FormatCents(report.deliveryFeesCents)} delivery; " +
                         $"cash change {FormatCents(report.cashChangeCents)}.\n" +
                         $"CAUSE: {report.primaryCause}");
                 }
@@ -1708,10 +2209,36 @@ namespace Margins
                 "Lean protects cash. Resilient protects availability. Managers follow this policy off-site.",
                 humanSmallStyle);
 
+            PurchaseOrderSnapshot activeOrder = snapshot.procurement?.orders?.FirstOrDefault(
+                order =>
+                    !order.IsTerminal &&
+                    string.Equals(
+                        order.locationId,
+                        location.locationId,
+                        StringComparison.Ordinal));
             GUI.Label(
-                new Rect(rect.x + 24f, rect.yMax - 48f, rect.width - 48f, 26f),
-                $"{location.operatingModel}",
+                new Rect(rect.x + 24f, rect.y + 538f, rect.width - 220f, 22f),
+                activeOrder == null
+                    ? "No active purchase order"
+                    : $"{activeOrder.orderId}  •  {FriendlyPolicy(activeOrder.status.ToString())}  •  due tick {activeOrder.fulfillAtTick}",
                 humanSmallStyle);
+            if (activeOrder?.status == PurchaseOrderStatus.Pending)
+            {
+                if (DrawHumanButton(
+                        new Rect(rect.xMax - 184f, rect.y + 532f, 160f, 36f),
+                        "Cancel order"))
+                {
+                    TryCancelPurchaseOrder(activeOrder.orderId, out _);
+                }
+            }
+            else if (activeOrder == null &&
+                     DrawHumanButton(
+                         new Rect(rect.xMax - 184f, rect.y + 532f, 160f, 36f),
+                         "Place order",
+                         true))
+            {
+                TryPlaceManualPurchaseOrder(location.locationId, out _);
+            }
         }
 
         private void DrawHumanExpansionCard(

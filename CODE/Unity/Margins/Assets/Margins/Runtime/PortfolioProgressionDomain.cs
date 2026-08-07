@@ -86,6 +86,7 @@ namespace Margins
         public long payrollCents;
         public long rentCents;
         public long inventoryPurchaseCents;
+        public long deliveryFeesCents;
         public long operatingProfitCents;
         public long cashChangeCents;
         public string primaryCause;
@@ -118,6 +119,7 @@ namespace Margins
         public long lifetimePayrollCents;
         public long lifetimeRentCents;
         public long lifetimeInventoryPurchaseCents;
+        public long lifetimeDeliveryFeesCents;
         public long lifetimeLeaseAndSetupCents;
         public long lifetimeCashChangeCents;
         public long lifetimeOperatingProfitCents;
@@ -128,7 +130,8 @@ namespace Margins
     [Serializable]
     public sealed class PortfolioProgressionSnapshot
     {
-        public const int CurrentVersion = 1;
+        public const int LegacyVersion = 1;
+        public const int CurrentVersion = 2;
 
         public int version = CurrentVersion;
         public int currentDay = 1;
@@ -146,6 +149,7 @@ namespace Margins
         public int reconciledDetailedUnitsSold;
         public int reconciledDetailedTransactionCount;
         public long lifetimeCorporateCostsCents;
+        public ProcurementSnapshot procurement;
         public List<PortfolioEmployeeSnapshot> employees = new();
         public List<PortfolioLocationSnapshot> locations = new();
     }
@@ -423,6 +427,9 @@ namespace Margins
         public long CashCents => state.cashCents;
         public int CompanyReputation => state.companyReputation;
         public bool FirstShiftCompleted => state.firstShiftCompleted;
+        public long ProcurementTick => state.procurement.currentTick;
+        public IReadOnlyList<PurchaseOrderSnapshot> PurchaseOrders =>
+            ProcurementLedger.CopySnapshot(state.procurement).orders.AsReadOnly();
         public IReadOnlyList<PortfolioEmployeeSnapshot> Employees =>
             state.employees.AsReadOnly();
         public IReadOnlyList<PortfolioLocationSnapshot> Locations =>
@@ -435,7 +442,9 @@ namespace Margins
                 cashCents = PortfolioProgressionRules.StartingCashCents,
                 companyReputation = 50,
                 firstShiftCompleted = false,
-                processedDetailedSessionId = null
+                processedDetailedSessionId = null,
+                procurement = ProcurementLedger.CreateInitial(
+                    ConvenienceStoreProcurement.Catalog).CreateSnapshot()
             };
             initial.locations.Add(CreateLocation(
                 PortfolioProgressionRules.FirstLocation));
@@ -462,8 +471,16 @@ namespace Margins
             PortfolioProgressionSnapshot snapshot,
             out string error)
         {
-            if (snapshot == null ||
-                snapshot.version != PortfolioProgressionSnapshot.CurrentVersion)
+            if (!TryNormalizeSnapshot(
+                    snapshot,
+                    out PortfolioProgressionSnapshot accepted,
+                    out error))
+            {
+                return false;
+            }
+            snapshot = accepted;
+
+            if (snapshot.version != PortfolioProgressionSnapshot.CurrentVersion)
             {
                 error = "Portfolio snapshot version is missing or unsupported.";
                 return false;
@@ -479,6 +496,14 @@ namespace Margins
                 snapshot.locations.Count > 2)
             {
                 error = "Portfolio snapshot contains invalid company totals or collections.";
+                return false;
+            }
+
+            if (!ProcurementLedger.TryValidateSnapshot(
+                    ConvenienceStoreProcurement.Catalog,
+                    snapshot.procurement,
+                    out error))
+            {
                 return false;
             }
 
@@ -533,6 +558,43 @@ namespace Margins
                 return false;
             }
 
+            foreach (PurchaseOrderSnapshot order in snapshot.procurement.orders)
+            {
+                if (!locationIds.Contains(order.locationId))
+                {
+                    error =
+                        $"Purchase order '{order.orderId}' references an unavailable portfolio location.";
+                    return false;
+                }
+            }
+
+            try
+            {
+                foreach (PortfolioLocationSnapshot location in snapshot.locations)
+                {
+                    GetProcurementTotals(
+                        snapshot.procurement,
+                        location.locationId,
+                        out long procurementPurchases,
+                        out long procurementDeliveryFees,
+                        out _);
+                    if (location.lifetimeInventoryPurchaseCents <
+                            procurementPurchases ||
+                        location.lifetimeDeliveryFeesCents !=
+                            procurementDeliveryFees)
+                    {
+                        error =
+                            $"Location '{location.locationId}' procurement costs do not reconcile to its purchase orders.";
+                        return false;
+                    }
+                }
+            }
+            catch (OverflowException)
+            {
+                error = "Portfolio procurement totals overflowed integer-cent storage.";
+                return false;
+            }
+
             if (!snapshot.detailedOperationInitialized &&
                 !legacyDetailedPosting &&
                 (snapshot.currentDay != 1 ||
@@ -546,7 +608,9 @@ namespace Margins
                  snapshot.locations[0].reorderPolicy != PortfolioReorderPolicy.Balanced ||
                  snapshot.locations[0].daysOperating != 0 ||
                  snapshot.locations[0].lifetimeGrossSalesCents != 0 ||
-                 snapshot.locations[0].lifetimeOperatingProfitCents != 0))
+                 snapshot.locations[0].lifetimeOperatingProfitCents != 0 ||
+                 snapshot.procurement.currentTick != 0 ||
+                 snapshot.procurement.orders.Count != 0))
             {
                 error = "Portfolio progression exists before the hands-on first shift was completed.";
                 return false;
@@ -688,6 +752,9 @@ namespace Margins
                 totals.includedOperatingExpensesCents - detailedPayrollCents);
 
             long acquiredInventoryCost;
+            long procurementPurchaseCents;
+            long procurementDeliveryFeesCents;
+            long deliveredProcurementInventoryCents;
             long grossSalesDelta;
             long costOfGoodsDelta;
             long expenseDelta;
@@ -698,8 +765,24 @@ namespace Margins
             long profitDelta;
             try
             {
-                acquiredInventoryCost = checked(
+                long physicalInventoryAcquiredCost = checked(
                     inventoryAssetValueCents + totals.costOfGoodsSoldCents);
+                GetProcurementTotals(
+                    state.procurement,
+                    currentLocation.locationId,
+                    out procurementPurchaseCents,
+                    out procurementDeliveryFeesCents,
+                    out deliveredProcurementInventoryCents);
+                if (deliveredProcurementInventoryCents >
+                    physicalInventoryAcquiredCost)
+                {
+                    error =
+                        "Detailed physical inventory is missing units from a delivered purchase order.";
+                    return false;
+                }
+                acquiredInventoryCost = checked(
+                    physicalInventoryAcquiredCost -
+                    deliveredProcurementInventoryCents);
                 grossSalesDelta = checked(
                     totals.grossSalesCents - state.reconciledDetailedGrossSalesCents);
                 costOfGoodsDelta = checked(
@@ -842,12 +925,18 @@ namespace Margins
                 costOfGoodsSoldCents = totals.costOfGoodsSoldCents,
                 payrollCents = detailedPayrollCents,
                 rentCents = detailedRentCents,
-                inventoryPurchaseCents = acquiredInventoryCost,
-                operatingProfitCents = totals.contributionAfterCostOfGoodsCents,
+                inventoryPurchaseCents = checked(
+                    acquiredInventoryCost + procurementPurchaseCents),
+                deliveryFeesCents = procurementDeliveryFeesCents,
+                operatingProfitCents = checked(
+                    totals.contributionAfterCostOfGoodsCents -
+                    procurementDeliveryFeesCents),
                 cashChangeCents = checked(
                     totals.grossSalesCents -
                     totals.includedOperatingExpensesCents -
-                    acquiredInventoryCost),
+                    acquiredInventoryCost -
+                    procurementPurchaseCents -
+                    procurementDeliveryFeesCents),
                 primaryCause = totals.transactionCount == 0
                     ? "The store is operating; received inventory and occupancy costs are live."
                     : "Hands-on sales, historical COGS, cash, and remaining physical inventory reconcile live.",
@@ -855,6 +944,223 @@ namespace Margins
             };
             location.hasLastReport = true;
             return TryCommit(candidate, out error);
+        }
+
+        public bool TryPlacePurchaseOrder(
+            string locationId,
+            string supplierId,
+            IReadOnlyList<ProcurementOrderRequestLine> requestedLines,
+            out PurchaseOrderSnapshot order,
+            out string error)
+        {
+            order = null;
+            if (!state.firstShiftCompleted)
+            {
+                error = "Complete the hands-on first shift before placing purchase orders.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            if (!TryPlaceOrderOnCandidate(
+                    candidate,
+                    locationId,
+                    supplierId,
+                    requestedLines,
+                    true,
+                    out order,
+                    out error) ||
+                !TryCommit(candidate, out error))
+            {
+                order = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool TryCancelPurchaseOrder(
+            string orderId,
+            out bool unchanged,
+            out string error)
+        {
+            unchanged = false;
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    state.procurement,
+                    out ProcurementLedger currentLedger,
+                    out error) ||
+                !currentLedger.TryGetOrder(
+                    orderId,
+                    out PurchaseOrderSnapshot currentOrder))
+            {
+                error ??= "Purchase order is unavailable.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger ledger,
+                    out error) ||
+                !ledger.TryCancelOrder(
+                    orderId,
+                    out long refundCents,
+                    out unchanged,
+                    out error))
+            {
+                return false;
+            }
+
+            if (unchanged)
+            {
+                error = null;
+                return true;
+            }
+
+            PortfolioLocationSnapshot location = candidate.locations.First(value =>
+                string.Equals(
+                    value.locationId,
+                    currentOrder.locationId,
+                    StringComparison.Ordinal));
+            try
+            {
+                candidate.cashCents = checked(candidate.cashCents + refundCents);
+                location.lifetimeInventoryPurchaseCents = checked(
+                    location.lifetimeInventoryPurchaseCents -
+                    currentOrder.subtotalCostCents);
+                location.lifetimeDeliveryFeesCents = checked(
+                    location.lifetimeDeliveryFeesCents -
+                    currentOrder.deliveryFeeCents);
+                location.lifetimeOperatingProfitCents = checked(
+                    location.lifetimeOperatingProfitCents +
+                    currentOrder.deliveryFeeCents);
+                location.lifetimeCashChangeCents = checked(
+                    location.lifetimeCashChangeCents + refundCents);
+            }
+            catch (OverflowException)
+            {
+                error = "Purchase order cancellation overflowed company totals.";
+                return false;
+            }
+
+            if (location.lifetimeInventoryPurchaseCents < 0 ||
+                location.lifetimeDeliveryFeesCents < 0)
+            {
+                error = "Purchase order cancellation contradicts recorded location costs.";
+                return false;
+            }
+
+            candidate.procurement = ledger.CreateSnapshot();
+            return TryCommit(candidate, out error);
+        }
+
+        public bool TryAdvanceProcurementTicks(
+            int elapsedTicks,
+            out int fulfilledOrderCount,
+            out string error)
+        {
+            fulfilledOrderCount = 0;
+            if (!state.firstShiftCompleted)
+            {
+                error = "Procurement time begins after the hands-on first shift.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger ledger,
+                    out error) ||
+                !ledger.TryAdvanceTicks(
+                    elapsedTicks,
+                    out fulfilledOrderCount,
+                    out error))
+            {
+                return false;
+            }
+
+            candidate.procurement = ledger.CreateSnapshot();
+            return TryCommit(candidate, out error);
+        }
+
+        public bool TryCreatePurchaseOrderDelivery(
+            string orderId,
+            out PurchaseOrderSnapshot order,
+            out bool unchanged,
+            out string error)
+        {
+            order = null;
+            unchanged = false;
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger ledger,
+                    out error) ||
+                !ledger.TryCreateDelivery(
+                    orderId,
+                    out order,
+                    out unchanged,
+                    out error))
+            {
+                return false;
+            }
+
+            if (unchanged)
+            {
+                return true;
+            }
+
+            candidate.procurement = ledger.CreateSnapshot();
+            if (!TryCommit(candidate, out error))
+            {
+                order = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool TryRecordPurchaseOrderReceipt(
+            string orderId,
+            IReadOnlyDictionary<string, int> receivedQuantities,
+            out PurchaseOrderSnapshot order,
+            out bool unchanged,
+            out string error)
+        {
+            order = null;
+            unchanged = false;
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger ledger,
+                    out error) ||
+                !ledger.TryRecordAbsoluteReceipt(
+                    orderId,
+                    receivedQuantities,
+                    out order,
+                    out unchanged,
+                    out error))
+            {
+                return false;
+            }
+
+            if (unchanged)
+            {
+                return true;
+            }
+
+            candidate.procurement = ledger.CreateSnapshot();
+            if (!TryCommit(candidate, out error))
+            {
+                order = null;
+                return false;
+            }
+
+            return true;
         }
 
         public bool TryHireCandidate(
@@ -1259,6 +1565,19 @@ namespace Margins
 
             PortfolioProgressionSnapshot candidate = Clone(state);
             int simulatedDay = candidate.currentDay + 1;
+            if (!ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger procurement,
+                    out error) ||
+                !procurement.TryAdvanceTicks(
+                    ConvenienceStoreProcurement.TicksPerDelegatedDay,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+            candidate.procurement = procurement.CreateSnapshot();
             long portfolioFixedCosts =
                 candidate.locations.Sum(location => location.dailyRentCents) +
                 candidate.employees.Sum(employee => employee.dailyWageCents);
@@ -1266,16 +1585,23 @@ namespace Margins
             foreach (PortfolioLocationSnapshot location in candidate.locations
                          .OrderBy(value => value.locationId, StringComparer.Ordinal))
             {
-                if (!TrySimulateLocationDay(
+                if (!TryProcessAggregateDelivery(
+                        location,
+                        procurement,
+                        out _,
+                        out error) ||
+                    !TrySimulateLocationDay(
                         candidate,
                         location,
                         simulatedDay,
+                        procurement,
                         out error))
                 {
                     return false;
                 }
             }
 
+            candidate.procurement = procurement.CreateSnapshot();
             candidate.currentDay = simulatedDay;
             candidate.companyReputation = Clamp(
                 (int)Math.Round(candidate.locations.Average(location =>
@@ -1286,10 +1612,76 @@ namespace Margins
             return TryCommit(candidate, out error);
         }
 
+        private static bool TryProcessAggregateDelivery(
+            PortfolioLocationSnapshot location,
+            ProcurementLedger procurement,
+            out int receivedOrderUnits,
+            out string error)
+        {
+            receivedOrderUnits = 0;
+            if (!procurement.TryGetActiveOrderForLocation(
+                    location.locationId,
+                    out PurchaseOrderSnapshot order) ||
+                order.status == PurchaseOrderStatus.Pending)
+            {
+                error = null;
+                return true;
+            }
+
+            if (order.status == PurchaseOrderStatus.Fulfilled)
+            {
+                int orderedUnits = order.OrderedQuantityUnits;
+                if (orderedUnits >
+                    location.inventoryCapacityUnits - location.inventoryUnits)
+                {
+                    // Keep the fulfilled order intact until receiving capacity
+                    // becomes available; do not invent overflow inventory.
+                    error = null;
+                    return true;
+                }
+
+                if (!procurement.TryCreateDelivery(
+                        order.orderId,
+                        out order,
+                        out _,
+                        out error))
+                {
+                    return false;
+                }
+
+                location.inventoryUnits = checked(
+                    location.inventoryUnits + orderedUnits);
+                receivedOrderUnits = orderedUnits;
+            }
+
+            if (order.status == PurchaseOrderStatus.Delivered ||
+                order.status == PurchaseOrderStatus.PartiallyReceived)
+            {
+                Dictionary<string, int> completedReceipt =
+                    order.lines.ToDictionary(
+                        line => line.resourceId,
+                        line => line.orderedQuantityUnits,
+                        StringComparer.Ordinal);
+                if (!procurement.TryRecordAbsoluteReceipt(
+                        order.orderId,
+                        completedReceipt,
+                        out _,
+                        out _,
+                        out error))
+                {
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
         private static bool TrySimulateLocationDay(
             PortfolioProgressionSnapshot candidate,
             PortfolioLocationSnapshot location,
             int simulatedDay,
+            ProcurementLedger procurement,
             out string error)
         {
             if (!PortfolioProgressionRules.TryGetLocationDefinition(
@@ -1327,27 +1719,7 @@ namespace Margins
                 out int reorderTarget);
             int reorderedUnits = 0;
             long inventoryPurchase = 0;
-            if (location.inventoryUnits <= reorderPoint)
-            {
-                int desiredUnits = Math.Max(0, reorderTarget - location.inventoryUnits);
-                long spendable = Math.Max(
-                    0,
-                    candidate.cashCents -
-                    PortfolioProgressionRules.MinimumCashReserveCents);
-                int affordableUnits =
-                    simulation.UnitEconomy.VariableUnitCostCents == 0
-                        ? desiredUnits
-                        : (int)Math.Min(
-                            int.MaxValue,
-                            spendable /
-                            simulation.UnitEconomy.VariableUnitCostCents);
-                reorderedUnits = Math.Min(desiredUnits, affordableUnits);
-                inventoryPurchase = checked(
-                    reorderedUnits *
-                    simulation.UnitEconomy.VariableUnitCostCents);
-                candidate.cashCents -= inventoryPurchase;
-                location.inventoryUnits += reorderedUnits;
-            }
+            long deliveryFees = 0;
             int inventoryAvailableAtOpen = location.inventoryUnits;
 
             long unitPrice = location.pricingPolicy switch
@@ -1421,6 +1793,59 @@ namespace Margins
 
             location.inventoryUnits -= unitsSold;
 
+            bool reorderBlockedByCash = false;
+            if (location.inventoryUnits <= reorderPoint &&
+                !procurement.TryGetActiveOrderForLocation(
+                    location.locationId,
+                    out _))
+            {
+                int desiredUnits = Math.Max(
+                    0,
+                    reorderTarget - location.inventoryUnits);
+                long spendable = Math.Max(
+                    0,
+                    candidate.cashCents -
+                    PortfolioProgressionRules.MinimumCashReserveCents -
+                    ConvenienceStoreProcurement.DeliveryFeeCents);
+                int affordableUnits =
+                    simulation.UnitEconomy.VariableUnitCostCents == 0
+                        ? desiredUnits
+                        : (int)Math.Min(
+                            int.MaxValue,
+                            spendable /
+                            simulation.UnitEconomy.VariableUnitCostCents);
+                reorderedUnits = Math.Min(desiredUnits, affordableUnits);
+                if (reorderedUnits > 0)
+                {
+                    ProcurementOrderRequestLine[] lines =
+                    {
+                        new(
+                            ConvenienceStoreProcurement.AggregateResourceId,
+                            reorderedUnits)
+                    };
+                    if (!TryPlaceOrderOnCandidate(
+                            candidate,
+                            location,
+                            procurement,
+                            ConvenienceStoreProcurement.SupplierId,
+                            lines,
+                            false,
+                            true,
+                            out PurchaseOrderSnapshot order,
+                            out error))
+                    {
+                        return false;
+                    }
+
+                    inventoryPurchase = order.subtotalCostCents;
+                    deliveryFees = order.deliveryFeeCents;
+                }
+                else
+                {
+                    reorderBlockedByCash = desiredUnits > 0;
+                }
+            }
+
             string primaryCause = "Demand served within current capacity.";
             if (lostDemand > 0)
             {
@@ -1445,6 +1870,10 @@ namespace Margins
             else if (location.pricingPolicy == PortfolioPricingPolicy.Value)
             {
                 primaryCause = "Value pricing increased traffic and consumed inventory faster.";
+            }
+            if (reorderBlockedByCash)
+            {
+                primaryCause += " Available cash could not fund the configured reorder and protected reserve.";
             }
 
             int serviceRatioPercent = demand <= 0
@@ -1473,13 +1902,11 @@ namespace Margins
                 location.lifetimePayrollCents + payroll);
             location.lifetimeRentCents = checked(
                 location.lifetimeRentCents + location.dailyRentCents);
-            location.lifetimeInventoryPurchaseCents = checked(
-                location.lifetimeInventoryPurchaseCents + inventoryPurchase);
             location.lifetimeOperatingProfitCents = checked(
                 location.lifetimeOperatingProfitCents + operatingProfit);
             location.lifetimeCashChangeCents = checked(
                 location.lifetimeCashChangeCents +
-                grossSales - fixedCosts - inventoryPurchase);
+                grossSales - fixedCosts);
             location.lastReport = new PortfolioLocationReportSnapshot
             {
                 day = simulatedDay,
@@ -1495,8 +1922,11 @@ namespace Margins
                 payrollCents = payroll,
                 rentCents = location.dailyRentCents,
                 inventoryPurchaseCents = inventoryPurchase,
-                operatingProfitCents = operatingProfit,
-                cashChangeCents = grossSales - fixedCosts - inventoryPurchase,
+                deliveryFeesCents = deliveryFees,
+                operatingProfitCents = checked(
+                    operatingProfit - deliveryFees),
+                cashChangeCents = checked(
+                    grossSales - fixedCosts - inventoryPurchase - deliveryFees),
                 primaryCause = primaryCause,
                 isDetailedOperation = false
             };
@@ -1518,6 +1948,181 @@ namespace Margins
 
             error = null;
             return true;
+        }
+
+        private static bool TryPlaceOrderOnCandidate(
+            PortfolioProgressionSnapshot candidate,
+            string locationId,
+            string supplierId,
+            IReadOnlyList<ProcurementOrderRequestLine> requestedLines,
+            bool protectCashReserve,
+            out PurchaseOrderSnapshot order,
+            out string error)
+        {
+            order = null;
+            error = null;
+            if (!TryGetLocation(candidate, locationId, out PortfolioLocationSnapshot location) ||
+                !ProcurementLedger.TryRestore(
+                    ConvenienceStoreProcurement.Catalog,
+                    candidate.procurement,
+                    out ProcurementLedger ledger,
+                    out error))
+            {
+                error ??= "Purchase order location is unavailable.";
+                return false;
+            }
+
+            if (!TryPlaceOrderOnCandidate(
+                    candidate,
+                    location,
+                    ledger,
+                    supplierId,
+                    requestedLines,
+                    string.Equals(
+                        location.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal) &&
+                    location.delegatedDaysOperating == 0,
+                    protectCashReserve,
+                    out order,
+                    out error))
+            {
+                return false;
+            }
+
+            candidate.procurement = ledger.CreateSnapshot();
+            return true;
+        }
+
+        private static bool TryPlaceOrderOnCandidate(
+            PortfolioProgressionSnapshot candidate,
+            PortfolioLocationSnapshot location,
+            ProcurementLedger ledger,
+            string supplierId,
+            IReadOnlyList<ProcurementOrderRequestLine> requestedLines,
+            bool requiresPhysicalProducts,
+            bool protectCashReserve,
+            out PurchaseOrderSnapshot order,
+            out string error)
+        {
+            order = null;
+            error = null;
+            if (candidate == null || location == null || ledger == null)
+            {
+                error = "Purchase order state is unavailable.";
+                return false;
+            }
+
+            if (requestedLines == null || requestedLines.Any(line =>
+                    requiresPhysicalProducts
+                        ? !ConvenienceStoreProcurement.IsDetailedResource(
+                            line.ResourceId)
+                        : !string.Equals(
+                            line.ResourceId,
+                            ConvenienceStoreProcurement.AggregateResourceId,
+                            StringComparison.Ordinal)))
+            {
+                error = requiresPhysicalProducts
+                    ? "The detailed convenience store accepts only configured physical product resources."
+                    : "An off-site convenience store accepts only its configured aggregate assortment resource.";
+                return false;
+            }
+
+            if (!ledger.TryPlaceOrder(
+                    location.locationId,
+                    supplierId,
+                    requestedLines,
+                    out order,
+                    out long chargeCents,
+                    out error))
+            {
+                return false;
+            }
+
+            long requiredCash;
+            try
+            {
+                requiredCash = checked(
+                    chargeCents +
+                    (protectCashReserve
+                        ? PortfolioProgressionRules.MinimumCashReserveCents
+                        : 0));
+            }
+            catch (OverflowException)
+            {
+                order = null;
+                error = "Purchase order cash requirement overflowed supported storage.";
+                return false;
+            }
+
+            if (candidate.cashCents < requiredCash)
+            {
+                order = null;
+                error = protectCashReserve
+                    ? $"Purchase order requires {FormatCents(chargeCents)} plus the protected cash reserve."
+                    : $"Purchase order requires {FormatCents(chargeCents)} in available cash.";
+                return false;
+            }
+
+            try
+            {
+                candidate.cashCents = checked(candidate.cashCents - chargeCents);
+                location.lifetimeInventoryPurchaseCents = checked(
+                    location.lifetimeInventoryPurchaseCents +
+                    order.subtotalCostCents);
+                location.lifetimeDeliveryFeesCents = checked(
+                    location.lifetimeDeliveryFeesCents +
+                    order.deliveryFeeCents);
+                location.lifetimeOperatingProfitCents = checked(
+                    location.lifetimeOperatingProfitCents -
+                    order.deliveryFeeCents);
+                location.lifetimeCashChangeCents = checked(
+                    location.lifetimeCashChangeCents - chargeCents);
+            }
+            catch (OverflowException)
+            {
+                order = null;
+                error = "Purchase order would overflow company or location totals.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        private static void GetProcurementTotals(
+            ProcurementSnapshot procurement,
+            string locationId,
+            out long netPurchaseCents,
+            out long netDeliveryFeesCents,
+            out long deliveredInventoryCents)
+        {
+            netPurchaseCents = 0;
+            netDeliveryFeesCents = 0;
+            deliveredInventoryCents = 0;
+            foreach (PurchaseOrderSnapshot order in procurement.orders)
+            {
+                if (!string.Equals(
+                        order.locationId,
+                        locationId,
+                        StringComparison.Ordinal) ||
+                    order.status == PurchaseOrderStatus.Canceled)
+                {
+                    continue;
+                }
+
+                netPurchaseCents = checked(
+                    netPurchaseCents + order.subtotalCostCents);
+                netDeliveryFeesCents = checked(
+                    netDeliveryFeesCents + order.deliveryFeeCents);
+                if (order.status == PurchaseOrderStatus.Delivered ||
+                    order.status == PurchaseOrderStatus.PartiallyReceived ||
+                    order.status == PurchaseOrderStatus.Completed)
+                {
+                    deliveredInventoryCents = checked(
+                        deliveredInventoryCents + order.subtotalCostCents);
+                }
+            }
         }
 
         private bool TryCommit(
@@ -1586,6 +2191,7 @@ namespace Margins
                 location.lifetimePayrollCents < 0 ||
                 location.lifetimeRentCents < 0 ||
                 location.lifetimeInventoryPurchaseCents < 0 ||
+                location.lifetimeDeliveryFeesCents < 0 ||
                 location.lifetimeLeaseAndSetupCents < 0 ||
                 !Enum.IsDefined(typeof(PortfolioPricingPolicy), location.pricingPolicy) ||
                 !Enum.IsDefined(typeof(PortfolioReorderPolicy), location.reorderPolicy))
@@ -1650,12 +2256,14 @@ namespace Margins
                     report.grossSalesCents -
                     report.costOfGoodsSoldCents -
                     report.payrollCents -
-                    report.rentCents);
+                    report.rentCents -
+                    report.deliveryFeesCents);
                 expectedCashChange = checked(
                     report.grossSalesCents -
                     report.payrollCents -
                     report.rentCents -
-                    report.inventoryPurchaseCents);
+                    report.inventoryPurchaseCents -
+                    report.deliveryFeesCents);
             }
             catch (OverflowException)
             {
@@ -1676,6 +2284,7 @@ namespace Margins
                 report.endingInventoryUnits == location.inventoryUnits &&
                 report.reorderedUnits >= 0 &&
                 report.payrollCents >= 0 &&
+                report.deliveryFeesCents >= 0 &&
                 report.operatingProfitCents == expectedOperatingProfit &&
                 report.cashChangeCents == expectedCashChange &&
                 !string.IsNullOrWhiteSpace(report.primaryCause);
@@ -1788,6 +2397,7 @@ namespace Margins
                 lifetimePayrollCents = 0,
                 lifetimeRentCents = 0,
                 lifetimeInventoryPurchaseCents = 0,
+                lifetimeDeliveryFeesCents = 0,
                 lifetimeLeaseAndSetupCents = 0,
                 lifetimeCashChangeCents = 0,
                 lifetimeOperatingProfitCents = 0,
@@ -1885,12 +2495,40 @@ namespace Margins
             }
         }
 
+        private static bool TryNormalizeSnapshot(
+            PortfolioProgressionSnapshot source,
+            out PortfolioProgressionSnapshot normalized,
+            out string error)
+        {
+            normalized = null;
+            if (source == null ||
+                (source.version != PortfolioProgressionSnapshot.LegacyVersion &&
+                 source.version != PortfolioProgressionSnapshot.CurrentVersion))
+            {
+                error = "Portfolio snapshot version is missing or unsupported.";
+                return false;
+            }
+
+            if (source.version == PortfolioProgressionSnapshot.CurrentVersion &&
+                source.procurement == null)
+            {
+                error = "Current portfolio snapshot is missing procurement state.";
+                return false;
+            }
+
+            normalized = source.version == PortfolioProgressionSnapshot.CurrentVersion
+                ? source
+                : Clone(source);
+            error = null;
+            return true;
+        }
+
         private static PortfolioProgressionSnapshot Clone(
             PortfolioProgressionSnapshot source)
         {
             PortfolioProgressionSnapshot clone = new()
             {
-                version = source.version,
+                version = PortfolioProgressionSnapshot.CurrentVersion,
                 currentDay = source.currentDay,
                 cashCents = source.cashCents,
                 companyReputation = source.companyReputation,
@@ -1906,11 +2544,19 @@ namespace Margins
                 reconciledDetailedUnitsSold = source.reconciledDetailedUnitsSold,
                 reconciledDetailedTransactionCount = source.reconciledDetailedTransactionCount,
                 lifetimeCorporateCostsCents = source.lifetimeCorporateCostsCents,
+                procurement = source.procurement == null
+                    ? ProcurementLedger.CreateInitial(
+                        ConvenienceStoreProcurement.Catalog).CreateSnapshot()
+                    : ProcurementLedger.CopySnapshot(source.procurement),
                 employees = source.employees?
-                    .Select(CloneEmployee)
+                    .Select(employee => employee == null
+                        ? null
+                        : CloneEmployee(employee))
                     .ToList() ?? new List<PortfolioEmployeeSnapshot>(),
                 locations = source.locations?
-                    .Select(CloneLocation)
+                    .Select(location => location == null
+                        ? null
+                        : CloneLocation(location))
                     .ToList() ?? new List<PortfolioLocationSnapshot>()
             };
             if (clone.detailedOperationInitialized &&
@@ -1983,6 +2629,7 @@ namespace Margins
                 lifetimePayrollCents = source.lifetimePayrollCents,
                 lifetimeRentCents = source.lifetimeRentCents,
                 lifetimeInventoryPurchaseCents = source.lifetimeInventoryPurchaseCents,
+                lifetimeDeliveryFeesCents = source.lifetimeDeliveryFeesCents,
                 lifetimeLeaseAndSetupCents = source.lifetimeLeaseAndSetupCents,
                 lifetimeCashChangeCents = source.lifetimeCashChangeCents,
                 lifetimeOperatingProfitCents = source.lifetimeOperatingProfitCents,
@@ -2009,6 +2656,7 @@ namespace Margins
                    report.payrollCents == 0 &&
                    report.rentCents == 0 &&
                    report.inventoryPurchaseCents == 0 &&
+                   report.deliveryFeesCents == 0 &&
                    report.operatingProfitCents == 0 &&
                    report.cashChangeCents == 0 &&
                    !report.isDetailedOperation &&
@@ -2038,6 +2686,7 @@ namespace Margins
                 payrollCents = source.payrollCents,
                 rentCents = source.rentCents,
                 inventoryPurchaseCents = source.inventoryPurchaseCents,
+                deliveryFeesCents = source.deliveryFeesCents,
                 operatingProfitCents = source.operatingProfitCents,
                 cashChangeCents = source.cashChangeCents,
                 primaryCause = source.primaryCause,
@@ -2048,11 +2697,11 @@ namespace Margins
         private static void SortCollections(PortfolioProgressionSnapshot snapshot)
         {
             snapshot.employees.Sort((left, right) => string.CompareOrdinal(
-                left.employeeId,
-                right.employeeId));
+                left?.employeeId,
+                right?.employeeId));
             snapshot.locations.Sort((left, right) => string.CompareOrdinal(
-                left.locationId,
-                right.locationId));
+                left?.locationId,
+                right?.locationId));
         }
 
         private static int Clamp(int value, int minimum, int maximum)
