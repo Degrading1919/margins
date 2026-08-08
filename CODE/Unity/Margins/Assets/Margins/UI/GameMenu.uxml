@@ -1,0 +1,96 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="menu-root" class="menu-root">
+        <ui:VisualElement name="menu-background-layer" class="menu-background-layer" picking-mode="Ignore">
+            <ui:VisualElement class="menu-background-wash" />
+            <ui:VisualElement class="menu-background-edge" />
+            <ui:VisualElement class="menu-horizon-line" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="menu-foreground-layer" class="menu-foreground-layer">
+            <ui:VisualElement name="title-view" class="hero-view">
+                <ui:VisualElement class="hero-content">
+                    <ui:Label name="title-wordmark" text="MARGINS" class="hero-wordmark" />
+                    <ui:VisualElement class="hero-accent-line" />
+                    <ui:VisualElement class="hero-options">
+                        <ui:Button name="title-new-business" text="New Business" class="menu-button menu-button--primary" />
+                        <ui:Button name="title-load-business" text="Load Business" class="menu-button" />
+                        <ui:Button name="title-settings" text="Settings" class="menu-button" />
+                        <ui:Button name="title-quit" text="Quit to Desktop" class="menu-button" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="title-notification" class="notification">
+                        <ui:Label name="title-notification-message" class="notification-message" />
+                        <ui:Button name="title-notification-dismiss" text="Dismiss" class="notification-dismiss" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="pause-view" class="hero-view">
+                <ui:VisualElement class="hero-content">
+                    <ui:Label text="PAUSED" class="pause-wordmark" />
+                    <ui:VisualElement class="hero-accent-line" />
+                    <ui:VisualElement class="hero-options">
+                        <ui:Button name="pause-resume" text="Resume" class="menu-button menu-button--primary" />
+                        <ui:Button name="pause-save" text="Save Business" class="menu-button" />
+                        <ui:Button name="pause-load" text="Load Business" class="menu-button" />
+                        <ui:Button name="pause-settings" text="Settings" class="menu-button" />
+                        <ui:Button name="pause-title" text="Return to Title" class="menu-button" />
+                        <ui:Button name="pause-quit" text="Quit to Desktop" class="menu-button" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="pause-notification" class="notification">
+                        <ui:Label name="pause-notification-message" class="notification-message" />
+                        <ui:Button name="pause-notification-dismiss" text="Dismiss" class="notification-dismiss" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="settings-view" class="settings-view">
+                <ui:VisualElement class="settings-shell">
+                    <ui:VisualElement class="settings-header">
+                        <ui:Label text="MARGINS" class="settings-brand" />
+                        <ui:Label text="Settings" class="settings-title" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="settings-tabs">
+                        <ui:Button name="settings-general-tab" text="General" class="settings-tab" />
+                        <ui:Button name="settings-controls-tab" text="Controls" class="settings-tab" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="settings-general-content" class="settings-content">
+                        <ui:Label text="DISPLAY &amp; INTERFACE" class="section-label" />
+                        <ui:Toggle name="settings-fullscreen" label="Fullscreen" class="settings-toggle" />
+                        <ui:SliderInt name="settings-interface-scale" label="Interface scale" low-value="85" high-value="125" value="100" class="settings-slider" />
+                        <ui:Label name="settings-interface-scale-value" text="100%" class="setting-value" />
+
+                        <ui:Label text="AUDIO &amp; MOTION" class="section-label section-label--spaced" />
+                        <ui:SliderInt name="settings-master-volume" label="Master volume" low-value="0" high-value="100" value="80" class="settings-slider" />
+                        <ui:Label name="settings-master-volume-value" text="80%" class="setting-value" />
+                        <ui:Toggle name="settings-camera-motion" label="Camera motion" class="settings-toggle" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="settings-controls-content" class="settings-content">
+                        <ui:VisualElement class="controls-preferences">
+                            <ui:SliderInt name="settings-look-sensitivity" label="Look sensitivity" low-value="1" high-value="10" value="5" class="settings-slider" />
+                            <ui:Label name="settings-look-sensitivity-value" text="5 · Medium" class="setting-value" />
+                            <ui:Toggle name="settings-invert-y" label="Invert vertical look" class="settings-toggle" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="controls-heading-row">
+                            <ui:Label text="KEYBOARD &amp; MOUSE" class="section-label" />
+                            <ui:Button name="settings-reset-bindings" text="Reset Defaults" class="quiet-button" />
+                        </ui:VisualElement>
+                        <ui:ScrollView name="settings-binding-list" class="binding-list" mode="Vertical" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="settings-notification" class="notification settings-notification">
+                        <ui:Label name="settings-notification-message" class="notification-message" />
+                        <ui:Button name="settings-notification-dismiss" text="Dismiss" class="notification-dismiss" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="settings-footer">
+                        <ui:Button name="settings-back" text="Back" class="quiet-button footer-button" />
+                        <ui:Button name="settings-apply" text="Apply Settings" class="apply-button footer-button" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

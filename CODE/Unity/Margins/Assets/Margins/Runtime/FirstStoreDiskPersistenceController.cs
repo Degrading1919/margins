@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -86,6 +87,7 @@ namespace Margins
         [SerializeField] private string saveFileName = "first-store-vertical-slice.json";
 
         private float quickLoadConfirmationUntil;
+        private FirstStoreDiskSaveData newBusinessTemplate;
 
         public event Action<bool, string> OperationCompleted;
 
@@ -97,6 +99,18 @@ namespace Margins
             "Margins",
             saveFileName);
         public bool HasSaveFile => File.Exists(SavePath);
+        public bool HasNewBusinessTemplate => newBusinessTemplate != null;
+
+        private IEnumerator Start()
+        {
+            yield return null;
+            if (!TryCaptureNewBusinessTemplate(out string error))
+            {
+                Debug.LogError(
+                    $"New-business initialization template could not be captured: {error}",
+                    this);
+            }
+        }
 
         private void Update()
         {
@@ -184,6 +198,38 @@ namespace Margins
         public bool TryLoad()
         {
             return TryLoadFromPath(SavePath);
+        }
+
+        public bool TryStartNewBusiness()
+        {
+            if (newBusinessTemplate == null &&
+                !TryCaptureNewBusinessTemplate(out string captureError))
+            {
+                return Reject(
+                    $"New business rejected: clean initialization state is unavailable: {captureError}");
+            }
+
+            string json;
+            try
+            {
+                json = FirstStoreDiskSaveCodec.ToJson(newBusinessTemplate);
+            }
+            catch (Exception exception)
+            {
+                return Reject(
+                    $"New business rejected: initialization state could not be copied: {exception.Message}");
+            }
+
+            if (!FirstStoreDiskSaveCodec.TryFromJson(
+                    json,
+                    out FirstStoreDiskSaveData cleanState,
+                    out string error))
+            {
+                return Reject(
+                    $"New business rejected: initialization state could not be copied: {error}");
+            }
+
+            return TryRestoreSaveData(cleanState, true);
         }
 
         public bool TrySaveToPath(string path)
@@ -286,11 +332,71 @@ namespace Margins
                 return Reject($"Load rejected: {error}");
             }
 
+            return TryRestoreSaveData(saveData, false);
+        }
+
+        private bool TryCaptureNewBusinessTemplate(out string error)
+        {
+            if (newBusinessTemplate != null)
+            {
+                error = null;
+                return true;
+            }
+
+            if (!TryValidateConfiguration(out error) ||
+                !persistenceMapper.TryCapture(
+                    out FirstStoreSnapshot firstStore,
+                    out error))
+            {
+                return false;
+            }
+
+            FirstStorePlayerTransformSnapshot playerTransform =
+                firstPersonController.CaptureTransformSnapshot();
+            if (!firstPersonController.TryPreflightApplyTransformSnapshot(
+                    playerTransform,
+                    out error))
+            {
+                return false;
+            }
+
+            PortfolioProgressionSnapshot portfolio = null;
+            if (portfolioProgression != null &&
+                !portfolioProgression.TryCaptureSnapshot(
+                    out portfolio,
+                    out error))
+            {
+                return false;
+            }
+
+            newBusinessTemplate = new FirstStoreDiskSaveData
+            {
+                version = CurrentFileVersion,
+                firstStore = firstStore,
+                playerTransform = playerTransform,
+                portfolio = portfolio
+            };
+            error = null;
+            return true;
+        }
+
+        private bool TryRestoreSaveData(
+            FirstStoreDiskSaveData saveData,
+            bool startingNewBusiness)
+        {
+            string rejectionPrefix = startingNewBusiness
+                ? "New business rejected"
+                : "Load rejected";
+            if (!TryValidateConfiguration(out string error))
+            {
+                return Reject($"{rejectionPrefix}: {error}");
+            }
+
             if (saveData.version != CurrentFileVersion &&
                 saveData.version != LegacyFileVersion)
             {
                 return Reject(
-                    $"Load rejected: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion} or {CurrentFileVersion}.");
+                    $"{rejectionPrefix}: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion} or {CurrentFileVersion}.");
             }
 
             if (saveData.firstStore == null ||
@@ -299,7 +405,7 @@ namespace Margins
                     saveData.playerTransform,
                     out error))
             {
-                return Reject($"Load rejected: {error ?? "first-store state is missing."}");
+                return Reject($"{rejectionPrefix}: {error ?? "first-store state is missing."}");
             }
 
             PortfolioProgressionSnapshot acceptedPortfolio = null;
@@ -313,7 +419,7 @@ namespace Margins
                             out acceptedPortfolio,
                             out error))
                     {
-                        return Reject($"Load rejected: legacy company migration failed: {error}");
+                        return Reject($"{rejectionPrefix}: legacy company migration failed: {error}");
                     }
                     migratedLegacyPortfolio = true;
                 }
@@ -323,7 +429,7 @@ namespace Margins
                              out error))
                 {
                     return Reject(
-                        $"Load rejected: {error ?? "portfolio state is missing."}");
+                        $"{rejectionPrefix}: {error ?? "portfolio state is missing."}");
                 }
                 else
                 {
@@ -340,7 +446,7 @@ namespace Margins
                          StringComparison.Ordinal)))
                 {
                     return Reject(
-                        "Load rejected: detailed first-shift result and portfolio posting disagree.");
+                        $"{rejectionPrefix}: detailed first-shift result and portfolio posting disagree.");
                 }
 
                 if (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
@@ -349,20 +455,20 @@ namespace Margins
                         out error))
                 {
                     return Reject(
-                        $"Load rejected: procurement reconciliation failed: {error}");
+                        $"{rejectionPrefix}: procurement reconciliation failed: {error}");
                 }
             }
             else if (saveData.portfolio != null)
             {
                 return Reject(
-                    "Load rejected: this scene has no portfolio controller for the saved company state.");
+                    $"{rejectionPrefix}: this scene has no portfolio controller for the saved company state.");
             }
 
             if (!persistenceMapper.TryCapture(
                     out FirstStoreSnapshot previousFirstStore,
                     out error))
             {
-                return Reject($"Load rejected: current state could not be protected: {error}");
+                return Reject($"{rejectionPrefix}: current state could not be protected: {error}");
             }
 
             FirstStorePlayerTransformSnapshot previousPlayerTransform =
@@ -374,11 +480,11 @@ namespace Margins
                     out error))
             {
                 return Reject(
-                    $"Load rejected: current company state could not be protected: {error}");
+                    $"{rejectionPrefix}: current company state could not be protected: {error}");
             }
             if (!persistenceMapper.TryRestore(saveData.firstStore, out error))
             {
-                return Reject($"Load rejected: {error}");
+                return Reject($"{rejectionPrefix}: {error}");
             }
 
             if (portfolioProgression != null &&
@@ -400,7 +506,7 @@ namespace Margins
                         $"(store: '{rollbackError ?? "ok"}', portfolio: '{portfolioRollbackError ?? "ok"}').");
                 }
 
-                return Reject($"Load rejected: {portfolioError}");
+                return Reject($"{rejectionPrefix}: {portfolioError}");
             }
 
             if (!firstPersonController.TryApplyTransformSnapshot(
@@ -428,7 +534,7 @@ namespace Margins
                         $"player: '{playerRollbackError ?? "ok"}').");
                 }
 
-                return Reject($"Load rejected: {playerError}");
+                return Reject($"{rejectionPrefix}: {playerError}");
             }
 
             stagedCheckout.ResetTransientStateAfterRestore();
@@ -436,7 +542,9 @@ namespace Margins
             interactionController.ResetTransientStateAfterRestore();
 
             return Accept(
-                migratedLegacyPortfolio
+                startingNewBusiness
+                    ? "Started a clean first-store business. The existing disk save was kept."
+                    : migratedLegacyPortfolio
                     ? "Loaded first-store state and migrated legacy company progression."
                     : "Loaded first-store and portfolio state from disk.");
         }

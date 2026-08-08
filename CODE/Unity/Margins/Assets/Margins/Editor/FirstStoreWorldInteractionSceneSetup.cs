@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
 
 namespace Margins.Editor
 {
@@ -16,6 +17,12 @@ namespace Margins.Editor
             "Assets/Margins/Scenes/FirstStoreValidation.unity";
         private const string NavMeshDataPath =
             "Assets/Margins/Scenes/FirstStoreLocalNavigation.asset";
+        private const string MenuPanelSettingsPath =
+            "Assets/Margins/UI/GameMenuPanelSettings.asset";
+        private const string MenuVisualTreePath =
+            "Assets/Margins/UI/GameMenu.uxml";
+        private const string MenuStyleSheetPath =
+            "Assets/Margins/UI/GameMenu.uss";
 
         public static void Apply()
         {
@@ -236,6 +243,8 @@ namespace Margins.Editor
                 "firstPersonController",
                 playerObject.GetComponent<FirstPersonController>());
             SetObject(gameMenu, "persistence", diskPersistence);
+            SetObject(gameMenu, "inputActions", inputActions);
+            ConfigureGameMenuPresentation(gameMenu);
 
             Transform toolHoldPoint = CreateCarryPoint(
                 playerObject.GetComponentInChildren<Camera>().transform,
@@ -1066,6 +1075,49 @@ namespace Margins.Editor
             point.transform.localPosition = localPosition;
             point.transform.localRotation = Quaternion.identity;
             return point.transform;
+        }
+
+        private static void ConfigureGameMenuPresentation(
+            GamePauseMenuController controller)
+        {
+            VisualTreeAsset visualTree =
+                AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(MenuVisualTreePath);
+            StyleSheet styleSheet =
+                AssetDatabase.LoadAssetAtPath<StyleSheet>(MenuStyleSheetPath);
+            if (visualTree == null || styleSheet == null)
+            {
+                throw new InvalidOperationException(
+                    "The game menu requires its UI Toolkit visual tree and style sheet assets.");
+            }
+
+            PanelSettings panelSettings =
+                AssetDatabase.LoadAssetAtPath<PanelSettings>(MenuPanelSettingsPath);
+            if (panelSettings == null)
+            {
+                panelSettings = ScriptableObject.CreateInstance<PanelSettings>();
+                panelSettings.name = "Game Menu Panel Settings";
+                AssetDatabase.CreateAsset(panelSettings, MenuPanelSettingsPath);
+            }
+            panelSettings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+            panelSettings.referenceResolution = new Vector2Int(1920, 1080);
+            panelSettings.screenMatchMode =
+                PanelScreenMatchMode.MatchWidthOrHeight;
+            panelSettings.match = 0.5f;
+            panelSettings.sortingOrder = 100f;
+            EditorUtility.SetDirty(panelSettings);
+
+            DestroySceneObjectsNamed("Margins Menu Foreground");
+            GameObject menuObject = new("Margins Menu Foreground");
+            UIDocument document = menuObject.AddComponent<UIDocument>();
+            document.panelSettings = panelSettings;
+            document.visualTreeAsset = visualTree;
+            document.sortingOrder = 100f;
+
+            GameMenuPresenter presenter =
+                menuObject.AddComponent<GameMenuPresenter>();
+            SetObject(presenter, "controller", controller);
+            SetObject(presenter, "document", document);
+            SetObject(presenter, "styleSheet", styleSheet);
         }
 
         private static void DestroySceneObjectsNamed(string objectName)
