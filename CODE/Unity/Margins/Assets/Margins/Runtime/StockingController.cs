@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Margins
@@ -20,8 +21,29 @@ namespace Margins
 
     public sealed class StockingController : MonoBehaviour
     {
+        private readonly struct ResolvedStockingDestination
+        {
+            public ResolvedStockingDestination(
+                ProductDefinition productDefinition,
+                ShelfFixture shelfFixture,
+                string shelfLocationId,
+                IReadOnlyList<string> snapPointIds)
+            {
+                ProductDefinition = productDefinition;
+                ShelfFixture = shelfFixture;
+                ShelfLocationId = shelfLocationId;
+                SnapPointIds = snapPointIds;
+            }
+
+            public ProductDefinition ProductDefinition { get; }
+            public ShelfFixture ShelfFixture { get; }
+            public string ShelfLocationId { get; }
+            public IReadOnlyList<string> SnapPointIds { get; }
+        }
+
         [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
         [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
+        [SerializeField] private FirstStoreMerchandisingComponent merchandising;
         [SerializeField] private Transform holdPoint;
         [SerializeField] private string looseLocationId;
         [SerializeField] private string heldLocationId;
@@ -29,6 +51,7 @@ namespace Margins
 
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
+        public FirstStoreMerchandisingComponent Merchandising => merchandising;
         public Transform HoldPoint => holdPoint;
         public ProductItem HeldPhysicalUnit
         {
@@ -85,11 +108,11 @@ namespace Margins
                 return false;
             }
 
-            if (physicalUnits == null || holdPoint == null ||
+            if (physicalUnits == null || holdPoint == null || merchandising == null ||
                 !physicalUnits.TryValidateConfiguration(out error))
             {
                 error ??=
-                    "Stocking requires explicit physical-unit and hold-point references.";
+                    "Stocking requires explicit physical-unit, merchandising, and hold-point references.";
                 return false;
             }
 
@@ -180,6 +203,11 @@ namespace Margins
                         return false;
                     }
                 }
+            }
+
+            if (!merchandising.TryValidateStockingConfiguration(this, out error))
+            {
+                return false;
             }
 
             error = null;
@@ -430,15 +458,15 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(productDefinition?.StableProductId);
-            if (configuration == null)
+            if (!TryResolveDestination(
+                    productDefinition?.StableProductId,
+                    out ResolvedStockingDestination destination))
             {
                 reason = "This product has no assigned shelf.";
                 return false;
             }
 
-            if (!TryFindAvailableSnapPoint(configuration, out _))
+            if (!TryFindAvailableSnapPoint(destination, out _))
             {
                 reason = "The assigned shelf is full.";
                 return false;
@@ -464,11 +492,11 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(item.Definition?.StableProductId);
-            if (configuration == null ||
+            if (!TryResolveDestination(
+                    item.Definition?.StableProductId,
+                    out ResolvedStockingDestination destination) ||
                 !TryFindAvailableSnapPoint(
-                    configuration,
+                    destination,
                     out string snapPointId))
             {
                 item.SetPlacementPreview(false);
@@ -478,7 +506,7 @@ namespace Margins
 
             return TryStockHeldUnit(
                 item,
-                configuration,
+                destination,
                 snapPointId,
                 quarterTurns,
                 out error);
@@ -512,11 +540,16 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(item.Definition?.StableProductId);
+            if (!TryResolveDestination(
+                    item.Definition?.StableProductId,
+                    out ResolvedStockingDestination destination))
+            {
+                error = "The held product no longer has an assigned shelf.";
+                return false;
+            }
             return TryStockHeldUnit(
                 item,
-                configuration,
+                destination,
                 targetedSnapPointId,
                 quarterTurns,
                 out error);
@@ -566,25 +599,26 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(item.Definition?.StableProductId);
-            productDefinition = configuration?.ProductDefinition;
-            if (configuration == null || configuration.ShelfFixture != targetedShelf)
+            bool resolved = TryResolveDestination(
+                item.Definition?.StableProductId,
+                out ResolvedStockingDestination destination);
+            productDefinition = resolved ? destination.ProductDefinition : null;
+            if (!resolved || destination.ShelfFixture != targetedShelf)
             {
                 reason = "This shelf does not accept the held product.";
                 return false;
             }
 
-            if (!TryFindAvailableSnapPoint(configuration, out snapPointId))
+            if (!TryFindAvailableSnapPoint(destination, out snapPointId))
             {
                 reason = "This shelf is full.";
                 return false;
             }
 
             InventoryTransferResult transfer = inventoryComponent.Inventory.CanTransfer(
-                configuration.ProductDefinition.StableProductId,
+                destination.ProductDefinition.StableProductId,
                 heldLocationId,
-                configuration.ShelfLocationId,
+                destination.ShelfLocationId,
                 1);
             if (!transfer.IsSuccess)
             {
@@ -617,11 +651,11 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(item.Definition?.StableProductId);
-            if (configuration == null ||
-                configuration.ShelfFixture != targetedShelf ||
-                !ContainsSnapPoint(configuration, targetedSnapPointId) ||
+            if (!TryResolveDestination(
+                    item.Definition?.StableProductId,
+                    out ResolvedStockingDestination destination) ||
+                destination.ShelfFixture != targetedShelf ||
+                !ContainsSnapPoint(destination, targetedSnapPointId) ||
                 !targetedShelf.TryGetSnapPoint(
                     targetedSnapPointId,
                     out ShelfSnapPointDefinition snapPoint) ||
@@ -638,9 +672,9 @@ namespace Margins
             }
 
             InventoryTransferResult transfer = inventoryComponent.Inventory.CanTransfer(
-                configuration.ProductDefinition.StableProductId,
+                destination.ProductDefinition.StableProductId,
                 heldLocationId,
-                configuration.ShelfLocationId,
+                destination.ShelfLocationId,
                 1);
             if (!transfer.IsSuccess)
             {
@@ -654,18 +688,18 @@ namespace Margins
 
         private bool TryStockHeldUnit(
             ProductItem item,
-            StockingProductConfiguration configuration,
+            ResolvedStockingDestination destination,
             string snapPointId,
             int quarterTurns,
             out string error)
         {
 
-            string productId = configuration.ProductDefinition.StableProductId;
+            string productId = destination.ProductDefinition.StableProductId;
             InventoryTransferResult preview =
                 inventoryComponent.Inventory.CanTransfer(
                     productId,
                     heldLocationId,
-                    configuration.ShelfLocationId,
+                    destination.ShelfLocationId,
                     1);
             if (!preview.IsSuccess)
             {
@@ -674,7 +708,7 @@ namespace Margins
                 return false;
             }
 
-            if (!configuration.ShelfFixture.TryPlaceAt(
+            if (!destination.ShelfFixture.TryPlaceAt(
                     item,
                     snapPointId,
                     quarterTurns,
@@ -689,7 +723,7 @@ namespace Margins
                 inventoryComponent.Inventory.TryTransfer(
                     productId,
                     heldLocationId,
-                    configuration.ShelfLocationId,
+                    destination.ShelfLocationId,
                     1);
             if (!transfer.IsSuccess)
             {
@@ -701,13 +735,13 @@ namespace Margins
             if (!physicalUnits.TryChangeLocation(
                     item,
                     heldLocationId,
-                    configuration.ShelfLocationId,
+                    destination.ShelfLocationId,
                     out error))
             {
                 InventoryTransferResult rollback =
                     inventoryComponent.Inventory.TryTransfer(
                         productId,
-                        configuration.ShelfLocationId,
+                        destination.ShelfLocationId,
                         heldLocationId,
                         1);
                 item.PickUp(holdPoint);
@@ -723,18 +757,22 @@ namespace Margins
 
         public bool TryGetShelfLocation(string productId, out string shelfLocationId)
         {
-            StockingProductConfiguration configuration = FindProduct(productId);
-            shelfLocationId = configuration?.ShelfLocationId;
-            return configuration != null;
+            bool resolved = TryResolveDestination(
+                productId,
+                out ResolvedStockingDestination destination);
+            shelfLocationId = resolved ? destination.ShelfLocationId : null;
+            return resolved;
         }
 
         public bool TryGetShelfFixture(
             string productId,
             out ShelfFixture shelfFixture)
         {
-            StockingProductConfiguration configuration = FindProduct(productId);
-            shelfFixture = configuration?.ShelfFixture;
-            return shelfFixture != null;
+            bool resolved = TryResolveDestination(
+                productId,
+                out ResolvedStockingDestination destination);
+            shelfFixture = resolved ? destination.ShelfFixture : null;
+            return resolved;
         }
 
         internal bool TryPlaceInitialUnit(
@@ -742,16 +780,17 @@ namespace Margins
             string shelfLocationId,
             out string error)
         {
-            StockingProductConfiguration configuration =
-                FindProduct(item?.Definition?.StableProductId);
+            bool resolved = TryResolveDestination(
+                item?.Definition?.StableProductId,
+                out ResolvedStockingDestination destination);
             PlacementFailure failure = PlacementFailure.None;
-            if (configuration == null ||
+            if (!resolved ||
                 !string.Equals(
-                    configuration.ShelfLocationId,
+                    destination.ShelfLocationId,
                     shelfLocationId,
                     StringComparison.Ordinal) ||
-                !TryFindAvailableSnapPoint(configuration, out string snapPointId) ||
-                !configuration.ShelfFixture.TryPlaceAt(
+                !TryFindAvailableSnapPoint(destination, out string snapPointId) ||
+                !destination.ShelfFixture.TryPlaceAt(
                     item,
                     snapPointId,
                     0,
@@ -770,18 +809,20 @@ namespace Margins
             PhysicalProductUnitSnapshot snapshot,
             out string error)
         {
-            StockingProductConfiguration configuration =
-                FindProduct(snapshot?.productId);
-            if (configuration == null || snapshot == null ||
+            StockingProductConfiguration product = FindProduct(snapshot?.productId);
+            StockingProductConfiguration shelf =
+                FindShelfConfiguration(snapshot?.shelfFixtureId);
+            if (product == null || shelf == null || snapshot == null ||
                 !string.Equals(
-                    configuration.ShelfLocationId,
+                    shelf.ShelfLocationId,
                     snapshot.inventoryLocationId,
                     StringComparison.Ordinal) ||
-                !string.Equals(
-                    configuration.ShelfFixture.StableFixtureId,
-                    snapshot.shelfFixtureId,
-                    StringComparison.Ordinal) ||
-                !ContainsSnapPoint(configuration, snapshot.shelfSnapPointId))
+                !ContainsSnapPoint(shelf.SnapPointIds, snapshot.shelfSnapPointId) ||
+                !shelf.ShelfFixture.TryGetSnapPoint(
+                    snapshot.shelfSnapPointId,
+                    out ShelfSnapPointDefinition snapPoint) ||
+                !snapPoint.Accepts(
+                    product.ProductDefinition.SnapCompatibilityTag))
             {
                 error =
                     $"Restored physical shelf placement for '{snapshot?.physicalUnitId}' is not configured.";
@@ -802,9 +843,9 @@ namespace Margins
                 return false;
             }
 
-            StockingProductConfiguration configuration =
-                FindProduct(snapshot.productId);
-            if (!configuration.ShelfFixture.TryPlaceAt(
+            StockingProductConfiguration shelf =
+                FindShelfConfiguration(snapshot.shelfFixtureId);
+            if (!shelf.ShelfFixture.TryPlaceAt(
                     item,
                     snapshot.shelfSnapPointId,
                     snapshot.quarterTurns,
@@ -837,6 +878,122 @@ namespace Margins
             }
         }
 
+        public IReadOnlyList<StockingProductConfiguration> AuthoredProductMappings =>
+            products ?? Array.Empty<StockingProductConfiguration>();
+
+        public bool TryGetAuthoredProduct(
+            string productId,
+            out ProductDefinition productDefinition)
+        {
+            StockingProductConfiguration configuration = FindProduct(productId);
+            productDefinition = configuration?.ProductDefinition;
+            return productDefinition != null;
+        }
+
+        public bool TryGetAuthoredShelf(
+            string shelfFixtureId,
+            out ShelfFixture shelfFixture,
+            out string shelfLocationId,
+            out IReadOnlyList<string> snapPointIds)
+        {
+            StockingProductConfiguration configuration =
+                FindShelfConfiguration(shelfFixtureId);
+            shelfFixture = configuration?.ShelfFixture;
+            shelfLocationId = configuration?.ShelfLocationId;
+            snapPointIds = configuration?.SnapPointIds ?? Array.Empty<string>();
+            return configuration != null;
+        }
+
+        public int GetShelfInventoryQuantity(string shelfFixtureId)
+        {
+            if (inventoryComponent == null || !inventoryComponent.IsInitialized ||
+                !TryGetAuthoredShelf(
+                    shelfFixtureId,
+                    out _,
+                    out string locationId,
+                    out _))
+            {
+                return 0;
+            }
+
+            InventoryLocationSnapshot location = inventoryComponent.Inventory
+                .CreateSnapshot().locations.Find(value => string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            return location?.quantities?.Sum(value => value.quantityUnits) ?? 0;
+        }
+
+        public bool IsProductCompatibleWithShelf(
+            string productId,
+            string shelfFixtureId,
+            out string error)
+        {
+            if (!TryGetAuthoredProduct(productId, out ProductDefinition product) ||
+                !TryGetAuthoredShelf(
+                    shelfFixtureId,
+                    out ShelfFixture shelf,
+                    out _,
+                    out IReadOnlyList<string> snapPointIds))
+            {
+                error = "The product or shelf is not in the stocking catalog.";
+                return false;
+            }
+
+            foreach (string snapPointId in snapPointIds)
+            {
+                if (!shelf.TryGetSnapPoint(
+                        snapPointId,
+                        out ShelfSnapPointDefinition snapPoint) ||
+                    !snapPoint.Accepts(product.SnapCompatibilityTag))
+                {
+                    error =
+                        $"{product.DisplayName} is not physically compatible with every position on this shelf.";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
+        private bool TryResolveDestination(
+            string productId,
+            out ResolvedStockingDestination destination)
+        {
+            destination = default;
+            StockingProductConfiguration product = FindProduct(productId);
+            if (product == null || merchandising == null ||
+                !merchandising.TryGetOfferForProduct(
+                    productId,
+                    out MerchandiseOffer offer))
+            {
+                return false;
+            }
+
+            StockingProductConfiguration shelf =
+                FindShelfConfiguration(offer.ShelfFixtureId);
+            if (shelf == null ||
+                !string.Equals(
+                    shelf.ShelfLocationId,
+                    offer.InventoryLocationId,
+                    StringComparison.Ordinal) ||
+                !IsProductCompatibleWithShelf(
+                    productId,
+                    offer.ShelfFixtureId,
+                    out _))
+            {
+                return false;
+            }
+
+            destination = new ResolvedStockingDestination(
+                product.ProductDefinition,
+                shelf.ShelfFixture,
+                shelf.ShelfLocationId,
+                shelf.SnapPointIds);
+            return true;
+        }
+
         private StockingProductConfiguration FindProduct(string productId)
         {
             if (!FirstStoreIdentifier.IsValid(productId) || products == null)
@@ -858,13 +1015,34 @@ namespace Margins
             return null;
         }
 
+        private StockingProductConfiguration FindShelfConfiguration(
+            string shelfFixtureId)
+        {
+            if (!FirstStoreIdentifier.IsValid(shelfFixtureId) || products == null)
+            {
+                return null;
+            }
+
+            foreach (StockingProductConfiguration configuration in products)
+            {
+                if (configuration?.ShelfFixture != null && string.Equals(
+                        configuration.ShelfFixture.StableFixtureId,
+                        shelfFixtureId,
+                        StringComparison.Ordinal))
+                {
+                    return configuration;
+                }
+            }
+            return null;
+        }
+
         private static bool TryFindAvailableSnapPoint(
-            StockingProductConfiguration configuration,
+            ResolvedStockingDestination destination,
             out string snapPointId)
         {
-            foreach (string candidate in configuration.SnapPointIds)
+            foreach (string candidate in destination.SnapPointIds)
             {
-                if (!configuration.ShelfFixture.IsOccupied(candidate))
+                if (!destination.ShelfFixture.IsOccupied(candidate))
                 {
                     snapPointId = candidate;
                     return true;
@@ -876,10 +1054,17 @@ namespace Margins
         }
 
         private static bool ContainsSnapPoint(
-            StockingProductConfiguration configuration,
+            ResolvedStockingDestination destination,
             string snapPointId)
         {
-            foreach (string candidate in configuration.SnapPointIds)
+            return ContainsSnapPoint(destination.SnapPointIds, snapPointId);
+        }
+
+        private static bool ContainsSnapPoint(
+            IReadOnlyList<string> snapPointIds,
+            string snapPointId)
+        {
+            foreach (string candidate in snapPointIds)
             {
                 if (string.Equals(candidate, snapPointId, StringComparison.Ordinal))
                 {
