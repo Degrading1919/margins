@@ -33,6 +33,7 @@ namespace Margins
         [SerializeField] private InputActionAsset inputActions;
         [SerializeField] private string inputActionMapName = "Player";
         [SerializeField] private string moveActionName = "Move";
+        [SerializeField] private string lookActionName = "Look";
         [SerializeField] private string sprintActionName = "Sprint";
         [SerializeField] private string jumpActionName = "Jump";
         [SerializeField, Min(0f)] private float moveSpeed = 0.9f;
@@ -62,6 +63,7 @@ namespace Margins
         private int discardLookThroughFrame;
         private bool hasAppliedInitialMode;
         private InputAction moveAction;
+        private InputAction lookAction;
         private InputAction sprintAction;
         private InputAction jumpAction;
         private bool ownsFallbackActions;
@@ -196,9 +198,11 @@ namespace Margins
             if (ownsFallbackActions)
             {
                 moveAction?.Dispose();
+                lookAction?.Dispose();
                 sprintAction?.Dispose();
                 jumpAction?.Dispose();
                 moveAction = null;
+                lookAction = null;
                 sprintAction = null;
                 jumpAction = null;
                 ownsFallbackActions = false;
@@ -310,7 +314,7 @@ namespace Margins
         private void HandleLook()
         {
             if (cameraPivot == null ||
-                Mouse.current == null ||
+                lookAction == null ||
                 !IsGameplayInputActive)
             {
                 return;
@@ -318,11 +322,11 @@ namespace Margins
 
             if (Time.frameCount <= discardLookThroughFrame)
             {
-                Mouse.current.delta.ReadValue();
+                lookAction.ReadValue<Vector2>();
                 return;
             }
 
-            Vector2 rawDelta = Mouse.current.delta.ReadValue();
+            Vector2 rawDelta = lookAction.ReadValue<Vector2>();
             float horizontalLook = rawDelta.x * horizontalLookSensitivity;
             float verticalLook = rawDelta.y * verticalLookSensitivity;
             transform.Rotate(0f, horizontalLook, 0f);
@@ -441,7 +445,8 @@ namespace Margins
 
         private bool TryResolveMovementActions(out string error)
         {
-            if (moveAction != null && sprintAction != null && jumpAction != null)
+            if (moveAction != null && lookAction != null &&
+                sprintAction != null && jumpAction != null)
             {
                 SetMovementActionsEnabled(true);
                 error = null;
@@ -454,6 +459,7 @@ namespace Margins
                     inputActionMapName,
                     false);
                 moveAction = actionMap?.FindAction(moveActionName, false);
+                lookAction = actionMap?.FindAction(lookActionName, false);
                 sprintAction = actionMap?.FindAction(sprintActionName, false);
                 jumpAction = actionMap?.FindAction(jumpActionName, false);
                 ownsFallbackActions = false;
@@ -469,6 +475,11 @@ namespace Margins
                     .With("Down", "<Keyboard>/s")
                     .With("Left", "<Keyboard>/a")
                     .With("Right", "<Keyboard>/d");
+                lookAction = new InputAction(
+                    lookActionName,
+                    InputActionType.Value,
+                    "<Mouse>/delta",
+                    expectedControlType: "Vector2");
                 sprintAction = new InputAction(
                     sprintActionName,
                     InputActionType.Button,
@@ -482,20 +493,23 @@ namespace Margins
                 ownsFallbackActions = true;
             }
 
-            if (moveAction == null || sprintAction == null || jumpAction == null)
+            if (moveAction == null || lookAction == null ||
+                sprintAction == null || jumpAction == null)
             {
                 error =
                     $"Input action map '{inputActionMapName}' must define '{moveActionName}', " +
+                    $"'{lookActionName}', " +
                     $"'{sprintActionName}', and '{jumpActionName}'.";
                 return false;
             }
 
             if (moveAction.expectedControlType != "Vector2" ||
+                lookAction.expectedControlType != "Vector2" ||
                 sprintAction.expectedControlType != "Button" ||
                 jumpAction.expectedControlType != "Button")
             {
                 error =
-                    "Player movement input actions must use Vector2 Move and Button Sprint/Jump controls.";
+                    "Player input actions must use Vector2 Move/Look and Button Sprint/Jump controls.";
                 return false;
             }
 
@@ -506,7 +520,13 @@ namespace Margins
 
         private void SetMovementActionsEnabled(bool enabled)
         {
-            InputAction[] actions = { moveAction, sprintAction, jumpAction };
+            InputAction[] actions =
+            {
+                moveAction,
+                lookAction,
+                sprintAction,
+                jumpAction
+            };
             foreach (InputAction action in actions)
             {
                 if (action == null)
