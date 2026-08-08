@@ -82,6 +82,72 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator SaveLoadRestoresShelfAssignmentPriceAndCustomLabel()
+        {
+            FirstStoreMerchandisingComponent merchandising =
+                Object.FindAnyObjectByType<FirstStoreMerchandisingComponent>();
+            Assert.That(merchandising, Is.Not.Null);
+            Assert.That(
+                merchandising.TryUpdateShelfOffer(
+                    "fixture-shelf-chips-validation",
+                    null,
+                    0,
+                    null,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                merchandising.TryUpdateShelfOffer(
+                    "fixture-shelf-cola-validation",
+                    "prod-potato-chips-small",
+                    245,
+                    "QUICK BITE",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                diskPersistence.TrySaveToPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+
+            Assert.That(
+                merchandising.TryUpdateShelfOffer(
+                    "fixture-shelf-cola-validation",
+                    "prod-potato-chips-small",
+                    999,
+                    "MUTATED",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                diskPersistence.TryLoadFromPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+            Assert.That(
+                merchandising.TryGetOfferForProduct(
+                    "prod-potato-chips-small",
+                    out MerchandiseOffer restored),
+                Is.True);
+            Assert.That(
+                restored.ShelfFixtureId,
+                Is.EqualTo("fixture-shelf-cola-validation"));
+            Assert.That(restored.SalePriceCents, Is.EqualTo(245));
+            Assert.That(restored.CustomDisplayLabel, Is.EqualTo("QUICK BITE"));
+            ShelfMerchandisingLabel label = Object
+                .FindObjectsByType<ShelfMerchandisingLabel>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None)
+                .Single(value => value.name == "Merchandising Shelf Label" &&
+                                 value.transform.IsChildOf(
+                                     GameObject.Find(
+                                         "fixture-shelf-cola-validation").transform));
+            label.RefreshNow();
+            StringAssert.Contains("QUICK BITE", label.DisplayedText);
+            StringAssert.Contains("$2.45", label.DisplayedText);
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator RepeatedLoadRestoresIdenticalSnapshotAndDoesNotReplayLedger()
         {
             CompleteOneColaSale();

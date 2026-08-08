@@ -22,11 +22,13 @@ namespace Margins
     {
         [SerializeField] private FirstStoreInventoryComponent inventoryComponent;
         [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
+        [SerializeField] private FirstStoreMerchandisingComponent merchandising;
         [SerializeField, Min(1)] private int maximumCompletedTransactions = 32;
         [SerializeField] private CheckoutPriceConfiguration[] prices;
 
         public FirstStoreInventoryComponent InventoryComponent => inventoryComponent;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
+        public FirstStoreMerchandisingComponent Merchandising => merchandising;
         private CheckoutSession ActiveSession { get; set; }
         internal CompletedTransactionLedger TransactionLedger { get; private set; }
         public bool HasActiveIncompleteSession =>
@@ -89,7 +91,7 @@ namespace Margins
             {
                 if (inventoryComponent == null ||
                     !inventoryComponent.IsInitialized ||
-                    prices == null)
+                    merchandising == null || prices == null)
                 {
                     return false;
                 }
@@ -97,8 +99,11 @@ namespace Margins
                 foreach (CheckoutPriceConfiguration price in prices)
                 {
                     if (price?.ProductDefinition != null &&
+                        merchandising.TryGetOfferForProduct(
+                            price.ProductDefinition.StableProductId,
+                            out MerchandiseOffer offer) &&
                         inventoryComponent.Inventory.GetQuantity(
-                            price.ShelfLocationId,
+                            offer.InventoryLocationId,
                             price.ProductDefinition.StableProductId) > 0)
                     {
                         return true;
@@ -113,11 +118,11 @@ namespace Margins
         {
             error = null;
             if (inventoryComponent == null || !inventoryComponent.IsInitialized ||
-                physicalUnits == null ||
+                physicalUnits == null || merchandising == null ||
                 !physicalUnits.TryValidateConfiguration(out error))
             {
                 error ??=
-                    "Checkout requires initialized inventory and physical-unit references.";
+                    "Checkout requires initialized inventory, physical-unit, and merchandising references.";
                 return false;
             }
 
@@ -164,6 +169,11 @@ namespace Margins
                         $"Checkout product '{productId}' requires exactly one valid shelf mapping.";
                     return false;
                 }
+            }
+
+            if (!merchandising.TryValidateCheckoutConfiguration(this, out error))
+            {
+                return false;
             }
 
             error = null;
@@ -263,7 +273,10 @@ namespace Margins
             }
 
             CheckoutPriceConfiguration price = FindPrice(productDefinition);
-            if (price == null)
+            if (price == null ||
+                !merchandising.TryGetOfferForProduct(
+                    price.ProductDefinition.StableProductId,
+                    out MerchandiseOffer offer))
             {
                 failure = CheckoutFailure.InvalidProduct;
                 return false;
@@ -271,7 +284,7 @@ namespace Margins
 
             return ActiveSession.TryScan(
                 price.ProductDefinition.StableProductId,
-                price.UnitPriceCents,
+                offer.SalePriceCents,
                 price.UnitCostCents,
                 quantityUnits,
                 out failure);
@@ -462,9 +475,13 @@ namespace Margins
             string productId,
             out string shelfLocationId)
         {
-            CheckoutPriceConfiguration price = FindPrice(productId);
-            shelfLocationId = price?.ShelfLocationId;
-            return price != null;
+            MerchandiseOffer offer = default;
+            bool resolved = merchandising != null &&
+                            merchandising.TryGetOfferForProduct(
+                                productId,
+                                out offer);
+            shelfLocationId = resolved ? offer.InventoryLocationId : null;
+            return resolved;
         }
 
         private SortedDictionary<string, string> CreateShelfMappings()
@@ -472,11 +489,43 @@ namespace Margins
             SortedDictionary<string, string> mappings = new(StringComparer.Ordinal);
             foreach (CheckoutPriceConfiguration price in prices)
             {
-                mappings.Add(
-                    price.ProductDefinition.StableProductId,
-                    price.ShelfLocationId);
+                string productId = price.ProductDefinition.StableProductId;
+                if (merchandising.TryGetOfferForProduct(
+                        productId,
+                        out MerchandiseOffer offer))
+                {
+                    mappings.Add(productId, offer.InventoryLocationId);
+                }
             }
             return mappings;
+        }
+
+        public IReadOnlyList<CheckoutPriceConfiguration> AuthoredPriceMappings =>
+            prices ?? Array.Empty<CheckoutPriceConfiguration>();
+
+        public bool TryGetAuthoredProductEconomy(
+            string productId,
+            out ProductDefinition productDefinition,
+            out int referencePriceCents,
+            out int unitCostCents,
+            out string defaultShelfLocationId)
+        {
+            CheckoutPriceConfiguration price = FindPrice(productId);
+            productDefinition = price?.ProductDefinition;
+            referencePriceCents = price?.UnitPriceCents ?? 0;
+            unitCostCents = price?.UnitCostCents ?? 0;
+            defaultShelfLocationId = price?.ShelfLocationId;
+            return price != null;
+        }
+
+        public bool TryGetCurrentOffer(
+            string productId,
+            out MerchandiseOffer offer)
+        {
+            offer = default;
+            return FindPrice(productId) != null &&
+                   merchandising != null &&
+                   merchandising.TryGetOfferForProduct(productId, out offer);
         }
 
         private CheckoutPriceConfiguration FindPrice(

@@ -207,7 +207,13 @@ namespace Margins.Tests
             PhysicalProductUnitRegistry physicalUnits = CreatePhysicalUnits(cola, chips);
             StockPhysicalUnits(physicalUnits, colaShelf, cola, "loc-shelf-cola", 3);
             StockPhysicalUnits(physicalUnits, chipsShelf, chips, "loc-shelf-chips", 2);
-            CheckoutStationComponent checkout = CreateCheckout(inventory, physicalUnits, cola, chips);
+            CheckoutStationComponent checkout = CreateCheckout(
+                inventory,
+                physicalUnits,
+                cola,
+                chips,
+                colaShelf,
+                chipsShelf);
             StagedCheckoutInteractionComponent staged = CreateStagedCheckout(checkout, cola, chips);
             return new CheckoutRig(cola, chips, checkout, staged);
         }
@@ -288,7 +294,9 @@ namespace Margins.Tests
             FirstStoreInventoryComponent inventory,
             PhysicalProductUnitRegistry physicalUnits,
             ProductDefinition cola,
-            ProductDefinition chips)
+            ProductDefinition chips,
+            ShelfFixture colaShelf,
+            ShelfFixture chipsShelf)
         {
             CheckoutStationComponent checkout = CreateGameObject("Checkout")
                 .AddComponent<CheckoutStationComponent>();
@@ -300,8 +308,67 @@ namespace Margins.Tests
             SetPrice(prices.GetArrayElementAtIndex(0), cola, "loc-shelf-cola", 149);
             SetPrice(prices.GetArrayElementAtIndex(1), chips, "loc-shelf-chips", 199);
             serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            StockingController stocking = CreateGameObject("Stocking Catalog")
+                .AddComponent<StockingController>();
+            SerializedObject stockingSerialized = new(stocking);
+            SerializedProperty products = stockingSerialized.FindProperty("products");
+            products.arraySize = 2;
+            SetStockingCatalog(
+                products.GetArrayElementAtIndex(0),
+                cola,
+                colaShelf,
+                "loc-shelf-cola",
+                "slot-cola",
+                3);
+            SetStockingCatalog(
+                products.GetArrayElementAtIndex(1),
+                chips,
+                chipsShelf,
+                "loc-shelf-chips",
+                "slot-chips",
+                2);
+            stockingSerialized.ApplyModifiedPropertiesWithoutUndo();
+            FirstStoreMerchandisingComponent merchandising =
+                CreateGameObject("Merchandising")
+                    .AddComponent<FirstStoreMerchandisingComponent>();
+            SerializedObject merchandisingSerialized = new(merchandising);
+            merchandisingSerialized.FindProperty("stocking").objectReferenceValue = stocking;
+            merchandisingSerialized.FindProperty("checkout").objectReferenceValue = checkout;
+            merchandisingSerialized.FindProperty("allowStandaloneAuthorityForTests").boolValue = true;
+            merchandisingSerialized.ApplyModifiedPropertiesWithoutUndo();
+            stockingSerialized = new SerializedObject(stocking);
+            stockingSerialized.FindProperty("merchandising").objectReferenceValue = merchandising;
+            stockingSerialized.ApplyModifiedPropertiesWithoutUndo();
+            serialized = new SerializedObject(checkout);
+            serialized.FindProperty("merchandising").objectReferenceValue = merchandising;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(checkout.TryInitializeDependencies(out string error), Is.True, error);
             return checkout;
+        }
+
+        private static void SetStockingCatalog(
+            SerializedProperty configuration,
+            ProductDefinition product,
+            ShelfFixture shelf,
+            string locationId,
+            string pointPrefix,
+            int pointCount)
+        {
+            configuration.FindPropertyRelative("productDefinition").objectReferenceValue =
+                product;
+            configuration.FindPropertyRelative("shelfFixture").objectReferenceValue =
+                shelf;
+            configuration.FindPropertyRelative("shelfLocationId").stringValue =
+                locationId;
+            SerializedProperty points =
+                configuration.FindPropertyRelative("snapPointIds");
+            points.arraySize = pointCount;
+            for (int index = 0; index < pointCount; index++)
+            {
+                points.GetArrayElementAtIndex(index).stringValue =
+                    $"{pointPrefix}-{index + 1:00}";
+            }
         }
 
         private StagedCheckoutInteractionComponent CreateStagedCheckout(

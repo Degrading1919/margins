@@ -23,6 +23,10 @@ namespace Margins.Editor
             "Assets/Margins/UI/GameMenu.uxml";
         private const string MenuStyleSheetPath =
             "Assets/Margins/UI/GameMenu.uss";
+        private const string MerchandisingVisualTreePath =
+            "Assets/Margins/UI/MerchandisingEditor.uxml";
+        private const string MerchandisingStyleSheetPath =
+            "Assets/Margins/UI/MerchandisingEditor.uss";
 
         public static void Apply()
         {
@@ -261,6 +265,17 @@ namespace Margins.Editor
                 UnityEngine.Object.FindAnyObjectByType<PortfolioProgressionController>() ??
                 throw new InvalidOperationException(
                     "The first-store scene requires portfolio progression.");
+            FirstStoreMerchandisingComponent merchandising =
+                GetOrAdd<FirstStoreMerchandisingComponent>(controlsObject);
+            SetObject(merchandising, "portfolioProgression", portfolio);
+            SetObject(merchandising, "stocking", stocking);
+            SetObject(merchandising, "checkout", checkout);
+            SetObject(
+                merchandising,
+                "locationId",
+                PortfolioProgressionRules.FirstLocationId);
+            SetObject(stocking, "merchandising", merchandising);
+            SetObject(checkout, "merchandising", merchandising);
             InStoreEmployeeWorkController employeeWork = ConfigureInStoreEmployees(
                 controlsObject,
                 portfolio,
@@ -357,6 +372,16 @@ namespace Margins.Editor
                 store);
 
             FirstStoreCustomerSceneSetup.Configure(scene);
+            StoreCustomerFlowController customerFlow =
+                UnityEngine.Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            SetObject(merchandising, "customerFlow", customerFlow);
+            ConfigureMerchandisingPresentation(
+                controlsObject,
+                playerObject.GetComponent<FirstPersonController>(),
+                merchandising,
+                colaShelf,
+                chipsShelf,
+                validMaterial);
             ConfigureLocalNavigation(
                 scene,
                 fixturePlacement,
@@ -1118,6 +1143,108 @@ namespace Margins.Editor
             SetObject(presenter, "controller", controller);
             SetObject(presenter, "document", document);
             SetObject(presenter, "styleSheet", styleSheet);
+        }
+
+        private static void ConfigureMerchandisingPresentation(
+            GameObject controlsObject,
+            FirstPersonController player,
+            FirstStoreMerchandisingComponent merchandising,
+            ShelfFixture colaShelf,
+            ShelfFixture chipsShelf,
+            Material labelMaterial)
+        {
+            VisualTreeAsset visualTree =
+                AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
+                    MerchandisingVisualTreePath);
+            StyleSheet styleSheet =
+                AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                    MerchandisingStyleSheetPath);
+            PanelSettings panelSettings =
+                AssetDatabase.LoadAssetAtPath<PanelSettings>(
+                    MenuPanelSettingsPath);
+            if (visualTree == null || styleSheet == null || panelSettings == null)
+            {
+                throw new InvalidOperationException(
+                    "Shelf merchandising requires its UI Toolkit assets and shared panel settings.");
+            }
+
+            DestroySceneObjectsNamed("Margins Merchandising Editor");
+            GameObject editorObject = new("Margins Merchandising Editor");
+            editorObject.transform.SetParent(controlsObject.transform, false);
+            UIDocument document = editorObject.AddComponent<UIDocument>();
+            document.panelSettings = panelSettings;
+            document.visualTreeAsset = visualTree;
+            document.sortingOrder = 120f;
+            ShelfMerchandisingEditorController editor =
+                editorObject.AddComponent<ShelfMerchandisingEditorController>();
+            SetObject(editor, "document", document);
+            SetObject(editor, "styleSheet", styleSheet);
+            SetObject(editor, "merchandising", merchandising);
+            SetObject(editor, "firstPersonController", player);
+
+            ConfigureShelfMerchandisingLabel(
+                colaShelf,
+                merchandising,
+                editor,
+                labelMaterial);
+            ConfigureShelfMerchandisingLabel(
+                chipsShelf,
+                merchandising,
+                editor,
+                labelMaterial);
+        }
+
+        private static void ConfigureShelfMerchandisingLabel(
+            ShelfFixture shelf,
+            FirstStoreMerchandisingComponent merchandising,
+            ShelfMerchandisingEditorController editor,
+            Material material)
+        {
+            Transform existing = shelf.transform.Find("Merchandising Shelf Label");
+            if (existing != null)
+            {
+                UnityEngine.Object.DestroyImmediate(existing.gameObject);
+            }
+
+            GameObject backing = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            backing.name = "Merchandising Shelf Label";
+            backing.transform.SetParent(shelf.transform, false);
+            backing.transform.localPosition = new Vector3(0f, 0.27f, -0.47f);
+            backing.transform.localRotation = Quaternion.identity;
+            backing.transform.localScale = new Vector3(1.55f, 0.28f, 0.055f);
+            backing.GetComponent<Renderer>().sharedMaterial = material;
+            BoxCollider collider = backing.GetComponent<BoxCollider>();
+            collider.enabled = true;
+
+            GameObject textObject = new("Merchandising Shelf Label Text");
+            textObject.transform.SetParent(backing.transform, false);
+            textObject.transform.localPosition = new Vector3(0f, 0f, -0.53f);
+            textObject.transform.localRotation = Quaternion.identity;
+            textObject.transform.localScale = new Vector3(0.052f, 0.29f, 0.052f);
+            TextMesh text = textObject.AddComponent<TextMesh>();
+            text.text = "MERCHANDISE";
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.fontSize = 64;
+            text.characterSize = 0.12f;
+            text.color = new Color(0.925f, 0.87f, 0.745f);
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font != null)
+            {
+                text.font = font;
+                textObject.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            }
+
+            ShelfMerchandisingLabel label =
+                backing.AddComponent<ShelfMerchandisingLabel>();
+            SetObject(
+                label,
+                "stableTargetId",
+                $"target-merchandising-{shelf.StableFixtureId}");
+            SetObject(label, "shelfFixture", shelf);
+            SetObject(label, "merchandising", merchandising);
+            SetObject(label, "editor", editor);
+            SetObject(label, "labelText", text);
         }
 
         private static void DestroySceneObjectsNamed(string objectName)
