@@ -1,0 +1,135 @@
+:root {
+    --cream: rgb(236, 222, 190);
+    --cream-muted: rgb(179, 174, 156);
+    --charcoal: rgb(13, 20, 22);
+    --charcoal-soft: rgb(24, 34, 35);
+    --charcoal-raised: rgb(35, 48, 48);
+    --teal: rgb(31, 137, 122);
+    --teal-bright: rgb(75, 191, 166);
+    --orange: rgb(222, 91, 34);
+    --error: rgb(215, 74, 53);
+}
+
+.merchandising-editor-root {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    color: var(--cream);
+}
+
+.merchandising-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(8, 15, 17, 0.66);
+}
+
+.merchandising-card {
+    width: 520px;
+    padding: 30px;
+    background-color: var(--charcoal-soft);
+    border-left-width: 4px;
+    border-left-color: var(--teal);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-top-color: rgba(236, 222, 190, 0.16);
+    border-right-color: rgba(236, 222, 190, 0.16);
+    border-bottom-color: rgba(236, 222, 190, 0.16);
+}
+
+.merchandising-eyebrow {
+    color: var(--teal-bright);
+    font-size: 13px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+}
+
+.merchandising-title {
+    color: var(--cream);
+    font-size: 27px;
+    -unity-font-style: bold;
+    margin-bottom: 22px;
+}
+
+.merchandising-field-label {
+    color: var(--cream-muted);
+    font-size: 13px;
+    -unity-font-style: bold;
+    margin-top: 11px;
+    margin-bottom: 5px;
+}
+
+.merchandising-field {
+    min-height: 38px;
+    color: var(--cream);
+    background-color: var(--charcoal-raised);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgba(236, 222, 190, 0.24);
+    border-right-color: rgba(236, 222, 190, 0.24);
+    border-top-color: rgba(236, 222, 190, 0.24);
+    border-bottom-color: rgba(236, 222, 190, 0.24);
+}
+
+.merchandising-field .unity-base-field__input {
+    color: var(--cream);
+    background-color: var(--charcoal-raised);
+}
+
+.merchandising-help {
+    color: var(--cream-muted);
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.merchandising-error {
+    color: var(--error);
+    white-space: normal;
+    margin-top: 14px;
+}
+
+.merchandising-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+    margin-top: 24px;
+}
+
+.merchandising-button {
+    min-width: 116px;
+    min-height: 40px;
+    margin-left: 10px;
+    color: var(--cream);
+    background-color: var(--charcoal-raised);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgba(236, 222, 190, 0.24);
+    border-right-color: rgba(236, 222, 190, 0.24);
+    border-top-color: rgba(236, 222, 190, 0.24);
+    border-bottom-color: rgba(236, 222, 190, 0.24);
+    -unity-font-style: bold;
+}
+
+.merchandising-button--primary {
+    color: var(--charcoal);
+    background-color: var(--teal-bright);
+    border-left-color: var(--teal-bright);
+    border-right-color: var(--teal-bright);
+    border-top-color: var(--teal-bright);
+    border-bottom-color: var(--teal-bright);
+}
+
+.merchandising-button:hover {
+    background-color: var(--teal);
+}

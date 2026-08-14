@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -629,6 +630,7 @@ namespace Margins.Tests
                 rig.PhysicalUnits,
                 (rig.Cola, "loc-shelf-cola", 149, 60),
                 (rig.Cola, "loc-shelf-cola", 149, 60));
+            AttachCheckoutMerchandisingForValidation(rig.Stocking, duplicate);
             Assert.That(duplicate.TryValidateConfiguration(out string duplicateError), Is.False);
             StringAssert.Contains("duplicate", duplicateError.ToLowerInvariant());
 
@@ -636,8 +638,181 @@ namespace Margins.Tests
                 rig.Inventory,
                 rig.PhysicalUnits,
                 (rig.Cola, "loc-loose", 149, 60));
+            AttachCheckoutMerchandisingForValidation(rig.Stocking, nonShelf);
             Assert.That(nonShelf.TryValidateConfiguration(out string mappingError), Is.False);
             StringAssert.Contains("shelf mapping", mappingError);
+        }
+
+        [Test]
+        public void UnsafeShelfReassignmentIsBlockedWhilePhysicalStockRemains()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            StockOne(rig, rig.Cola);
+
+            Assert.That(
+                rig.Merchandising.TryUpdateShelfOffer(
+                    rig.ColaShelf.StableFixtureId,
+                    null,
+                    0,
+                    null,
+                    out string error),
+                Is.False);
+            StringAssert.Contains("physical item", error);
+            Assert.That(
+                rig.Merchandising.TryGetOfferForProduct(
+                    rig.Cola.StableProductId,
+                    out MerchandiseOffer offer),
+                Is.True);
+            Assert.That(
+                offer.ShelfFixtureId,
+                Is.EqualTo(rig.ColaShelf.StableFixtureId));
+        }
+
+        [Test]
+        public void ReassignmentAndShelfMovementChangeDynamicStockingDestinationOnly()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 0, chipsBoxQuantity: 0);
+            Assert.That(
+                rig.Merchandising.TryUpdateShelfOffer(
+                    rig.ChipsShelf.StableFixtureId,
+                    null,
+                    0,
+                    null,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Merchandising.TryUpdateShelfOffer(
+                    rig.ColaShelf.StableFixtureId,
+                    rig.Chips.StableProductId,
+                    249,
+                    "SNACK STOP",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Stocking.TryGetShelfFixture(
+                    rig.Chips.StableProductId,
+                    out ShelfFixture destination),
+                Is.True);
+            Assert.That(destination, Is.SameAs(rig.ColaShelf));
+
+            Vector3 moved = new(8f, 0f, -3f);
+            rig.ColaShelf.transform.position = moved;
+            Assert.That(
+                rig.Stocking.TryGetShelfFixture(
+                    rig.Chips.StableProductId,
+                    out destination),
+                Is.True);
+            Assert.That(destination.transform.position, Is.EqualTo(moved));
+            Assert.That(
+                rig.Merchandising.TryGetOfferForProduct(
+                    rig.Chips.StableProductId,
+                    out MerchandiseOffer offer),
+                Is.True);
+            Assert.That(offer.SalePriceCents, Is.EqualTo(249));
+            Assert.That(offer.CustomDisplayLabel, Is.EqualTo("SNACK STOP"));
+        }
+
+        [Test]
+        public void CheckoutCapturesCurrentPriceOnceAndLaterPriceChangesDoNotReplay()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 1, chipsBoxQuantity: 0);
+            StockOne(rig, rig.Cola);
+            Assert.That(
+                rig.Merchandising.TrySetSalePrice(
+                    rig.Cola.StableProductId,
+                    777,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Checkout.TryBeginSession(
+                    "transaction-merchandising-price",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                rig.Merchandising.TrySetSalePrice(
+                    rig.Cola.StableProductId,
+                    888,
+                    out string checkoutBlocker),
+                Is.False);
+            StringAssert.Contains("checkout", checkoutBlocker.ToLowerInvariant());
+            Assert.That(
+                rig.Merchandising.TryGetOfferForProduct(
+                    rig.Cola.StableProductId,
+                    out MerchandiseOffer stillCurrent),
+                Is.True);
+            Assert.That(stillCurrent.SalePriceCents, Is.EqualTo(777));
+            Assert.That(
+                rig.Checkout.TryScan(
+                    rig.Cola,
+                    1,
+                    out CheckoutFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                rig.Checkout.TryComplete(
+                    out CheckoutTransactionSummary completed,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(completed.subtotalCents, Is.EqualTo(777));
+            Assert.That(completed.lines.Single().unitPriceCents, Is.EqualTo(777));
+
+            Assert.That(
+                rig.Merchandising.TrySetSalePrice(
+                    rig.Cola.StableProductId,
+                    888,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(rig.Checkout.GrossSalesCents, Is.EqualTo(777));
+            Assert.That(
+                rig.Checkout.CompletedTransactions.Single()
+                    .lines.Single().unitPriceCents,
+                Is.EqualTo(777));
+            Assert.That(rig.Checkout.ProductUnitCostsCents["prod-cola"], Is.EqualTo(60));
+        }
+
+        [Test]
+        public void PhysicalShelfLabelRefreshesFromAuthoritativeAssignmentAndPrice()
+        {
+            AdapterRig rig = CreateAdapterRig(colaBoxQuantity: 0, chipsBoxQuantity: 0);
+            GameObject labelObject = CreateGameObject("Shelf Label");
+            TextMesh text = labelObject.AddComponent<TextMesh>();
+            ShelfMerchandisingEditorController editor =
+                CreateGameObject("Shelf Editor")
+                    .AddComponent<ShelfMerchandisingEditorController>();
+            ShelfMerchandisingLabel label =
+                labelObject.AddComponent<ShelfMerchandisingLabel>();
+            SerializedObject serialized = new(label);
+            serialized.FindProperty("stableTargetId").stringValue =
+                "target-merchandising-test-cola";
+            serialized.FindProperty("shelfFixture").objectReferenceValue =
+                rig.ColaShelf;
+            serialized.FindProperty("merchandising").objectReferenceValue =
+                rig.Merchandising;
+            serialized.FindProperty("editor").objectReferenceValue = editor;
+            serialized.FindProperty("labelText").objectReferenceValue = text;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            label.RefreshNow();
+            StringAssert.Contains("COLA", label.DisplayedText);
+            StringAssert.Contains("$1.49", label.DisplayedText);
+            Assert.That(
+                rig.Merchandising.TryUpdateShelfOffer(
+                    rig.ColaShelf.StableFixtureId,
+                    rig.Cola.StableProductId,
+                    245,
+                    "COLD CASE",
+                    out string error),
+                Is.True,
+                error);
+            label.RefreshNow();
+            StringAssert.Contains("COLD CASE", label.DisplayedText);
+            StringAssert.Contains("$2.45", label.DisplayedText);
         }
 
         [Test]
@@ -809,6 +984,8 @@ namespace Margins.Tests
                 physicalUnits,
                 (cola, "loc-shelf-cola", 149, 60),
                 (chips, "loc-shelf-chips", 299, 100));
+            FirstStoreMerchandisingComponent merchandising =
+                CreateStandaloneMerchandising(stocking, checkout);
             PlaceableFixtureComponent placeableFixture =
                 CreatePlaceableFixture("fixture-essential-01", 2, 1);
             FixturePlacementController fixturePlacement =
@@ -835,6 +1012,7 @@ namespace Margins.Tests
                 placeableFixture,
                 fixturePlacement,
                 stocking,
+                merchandising,
                 checkout,
                 cleaning,
                 delivery,
@@ -965,8 +1143,54 @@ namespace Margins.Tests
                 }
             }
             serialized.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(stocking.TryValidateConfiguration(out string error), Is.True, error);
             return stocking;
+        }
+
+        private FirstStoreMerchandisingComponent CreateStandaloneMerchandising(
+            StockingController stocking,
+            CheckoutStationComponent checkout)
+        {
+            FirstStoreMerchandisingComponent merchandising =
+                CreateGameObject("Merchandising")
+                    .AddComponent<FirstStoreMerchandisingComponent>();
+            SerializedObject serialized = new(merchandising);
+            serialized.FindProperty("stocking").objectReferenceValue = stocking;
+            serialized.FindProperty("checkout").objectReferenceValue = checkout;
+            serialized.FindProperty("allowStandaloneAuthorityForTests").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject stockingSerialized = new(stocking);
+            stockingSerialized.FindProperty("merchandising").objectReferenceValue =
+                merchandising;
+            stockingSerialized.ApplyModifiedPropertiesWithoutUndo();
+            SerializedObject checkoutSerialized = new(checkout);
+            checkoutSerialized.FindProperty("merchandising").objectReferenceValue =
+                merchandising;
+            checkoutSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+            Assert.That(
+                merchandising.TryValidateConfiguration(out string error),
+                Is.True,
+                error);
+            Assert.That(stocking.TryValidateConfiguration(out error), Is.True, error);
+            return merchandising;
+        }
+
+        private void AttachCheckoutMerchandisingForValidation(
+            StockingController stocking,
+            CheckoutStationComponent checkout)
+        {
+            FirstStoreMerchandisingComponent merchandising =
+                CreateGameObject("Checkout Validation Merchandising")
+                    .AddComponent<FirstStoreMerchandisingComponent>();
+            SerializedObject serialized = new(merchandising);
+            serialized.FindProperty("stocking").objectReferenceValue = stocking;
+            serialized.FindProperty("checkout").objectReferenceValue = checkout;
+            serialized.FindProperty("allowStandaloneAuthorityForTests").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            serialized = new SerializedObject(checkout);
+            serialized.FindProperty("merchandising").objectReferenceValue = merchandising;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private CheckoutStationComponent CreateCheckout(
@@ -1355,6 +1579,7 @@ namespace Margins.Tests
             public PlaceableFixtureComponent PlaceableFixture { get; }
             public FixturePlacementController FixturePlacement { get; }
             public StockingController Stocking { get; }
+            public FirstStoreMerchandisingComponent Merchandising { get; }
             public CheckoutStationComponent Checkout { get; }
             public CleaningTaskComponent Cleaning { get; }
             public DeliveryBoxComponent Delivery { get; }
@@ -1370,6 +1595,7 @@ namespace Margins.Tests
                 PlaceableFixtureComponent placeableFixture,
                 FixturePlacementController fixturePlacement,
                 StockingController stocking,
+                FirstStoreMerchandisingComponent merchandising,
                 CheckoutStationComponent checkout,
                 CleaningTaskComponent cleaning,
                 DeliveryBoxComponent delivery,
@@ -1384,6 +1610,7 @@ namespace Margins.Tests
                 PlaceableFixture = placeableFixture;
                 FixturePlacement = fixturePlacement;
                 Stocking = stocking;
+                Merchandising = merchandising;
                 Checkout = checkout;
                 Cleaning = cleaning;
                 Delivery = delivery;

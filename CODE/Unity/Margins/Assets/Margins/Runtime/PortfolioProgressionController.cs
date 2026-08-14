@@ -251,6 +251,8 @@ namespace Margins
                 totals,
                 remainingInventoryUnits,
                 inventoryAssetValueCents,
+                MerchandisingRules.AggregateCompletedSales(
+                    firstStore.Checkout.CompletedTransactions),
                 out bool unchanged,
                 out error);
             if (success && !unchanged && totals.transactionCount > 0)
@@ -749,6 +751,90 @@ namespace Margins
             return true;
         }
 
+        public bool TryValidateDetailedMerchandisingReconciliation(
+            FirstStoreSnapshot firstStoreSnapshot,
+            PortfolioProgressionSnapshot portfolioSnapshot,
+            out string error)
+        {
+            error = null;
+            if (firstStoreSnapshot?.inventory?.locations == null ||
+                firstStoreSnapshot.physicalProductUnits == null ||
+                !PortfolioProgression.TryRestore(
+                    portfolioSnapshot,
+                    out PortfolioProgression restored,
+                    out error))
+            {
+                error ??=
+                    "Detailed merchandising reconciliation is missing store or portfolio state.";
+                return false;
+            }
+
+            PortfolioLocationSnapshot location = restored.Locations.First(value =>
+                string.Equals(
+                    value.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            Dictionary<string, ShelfMerchandiseAssignmentSnapshot> assignments =
+                location.shelfMerchandiseAssignments.ToDictionary(
+                    value => value.shelfFixtureId,
+                    StringComparer.Ordinal);
+            foreach (PhysicalProductUnitSnapshot unit in
+                     firstStoreSnapshot.physicalProductUnits)
+            {
+                if (unit == null || string.IsNullOrWhiteSpace(unit.shelfFixtureId))
+                {
+                    continue;
+                }
+                if (!assignments.TryGetValue(
+                        unit.shelfFixtureId,
+                        out ShelfMerchandiseAssignmentSnapshot assignment) ||
+                    !string.Equals(
+                        assignment.inventoryLocationId,
+                        unit.inventoryLocationId,
+                        StringComparison.Ordinal) ||
+                    !string.Equals(
+                        assignment.assignedProductId,
+                        unit.productId,
+                        StringComparison.Ordinal))
+                {
+                    error =
+                        $"Physical unit '{unit.physicalUnitId}' contradicts the saved merchandise assignment for shelf '{unit.shelfFixtureId}'.";
+                    return false;
+                }
+            }
+
+            foreach (ShelfMerchandiseAssignmentSnapshot assignment in
+                     assignments.Values)
+            {
+                InventoryLocationSnapshot inventory =
+                    firstStoreSnapshot.inventory.locations.FirstOrDefault(value =>
+                        string.Equals(
+                            value.locationId,
+                            assignment.inventoryLocationId,
+                            StringComparison.Ordinal));
+                if (inventory?.quantities == null)
+                {
+                    error =
+                        $"Saved shelf inventory '{assignment.inventoryLocationId}' is missing.";
+                    return false;
+                }
+                if (inventory.quantities.Any(value =>
+                        value.quantityUnits > 0 &&
+                        !string.Equals(
+                            value.productId,
+                            assignment.assignedProductId,
+                            StringComparison.Ordinal)))
+                {
+                    error =
+                        $"Saved inventory at '{assignment.inventoryLocationId}' contradicts its merchandise assignment.";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
         public bool TryRestoreSnapshot(
             PortfolioProgressionSnapshot snapshot,
             out string error)
@@ -817,6 +903,8 @@ namespace Margins
                         migratedTotals,
                         remainingInventoryUnits,
                         inventoryAssetValueCents,
+                        MerchandisingRules.AggregateCompletedSales(
+                            firstStoreSnapshot.transactionLedger?.transactions),
                         out _,
                         out error))
                 {
@@ -904,6 +992,39 @@ namespace Margins
                     ? $"Hired {candidate.DisplayName} for {LocationName(locationId)}."
                     : error);
             return success;
+        }
+
+        public bool TrySetPricingPreset(
+            string locationId,
+            PortfolioPricingPolicy preset,
+            out string error)
+        {
+            if (progression == null)
+            {
+                error = "Company pricing is not initialized.";
+                return false;
+            }
+
+            if (string.Equals(
+                    locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
+            {
+                FirstStoreMerchandisingComponent merchandising =
+                    firstStore?.Checkout?.Merchandising;
+                if (merchandising == null)
+                {
+                    error =
+                        "The loaded first store has no merchandising safety adapter.";
+                    return false;
+                }
+                return merchandising.TryApplyPricePreset(preset, out error);
+            }
+
+            return progression.TrySetPricingPolicy(
+                locationId,
+                preset,
+                out error);
         }
 
         public bool TryAdvanceDelegatedDay(out string error)
@@ -1056,7 +1177,7 @@ namespace Margins
                     TryAdvanceDelegatedDay(out _);
                 }
                 GUILayout.Label(
-                    "Managers will execute each location's price and reorder policy. Sales, COGS, payroll, rent, purchases, skills, satisfaction, reputation, and cash all resolve together.");
+                    "Managers will use each location's current shelf prices and reorder policy. Sales, COGS, payroll, rent, purchases, skills, satisfaction, reputation, and cash all resolve together.");
             }
             else
             {
@@ -1202,15 +1323,16 @@ namespace Margins
                 $"Inventory {location.inventoryUnits}/{location.inventoryCapacityUnits}  |  " +
                 $"rent {FormatCents(location.dailyRentCents)}/day  |  delegated days {location.delegatedDaysOperating}");
             GUILayout.Space(8f);
-            GUILayout.Label("PRICING POLICY");
+            GUILayout.Label("PRICE PRESETS");
             GUILayout.BeginHorizontal();
             foreach (PortfolioPricingPolicy policy in
                      Enum.GetValues(typeof(PortfolioPricingPolicy)))
             {
+                bool selected = IsPricePresetApplied(location, policy);
                 if (GUILayout.Button(
-                        policy == location.pricingPolicy ? $"[{policy}]" : policy.ToString()))
+                        selected ? $"[{policy}]" : policy.ToString()))
                 {
-                    bool success = progression.TrySetPricingPolicy(
+                    bool success = TrySetPricingPreset(
                         location.locationId,
                         policy,
                         out string error);
@@ -1220,7 +1342,9 @@ namespace Margins
                 }
             }
             GUILayout.EndHorizontal();
-            GUILayout.Label("Value raises traffic and stock pressure; Premium trades traffic for unit margin.");
+            GUILayout.Label(
+                $"Current: {FormatCurrentMerchandisePrices(location)}\n" +
+                "Presets update every item. Individual prices are edited at shelf tags.");
             GUILayout.Space(8f);
             GUILayout.Label("MANAGER REORDER POLICY");
             GUILayout.BeginHorizontal();
@@ -1307,7 +1431,7 @@ namespace Margins
                 {
                     GUILayout.Label(
                         $"DAY {report.day}: demand {report.demandUnits}, sold {report.unitsSold}, lost {report.lostDemandUnits}, " +
-                        $"price {FormatCents(report.unitPriceCents)}\n" +
+                        $"prices {FormatReportMerchandisePrices(report)}\n" +
                         $"Sales {FormatCents(report.grossSalesCents)} - COGS {FormatCents(report.costOfGoodsSoldCents)} - " +
                         $"payroll {FormatCents(report.payrollCents)} - rent {FormatCents(report.rentCents)} = " +
                         $"operating profit {FormatCents(report.operatingProfitCents)}\n" +
@@ -1336,7 +1460,7 @@ namespace Margins
                     : $"day {location.lastReport.day} profit {FormatCents(location.lastReport.operatingProfitCents)}";
                 GUILayout.Box(
                     $"{location.displayName} / {location.districtName}  |  staff {staff}/3  |  " +
-                    $"price {location.pricingPolicy}  reorder {location.reorderPolicy}  |  {report}");
+                    $"prices {FormatCurrentMerchandisePrices(location)}  |  reorder {location.reorderPolicy}  |  {report}");
             }
         }
 
@@ -1756,7 +1880,7 @@ namespace Margins
             else if (first.delegatedDaysOperating == 0)
             {
                 title = "Let the team run a day";
-                detail = "Your manager will apply the current price and inventory policies.";
+                detail = "Your manager will use the current shelf prices and inventory policy.";
                 action = $"Run day {snapshot.currentDay + 1}";
                 onAction = () => TryAdvanceDelegatedDay(out _);
             }
@@ -2102,7 +2226,7 @@ namespace Margins
                 humanTitleStyle);
             GUI.Label(
                 new Rect(content.x, content.y + 42f, content.width, 24f),
-                "Shape each operation with reusable pricing, inventory, staffing, and reporting controls.",
+                "Shape each operation with merchandise prices, inventory, staffing, and reporting controls.",
                 humanSmallStyle);
             DrawHumanLocationSelector(
                 new Rect(content.x, content.y + 76f, content.width, 42f),
@@ -2162,14 +2286,14 @@ namespace Margins
 
             GUI.Label(
                 new Rect(rect.x + 24f, rect.y + 264f, rect.width - 48f, 24f),
-                "PRICING",
+                "PRICE PRESETS",
                 humanMetricStyle);
             DrawHumanPricingControls(
                 new Rect(rect.x + 24f, rect.y + 296f, rect.width - 48f, 44f),
                 location);
             GUI.Label(
                 new Rect(rect.x + 24f, rect.y + 347f, rect.width - 48f, 42f),
-                "Value favors traffic. Premium favors margin. Balanced sits between them.",
+                $"{FormatCurrentMerchandisePrices(location)}\nPresets update all items; shelf tags edit one item.",
                 humanSmallStyle);
 
             GUI.Label(
@@ -2315,7 +2439,7 @@ namespace Margins
             for (int i = 0; i < policies.Length; i++)
             {
                 PortfolioPricingPolicy policy = policies[i];
-                bool selected = policy == location.pricingPolicy;
+                bool selected = IsPricePresetApplied(location, policy);
                 if (DrawHumanButton(
                         new Rect(rect.x + (width + gap) * i, rect.y, width, rect.height),
                         FriendlyPolicy(policy.ToString()),
@@ -2323,7 +2447,7 @@ namespace Margins
                         true,
                         selected))
                 {
-                    bool success = progression.TrySetPricingPolicy(
+                    bool success = TrySetPricingPreset(
                         location.locationId,
                         policy,
                         out string error);
@@ -2768,6 +2892,70 @@ namespace Margins
             return negative
                 ? $"-${dollars}.{absolute % 100:00}"
                 : $"${dollars}.{absolute % 100:00}";
+        }
+
+        private static string FormatCurrentMerchandisePrices(
+            PortfolioLocationSnapshot location)
+        {
+            if (location?.merchandisePrices == null ||
+                location.merchandisePrices.Count == 0)
+            {
+                return "no merchandise prices";
+            }
+
+            return string.Join(
+                "  •  ",
+                location.merchandisePrices
+                    .Where(price => price != null)
+                    .OrderBy(price => price.productId, StringComparer.Ordinal)
+                    .Select(price =>
+                        $"{FriendlyProduct(price.productId)} {FormatCents(price.salePriceCents)}"));
+        }
+
+        private static bool IsPricePresetApplied(
+            PortfolioLocationSnapshot location,
+            PortfolioPricingPolicy preset)
+        {
+            return location?.merchandisePrices != null &&
+                   location.merchandisePrices.Count > 0 &&
+                   location.merchandisePrices.All(price =>
+                       price != null &&
+                       price.salePriceCents ==
+                       MerchandisingRules.CalculatePresetSalePrice(
+                           price.referencePriceCents,
+                           preset));
+        }
+
+        private static string FormatReportMerchandisePrices(
+            PortfolioLocationReportSnapshot report)
+        {
+            if (report?.hasExactMerchandiseSales == true &&
+                report.merchandiseSales != null &&
+                report.merchandiseSales.Count > 0)
+            {
+                return string.Join(
+                    ", ",
+                    report.merchandiseSales
+                        .Where(line => line != null)
+                        .OrderBy(line => line.productId, StringComparer.Ordinal)
+                        .ThenBy(line => line.unitPriceCents)
+                        .Select(line =>
+                            $"{FriendlyProduct(line.productId)} {FormatCents(line.unitPriceCents)} × {line.quantityUnits}"));
+            }
+
+            return report == null || report.unitPriceCents <= 0
+                ? "not recorded"
+                : FormatCents(report.unitPriceCents);
+        }
+
+        private static string FriendlyProduct(string productId)
+        {
+            return productId switch
+            {
+                "prod-cola-can-355ml" => "Cola",
+                "prod-potato-chips-small" => "Chips",
+                _ => productId ?? "Product"
+            };
         }
     }
 }

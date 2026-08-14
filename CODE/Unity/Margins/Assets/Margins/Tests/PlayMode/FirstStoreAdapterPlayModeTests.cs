@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 
 namespace Margins.Tests
 {
@@ -98,6 +99,10 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<CustomerCheckoutWorldInteractionTarget>();
             InStoreEmployeeWorkController employeeWork =
                 Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            FirstStoreMerchandisingComponent merchandising =
+                Object.FindAnyObjectByType<FirstStoreMerchandisingComponent>();
+            ShelfMerchandisingEditorController merchandisingEditor =
+                Object.FindAnyObjectByType<ShelfMerchandisingEditorController>();
 
             Assert.That(validation, Is.Not.Null);
             Assert.That(store, Is.Not.Null);
@@ -127,6 +132,33 @@ namespace Margins.Tests
                 employeeWork.TryValidateConfiguration(out error),
                 Is.True,
                 error);
+            Assert.That(merchandising, Is.Not.Null);
+            Assert.That(
+                merchandising.TryValidateConfiguration(out error),
+                Is.True,
+                error);
+            Assert.That(merchandising.UsesPersistentPortfolio, Is.True);
+            ShelfMerchandisingLabel[] labels = Object.FindObjectsByType<
+                ShelfMerchandisingLabel>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            Assert.That(labels.Length, Is.EqualTo(2));
+            Assert.That(
+                labels.All(label =>
+                    label.DisplayedText.Contains("$") &&
+                    label.Priority ==
+                    FirstStoreWorldInteractionPriority.Merchandising),
+                Is.True);
+            Assert.That(merchandisingEditor, Is.Not.Null);
+            Assert.That(
+                merchandisingEditor.GetComponent<UIDocument>(),
+                Is.Not.Null);
+            Assert.That(labels[0].TryPrimary(out error), Is.True, error);
+            Assert.That(merchandisingEditor.IsOpen, Is.True);
+            Assert.That(player.IsGameplayMode, Is.False);
+            merchandisingEditor.Close();
+            Assert.That(merchandisingEditor.IsOpen, Is.False);
+            Assert.That(player.IsGameplayMode, Is.True);
             Assert.That(
                 Object.FindAnyObjectByType<StagedCheckoutWorldInteractionTarget>()
                     .enabled,
@@ -135,6 +167,84 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<StagedCheckoutInteractionComponent>()
                     .enabled,
                 Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator EmployeeStockingDestinationTracksMovedAssignedShelf()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "FirstStoreValidation",
+                LoadSceneMode.Single);
+            yield return null;
+
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            FirstStoreMerchandisingComponent merchandising =
+                Object.FindAnyObjectByType<FirstStoreMerchandisingComponent>();
+            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    merchandising.ProductCatalog.Single(product =>
+                        product.StableProductId == "prod-cola-can-355ml"),
+                    out ProductItem loose,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            GameObject carrierObject = new("Employee Destination Test Carrier");
+            createdObjects.Add(carrierObject);
+            Assert.That(
+                stocking.TryPickUpLooseUnit(
+                    loose,
+                    carrierObject.transform,
+                    out ProductItem carried,
+                    out error),
+                Is.True,
+                error);
+            SetField(employeeWork, "stockerUnit", carried);
+            Assert.That(
+                stocking.TryGetShelfFixture(
+                    "prod-cola-can-355ml",
+                    out ShelfFixture shelf),
+                Is.True);
+            MethodInfo destinationMethod = typeof(InStoreEmployeeWorkController)
+                .GetMethod(
+                    "GetStockerDestination",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(destinationMethod, Is.Not.Null);
+            Transform before = (Transform)destinationMethod.Invoke(
+                employeeWork,
+                null);
+            Assert.That(before, Is.SameAs(
+                shelf.transform.Find("Employee Stocking Work Point")));
+
+            Assert.That(
+                merchandising.TryGetOfferForProduct(
+                    "prod-cola-can-355ml",
+                    out MerchandiseOffer beforeOffer),
+                Is.True);
+            shelf.transform.position += new Vector3(4f, 0f, -2f);
+            Transform after = (Transform)destinationMethod.Invoke(
+                employeeWork,
+                null);
+            Assert.That(after, Is.SameAs(before));
+            Assert.That(after.position, Is.EqualTo(
+                shelf.transform.Find("Employee Stocking Work Point").position));
+            Assert.That(
+                merchandising.TryGetOfferForProduct(
+                    "prod-cola-can-355ml",
+                    out MerchandiseOffer afterOffer),
+                Is.True);
+            Assert.That(afterOffer.ShelfFixtureId, Is.EqualTo(
+                beforeOffer.ShelfFixtureId));
+            Assert.That(afterOffer.SalePriceCents, Is.EqualTo(
+                beforeOffer.SalePriceCents));
+            yield return null;
         }
 
         [UnityTest]
@@ -159,6 +269,10 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
             StoreOperatingController store =
                 Object.FindAnyObjectByType<StoreOperatingController>();
+            FirstStoreMerchandisingComponent merchandising =
+                Object.FindAnyObjectByType<FirstStoreMerchandisingComponent>();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
 
             Assert.That(flow, Is.Not.Null);
             Assert.That(checkout, Is.Not.Null);
@@ -167,6 +281,8 @@ namespace Margins.Tests
             Assert.That(physicalUnits, Is.Not.Null);
             Assert.That(mapper, Is.Not.Null);
             Assert.That(store, Is.Not.Null);
+            Assert.That(merchandising, Is.Not.Null);
+            Assert.That(portfolio, Is.Not.Null);
             SetField(flow, "secondsUntilNextArrival", 1_000f);
             SetField(flow, "arrivalIntervalSeconds", 1_000f);
             SetField(flow, "queuePatienceSeconds", 60f);
@@ -236,6 +352,43 @@ namespace Margins.Tests
                 error);
             Assert.That(queuedSnapshot.customerFlow, Is.Not.Null);
             Assert.That(queuedSnapshot.customerFlow.customers.Count, Is.EqualTo(3));
+            string reservedUnitId = queuedSnapshot.customerFlow.customers
+                .SelectMany(customer => customer.reservedPhysicalUnitIds)
+                .First();
+            PhysicalProductUnitSnapshot reservedUnit = queuedSnapshot
+                .physicalProductUnits.Single(unit =>
+                    unit.physicalUnitId == reservedUnitId);
+            Assert.That(
+                merchandising.TryGetOfferForProduct(
+                    reservedUnit.productId,
+                    out MerchandiseOffer reservedOffer),
+                Is.True);
+            Assert.That(
+                merchandising.TrySetSalePrice(
+                    reservedUnit.productId,
+                    reservedOffer.SalePriceCents + 50,
+                    out string reservationBlocker),
+                Is.False);
+            StringAssert.Contains(
+                "customers holding",
+                reservationBlocker.ToLowerInvariant());
+            Assert.That(
+                merchandising.TryGetOfferForProduct(
+                    reservedUnit.productId,
+                    out MerchandiseOffer unchangedOffer),
+                Is.True);
+            Assert.That(
+                unchangedOffer.SalePriceCents,
+                Is.EqualTo(reservedOffer.SalePriceCents));
+            Assert.That(
+                portfolio.TrySetPricingPreset(
+                    PortfolioProgressionRules.FirstLocationId,
+                    PortfolioPricingPolicy.Premium,
+                    out string presetBlocker),
+                Is.False);
+            StringAssert.Contains(
+                "customers holding",
+                presetBlocker.ToLowerInvariant());
             string expectedFrontCustomerId =
                 queuedSnapshot.customerFlow.customers[0].customerId;
             Assert.That(
@@ -265,6 +418,15 @@ namespace Margins.Tests
             }
 
             Assert.That(flow.TryStartCheckout(out error), Is.True, error);
+            Assert.That(
+                portfolio.TrySetPricingPreset(
+                    PortfolioProgressionRules.FirstLocationId,
+                    PortfolioPricingPolicy.Premium,
+                    out string checkoutPresetBlocker),
+                Is.False);
+            StringAssert.Contains(
+                "active checkout",
+                checkoutPresetBlocker.ToLowerInvariant());
             IReadOnlyList<string> activeItemIds =
                 flow.ActiveCheckoutPhysicalUnitIds;
             string[] actualItemIds = new string[activeItemIds.Count];

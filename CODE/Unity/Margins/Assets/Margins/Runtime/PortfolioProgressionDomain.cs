@@ -91,6 +91,8 @@ namespace Margins
         public long cashChangeCents;
         public string primaryCause;
         public bool isDetailedOperation;
+        public bool hasExactMerchandiseSales;
+        public List<MerchandiseSaleLineSnapshot> merchandiseSales = new();
     }
 
     [Serializable]
@@ -112,6 +114,9 @@ namespace Margins
         public long openingInventoryCostCents;
         public PortfolioPricingPolicy pricingPolicy;
         public PortfolioReorderPolicy reorderPolicy;
+        public List<MerchandisePriceSnapshot> merchandisePrices = new();
+        public List<ShelfMerchandiseAssignmentSnapshot>
+            shelfMerchandiseAssignments = new();
         public int daysOperating;
         public int delegatedDaysOperating;
         public long lifetimeGrossSalesCents;
@@ -131,7 +136,8 @@ namespace Margins
     public sealed class PortfolioProgressionSnapshot
     {
         public const int LegacyVersion = 1;
-        public const int CurrentVersion = 2;
+        public const int PriorVersion = 2;
+        public const int CurrentVersion = 3;
 
         public int version = CurrentVersion;
         public int currentDay = 1;
@@ -697,6 +703,25 @@ namespace Margins
             out bool unchanged,
             out string error)
         {
+            return TryReconcileDetailedOperation(
+                sessionId,
+                totals,
+                remainingInventoryUnits,
+                inventoryAssetValueCents,
+                null,
+                out unchanged,
+                out error);
+        }
+
+        public bool TryReconcileDetailedOperation(
+            string sessionId,
+            StoreSessionTotals totals,
+            int remainingInventoryUnits,
+            long inventoryAssetValueCents,
+            IReadOnlyList<MerchandiseSaleLineSnapshot> merchandiseSales,
+            out bool unchanged,
+            out string error)
+        {
             unchanged = false;
             if (!FirstStoreIdentifier.IsValid(sessionId) ||
                 totals == null ||
@@ -704,6 +729,17 @@ namespace Margins
                 inventoryAssetValueCents < 0)
             {
                 error = "A valid detailed operation, inventory value, and reconciled totals are required.";
+                return false;
+            }
+
+            bool hasExactMerchandiseSales = merchandiseSales != null;
+            if (hasExactMerchandiseSales &&
+                !MerchandisingRules.TryValidateSalesBreakdown(
+                    merchandiseSales,
+                    totals.unitsSold,
+                    totals.grossSalesCents,
+                    out error))
+            {
                 return false;
             }
 
@@ -920,7 +956,10 @@ namespace Margins
                 lostDemandUnits = 0,
                 endingInventoryUnits = remainingInventoryUnits,
                 reorderedUnits = 0,
-                unitPriceCents = 0,
+                unitPriceCents = hasExactMerchandiseSales &&
+                                 merchandiseSales.Count == 1
+                    ? merchandiseSales[0].unitPriceCents
+                    : 0,
                 grossSalesCents = totals.grossSalesCents,
                 costOfGoodsSoldCents = totals.costOfGoodsSoldCents,
                 payrollCents = detailedPayrollCents,
@@ -940,7 +979,11 @@ namespace Margins
                 primaryCause = totals.transactionCount == 0
                     ? "The store is operating; received inventory and occupancy costs are live."
                     : "Hands-on sales, historical COGS, cash, and remaining physical inventory reconcile live.",
-                isDetailedOperation = true
+                isDetailedOperation = true,
+                hasExactMerchandiseSales = hasExactMerchandiseSales,
+                merchandiseSales = merchandiseSales?
+                    .Select(CloneMerchandiseSaleLine)
+                    .ToList() ?? new List<MerchandiseSaleLineSnapshot>()
             };
             location.hasLastReport = true;
             return TryCommit(candidate, out error);
@@ -1402,11 +1445,128 @@ namespace Margins
             }
 
             PortfolioProgressionSnapshot candidate = Clone(state);
-            candidate.locations.First(location => string.Equals(
-                    location.locationId,
+            PortfolioLocationSnapshot location = candidate.locations.First(value => string.Equals(
+                    value.locationId,
                     locationId,
-                    StringComparison.Ordinal))
-                .pricingPolicy = policy;
+                    StringComparison.Ordinal));
+            location.pricingPolicy = policy;
+            foreach (MerchandisePriceSnapshot price in location.merchandisePrices)
+            {
+                price.salePriceCents = MerchandisingRules.CalculatePresetSalePrice(
+                    price.referencePriceCents,
+                    policy);
+            }
+            return TryCommit(candidate, out error);
+        }
+
+        public bool TryUpdateShelfOffer(
+            string locationId,
+            string shelfFixtureId,
+            string assignedProductId,
+            int salePriceCents,
+            string customDisplayLabel,
+            out string error)
+        {
+            if (!TryGetLocation(state, locationId, out _) ||
+                !FirstStoreIdentifier.IsValid(shelfFixtureId))
+            {
+                error = "The location or shelf merchandise request is invalid.";
+                return false;
+            }
+
+            assignedProductId = string.IsNullOrWhiteSpace(assignedProductId)
+                ? null
+                : assignedProductId.Trim();
+            customDisplayLabel = string.IsNullOrWhiteSpace(customDisplayLabel)
+                ? null
+                : customDisplayLabel.Trim();
+            if (customDisplayLabel?.Length >
+                    MerchandisingRules.MaximumCustomDisplayLabelLength ||
+                (customDisplayLabel?.Any(char.IsControl) ?? false))
+            {
+                error =
+                    $"Shelf label text must be {MerchandisingRules.MaximumCustomDisplayLabelLength} characters or fewer on one line.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot location = candidate.locations.First(value =>
+                string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            ShelfMerchandiseAssignmentSnapshot assignment =
+                location.shelfMerchandiseAssignments.FirstOrDefault(value =>
+                    string.Equals(
+                        value.shelfFixtureId,
+                        shelfFixtureId,
+                        StringComparison.Ordinal));
+            if (assignment == null)
+            {
+                error = $"Shelf '{shelfFixtureId}' is not a sellable merchandise area.";
+                return false;
+            }
+
+            MerchandisePriceSnapshot price = null;
+            if (assignedProductId != null)
+            {
+                price = location.merchandisePrices.FirstOrDefault(value =>
+                    string.Equals(
+                        value.productId,
+                        assignedProductId,
+                        StringComparison.Ordinal));
+                bool assignedElsewhere = location.shelfMerchandiseAssignments.Any(value =>
+                    !ReferenceEquals(value, assignment) &&
+                    string.Equals(
+                        value.assignedProductId,
+                        assignedProductId,
+                        StringComparison.Ordinal));
+                if (price == null || assignedElsewhere ||
+                    salePriceCents <= 0 ||
+                    salePriceCents > MerchandisingRules.MaximumSalePriceCents)
+                {
+                    error = assignedElsewhere
+                        ? "That product is already assigned to another shelf. Unassign it there first."
+                        : "Select a valid product and positive sale price.";
+                    return false;
+                }
+            }
+
+            assignment.assignedProductId = assignedProductId;
+            assignment.customDisplayLabel = customDisplayLabel;
+            if (price != null)
+            {
+                price.salePriceCents = salePriceCents;
+            }
+            return TryCommit(candidate, out error);
+        }
+
+        public bool TrySetSalePrice(
+            string locationId,
+            string productId,
+            int salePriceCents,
+            out string error)
+        {
+            if (!TryGetLocation(state, locationId, out _) ||
+                !FirstStoreIdentifier.IsValid(productId) ||
+                salePriceCents <= 0 ||
+                salePriceCents > MerchandisingRules.MaximumSalePriceCents)
+            {
+                error = "The location, product, or sale price is invalid.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot location = candidate.locations.First(value =>
+                string.Equals(value.locationId, locationId, StringComparison.Ordinal));
+            MerchandisePriceSnapshot price = location.merchandisePrices.FirstOrDefault(value =>
+                string.Equals(value.productId, productId, StringComparison.Ordinal));
+            if (price == null)
+            {
+                error = $"Product '{productId}' is not in this business's merchandise catalog.";
+                return false;
+            }
+            price.salePriceCents = salePriceCents;
             return TryCommit(candidate, out error);
         }
 
@@ -1722,22 +1882,21 @@ namespace Margins
             long deliveryFees = 0;
             int inventoryAvailableAtOpen = location.inventoryUnits;
 
-            long unitPrice = location.pricingPolicy switch
-            {
-                PortfolioPricingPolicy.Value =>
-                    simulation.UnitEconomy.ValuePriceCents,
-                PortfolioPricingPolicy.Premium =>
-                    simulation.UnitEconomy.PremiumPriceCents,
-                _ => simulation.UnitEconomy.BalancedPriceCents
-            };
-            int priceDemandAdjustment = location.pricingPolicy switch
-            {
-                PortfolioPricingPolicy.Value =>
-                    simulation.UnitEconomy.ValueDemandAdjustmentUnits,
-                PortfolioPricingPolicy.Premium =>
-                    simulation.UnitEconomy.PremiumDemandAdjustmentUnits,
-                _ => 0
-            };
+            List<MerchandiseOffer> offers = location.shelfMerchandiseAssignments
+                .Where(assignment =>
+                    assignment != null &&
+                    !string.IsNullOrWhiteSpace(assignment.assignedProductId))
+                .Select(assignment =>
+                    MerchandisingRules.TryGetOfferForProduct(
+                        location,
+                        assignment.assignedProductId,
+                        out MerchandiseOffer offer)
+                        ? (MerchandiseOffer?)offer
+                        : null)
+                .Where(offer => offer.HasValue)
+                .Select(offer => offer.Value)
+                .OrderBy(offer => offer.ProductId, StringComparer.Ordinal)
+                .ToList();
             int managerDemandAdjustment = (manager.skill - 50) * 2;
             if (manager.taskFocus == PortfolioTaskFocus.Standards)
             {
@@ -1748,10 +1907,9 @@ namespace Margins
                 location.locationId,
                 -24,
                 24);
-            int demand = Math.Max(
+            int potentialDemand = Math.Max(
                 0,
                 location.baseDemandUnits +
-                priceDemandAdjustment +
                 (location.reputation - 50) * 3 -
                 location.competitionIndex +
                 managerDemandAdjustment +
@@ -1767,18 +1925,44 @@ namespace Margins
                     stocker.CreateWorkProfile(),
                     managerWork);
 
+            Dictionary<string, int> willingDemandByProduct =
+                new(StringComparer.Ordinal);
+            int willingDemand = 0;
+            for (int index = 0; index < offers.Count; index++)
+            {
+                int potential = offers.Count == 0
+                    ? 0
+                    : potentialDemand / offers.Count +
+                      (index < potentialDemand % offers.Count ? 1 : 0);
+                int willing = MerchandisingRules.ApplyDemandResponse(
+                    potential,
+                    offers[index].SalePriceCents,
+                    offers[index].ReferencePriceCents);
+                willingDemandByProduct.Add(offers[index].ProductId, willing);
+                willingDemand = checked(willingDemand + willing);
+            }
+
             int unitsSold = Math.Min(
-                demand,
+                willingDemand,
                 Math.Min(
                     serviceCapacity,
                     Math.Min(stockedAvailability, location.inventoryUnits)));
+            // Reports preserve baseline interest rejected by high prices while
+            // also exposing the modest demand lift created by a low price.
+            int demand = Math.Max(potentialDemand, willingDemand);
             int lostDemand = demand - unitsSold;
+            List<MerchandiseSaleLineSnapshot> merchandiseSales =
+                AllocateMerchandiseSales(
+                    offers,
+                    willingDemandByProduct,
+                    unitsSold);
             long grossSales;
             long costOfGoodsSold;
             long operatingProfit;
             try
             {
-                grossSales = checked(unitPrice * unitsSold);
+                grossSales = merchandiseSales.Sum(line =>
+                    line.GrossSalesCents);
                 costOfGoodsSold = checked(
                     simulation.UnitEconomy.VariableUnitCostCents * unitsSold);
                 operatingProfit = checked(
@@ -1849,7 +2033,12 @@ namespace Margins
             string primaryCause = "Demand served within current capacity.";
             if (lostDemand > 0)
             {
-                if (unitsSold >= inventoryAvailableAtOpen ||
+                if (offers.Count == 0)
+                {
+                    primaryCause =
+                        "No shelf merchandise was assigned, so demand could not be served.";
+                }
+                else if (unitsSold >= inventoryAvailableAtOpen ||
                     unitsSold >= stockedAvailability)
                 {
                     primaryCause = "Shelf availability limited sales; raise the reorder buffer or inventory focus.";
@@ -1858,18 +2047,21 @@ namespace Margins
                 {
                     primaryCause = "Checkout capacity limited sales; train staff or emphasize service.";
                 }
-                else if (location.pricingPolicy == PortfolioPricingPolicy.Premium)
+                else if (willingDemand < potentialDemand)
                 {
-                    primaryCause = "Premium pricing reduced traffic but increased unit margin.";
+                    primaryCause =
+                        "Current shelf prices reduced willing demand relative to reference pricing.";
                 }
                 else
                 {
                     primaryCause = "Demand exceeded the current operating system.";
                 }
             }
-            else if (location.pricingPolicy == PortfolioPricingPolicy.Value)
+            else if (offers.Any(offer =>
+                         offer.SalePriceCents < offer.ReferencePriceCents))
             {
-                primaryCause = "Value pricing increased traffic and consumed inventory faster.";
+                primaryCause =
+                    "Lower shelf prices improved purchase acceptance and consumed inventory faster.";
             }
             if (reorderBlockedByCash)
             {
@@ -1916,7 +2108,9 @@ namespace Margins
                 lostDemandUnits = lostDemand,
                 endingInventoryUnits = location.inventoryUnits,
                 reorderedUnits = reorderedUnits,
-                unitPriceCents = unitPrice,
+                unitPriceCents = merchandiseSales.Count == 1
+                    ? merchandiseSales[0].unitPriceCents
+                    : 0,
                 grossSalesCents = grossSales,
                 costOfGoodsSoldCents = costOfGoodsSold,
                 payrollCents = payroll,
@@ -1928,7 +2122,9 @@ namespace Margins
                 cashChangeCents = checked(
                     grossSales - fixedCosts - inventoryPurchase - deliveryFees),
                 primaryCause = primaryCause,
-                isDetailedOperation = false
+                isDetailedOperation = false,
+                hasExactMerchandiseSales = true,
+                merchandiseSales = merchandiseSales
             };
             location.hasLastReport = true;
 
@@ -1948,6 +2144,67 @@ namespace Margins
 
             error = null;
             return true;
+        }
+
+        private static List<MerchandiseSaleLineSnapshot>
+            AllocateMerchandiseSales(
+                IReadOnlyList<MerchandiseOffer> offers,
+                IReadOnlyDictionary<string, int> willingDemandByProduct,
+                int unitsSold)
+        {
+            List<MerchandiseSaleLineSnapshot> lines = new();
+            if (offers == null || willingDemandByProduct == null ||
+                unitsSold <= 0)
+            {
+                return lines;
+            }
+
+            int totalWilling = willingDemandByProduct.Values.Sum();
+            if (totalWilling <= 0)
+            {
+                return lines;
+            }
+
+            int allocated = 0;
+            foreach (MerchandiseOffer offer in offers)
+            {
+                int willing = willingDemandByProduct[offer.ProductId];
+                int quantity = (int)((long)unitsSold * willing / totalWilling);
+                quantity = Math.Min(quantity, willing);
+                lines.Add(new MerchandiseSaleLineSnapshot
+                {
+                    productId = offer.ProductId,
+                    unitPriceCents = offer.SalePriceCents,
+                    quantityUnits = quantity
+                });
+                allocated += quantity;
+            }
+
+            int remaining = unitsSold - allocated;
+            while (remaining > 0)
+            {
+                bool allocatedAny = false;
+                for (int index = 0; index < lines.Count && remaining > 0; index++)
+                {
+                    MerchandiseSaleLineSnapshot line = lines[index];
+                    int willing = willingDemandByProduct[line.productId];
+                    if (line.quantityUnits >= willing)
+                    {
+                        continue;
+                    }
+                    line.quantityUnits++;
+                    remaining--;
+                    allocatedAny = true;
+                }
+                if (!allocatedAny)
+                {
+                    throw new InvalidOperationException(
+                        "Merchandise sale allocation exceeded willing demand.");
+                }
+            }
+
+            lines.RemoveAll(line => line.quantityUnits == 0);
+            return lines;
         }
 
         private static bool TryPlaceOrderOnCandidate(
@@ -2200,6 +2457,16 @@ namespace Margins
                 return false;
             }
 
+            if (!MerchandisingRules.TryValidate(
+                    location.merchandisePrices,
+                    location.shelfMerchandiseAssignments,
+                    out error))
+            {
+                error =
+                    $"Location '{location.locationId}' merchandising is invalid: {error}";
+                return false;
+            }
+
             if (!location.hasLastReport)
             {
                 if (location.lastReport != null &&
@@ -2239,14 +2506,14 @@ namespace Margins
 
             long aggregateUnitCost =
                 definition.SimulationProfile.UnitEconomy.VariableUnitCostCents;
-            long expectedGrossSales;
+            long legacyExpectedGrossSales;
             long expectedCostOfGoods;
             long expectedInventoryPurchase;
             long expectedOperatingProfit;
             long expectedCashChange;
             try
             {
-                expectedGrossSales = checked(
+                legacyExpectedGrossSales = checked(
                     report.unitPriceCents * report.unitsSold);
                 expectedCostOfGoods = checked(
                     aggregateUnitCost * report.unitsSold);
@@ -2271,6 +2538,24 @@ namespace Margins
                 return false;
             }
 
+            if (report.hasExactMerchandiseSales &&
+                !MerchandisingRules.TryValidateSalesBreakdown(
+                    report.merchandiseSales,
+                    report.unitsSold,
+                    report.grossSalesCents,
+                    out error))
+            {
+                return false;
+            }
+
+            long exactSummaryPrice = 0;
+            if (report.hasExactMerchandiseSales &&
+                report.merchandiseSales != null &&
+                report.merchandiseSales.Count == 1)
+            {
+                exactSummaryPrice = report.merchandiseSales[0].unitPriceCents;
+            }
+
             bool commonValid =
                 report.day >= (report.isDetailedOperation ? 1 : 2) &&
                 string.Equals(
@@ -2288,8 +2573,14 @@ namespace Margins
                 report.operatingProfitCents == expectedOperatingProfit &&
                 report.cashChangeCents == expectedCashChange &&
                 !string.IsNullOrWhiteSpace(report.primaryCause);
+            bool priceBreakdownValid = report.hasExactMerchandiseSales
+                ? report.unitPriceCents == exactSummaryPrice
+                : report.isDetailedOperation
+                    ? report.unitPriceCents == 0
+                    : report.unitPriceCents > 0 &&
+                      report.grossSalesCents == legacyExpectedGrossSales;
             bool modeValid = report.isDetailedOperation
-                ? report.unitPriceCents == 0 &&
+                ? priceBreakdownValid &&
                   report.demandUnits == report.unitsSold &&
                   report.lostDemandUnits == 0 &&
                   report.reorderedUnits == 0 &&
@@ -2297,8 +2588,7 @@ namespace Margins
                   report.costOfGoodsSoldCents >= 0 &&
                   report.rentCents >= 0 &&
                   report.inventoryPurchaseCents >= 0
-                : report.unitPriceCents > 0 &&
-                  report.grossSalesCents == expectedGrossSales &&
+                : priceBreakdownValid &&
                   report.costOfGoodsSoldCents == expectedCostOfGoods &&
                   report.rentCents == location.dailyRentCents &&
                   report.inventoryPurchaseCents == expectedInventoryPurchase;
@@ -2390,6 +2680,12 @@ namespace Margins
                 openingInventoryCostCents = definition.OpeningInventoryCostCents,
                 pricingPolicy = PortfolioPricingPolicy.Balanced,
                 reorderPolicy = PortfolioReorderPolicy.Balanced,
+                merchandisePrices =
+                    MerchandisingRules.CreateConvenienceStorePrices(
+                        PortfolioPricingPolicy.Balanced),
+                shelfMerchandiseAssignments =
+                    MerchandisingRules.CreateConvenienceStoreAssignments(
+                        definition.LocationId),
                 daysOperating = 0,
                 delegatedDaysOperating = 0,
                 lifetimeGrossSalesCents = 0,
@@ -2503,13 +2799,14 @@ namespace Margins
             normalized = null;
             if (source == null ||
                 (source.version != PortfolioProgressionSnapshot.LegacyVersion &&
+                 source.version != PortfolioProgressionSnapshot.PriorVersion &&
                  source.version != PortfolioProgressionSnapshot.CurrentVersion))
             {
                 error = "Portfolio snapshot version is missing or unsupported.";
                 return false;
             }
 
-            if (source.version == PortfolioProgressionSnapshot.CurrentVersion &&
+            if (source.version != PortfolioProgressionSnapshot.LegacyVersion &&
                 source.procurement == null)
             {
                 error = "Current portfolio snapshot is missing procurement state.";
@@ -2556,7 +2853,10 @@ namespace Margins
                 locations = source.locations?
                     .Select(location => location == null
                         ? null
-                        : CloneLocation(location))
+                        : CloneLocation(
+                            location,
+                            source.version !=
+                            PortfolioProgressionSnapshot.CurrentVersion))
                     .ToList() ?? new List<PortfolioLocationSnapshot>()
             };
             if (clone.detailedOperationInitialized &&
@@ -2592,7 +2892,8 @@ namespace Margins
         }
 
         private static PortfolioLocationSnapshot CloneLocation(
-            PortfolioLocationSnapshot source)
+            PortfolioLocationSnapshot source,
+            bool migrateLegacyMerchandising)
         {
             PortfolioProgressionRules.TryGetLocationDefinition(
                 source.locationId,
@@ -2620,6 +2921,18 @@ namespace Margins
                 openingInventoryCostCents = source.openingInventoryCostCents,
                 pricingPolicy = source.pricingPolicy,
                 reorderPolicy = source.reorderPolicy,
+                merchandisePrices = migrateLegacyMerchandising
+                    ? MerchandisingRules.CreateConvenienceStorePrices(
+                        source.pricingPolicy)
+                    : source.merchandisePrices?
+                        .Select(CloneMerchandisePrice)
+                        .ToList(),
+                shelfMerchandiseAssignments = migrateLegacyMerchandising
+                    ? MerchandisingRules.CreateConvenienceStoreAssignments(
+                        source.locationId)
+                    : source.shelfMerchandiseAssignments?
+                        .Select(CloneShelfAssignment)
+                        .ToList(),
                 daysOperating = source.daysOperating,
                 delegatedDaysOperating = legacyLocation
                     ? source.daysOperating
@@ -2635,7 +2948,7 @@ namespace Margins
                 lifetimeOperatingProfitCents = source.lifetimeOperatingProfitCents,
                 hasLastReport = source.hasLastReport,
                 lastReport = source.hasLastReport
-                    ? CloneReport(source.lastReport)
+                    ? CloneReport(source.lastReport, migrateLegacyMerchandising)
                     : null
             };
         }
@@ -2660,11 +2973,15 @@ namespace Margins
                    report.operatingProfitCents == 0 &&
                    report.cashChangeCents == 0 &&
                    !report.isDetailedOperation &&
+                   !report.hasExactMerchandiseSales &&
+                   (report.merchandiseSales == null ||
+                    report.merchandiseSales.Count == 0) &&
                    string.IsNullOrEmpty(report.primaryCause);
         }
 
         private static PortfolioLocationReportSnapshot CloneReport(
-            PortfolioLocationReportSnapshot source)
+            PortfolioLocationReportSnapshot source,
+            bool migrateLegacyMerchandising = false)
         {
             if (source == null)
             {
@@ -2690,8 +3007,56 @@ namespace Margins
                 operatingProfitCents = source.operatingProfitCents,
                 cashChangeCents = source.cashChangeCents,
                 primaryCause = source.primaryCause,
-                isDetailedOperation = source.isDetailedOperation
+                isDetailedOperation = source.isDetailedOperation,
+                hasExactMerchandiseSales = migrateLegacyMerchandising
+                    ? false
+                    : source.hasExactMerchandiseSales,
+                merchandiseSales = migrateLegacyMerchandising
+                    ? new List<MerchandiseSaleLineSnapshot>()
+                    : source.merchandiseSales?
+                        .Select(CloneMerchandiseSaleLine)
+                        .ToList()
             };
+        }
+
+        private static MerchandisePriceSnapshot CloneMerchandisePrice(
+            MerchandisePriceSnapshot source)
+        {
+            return source == null
+                ? null
+                : new MerchandisePriceSnapshot
+                {
+                    productId = source.productId,
+                    referencePriceCents = source.referencePriceCents,
+                    salePriceCents = source.salePriceCents
+                };
+        }
+
+        private static ShelfMerchandiseAssignmentSnapshot CloneShelfAssignment(
+            ShelfMerchandiseAssignmentSnapshot source)
+        {
+            return source == null
+                ? null
+                : new ShelfMerchandiseAssignmentSnapshot
+                {
+                    shelfFixtureId = source.shelfFixtureId,
+                    inventoryLocationId = source.inventoryLocationId,
+                    assignedProductId = source.assignedProductId,
+                    customDisplayLabel = source.customDisplayLabel
+                };
+        }
+
+        private static MerchandiseSaleLineSnapshot CloneMerchandiseSaleLine(
+            MerchandiseSaleLineSnapshot source)
+        {
+            return source == null
+                ? null
+                : new MerchandiseSaleLineSnapshot
+                {
+                    productId = source.productId,
+                    unitPriceCents = source.unitPriceCents,
+                    quantityUnits = source.quantityUnits
+                };
         }
 
         private static void SortCollections(PortfolioProgressionSnapshot snapshot)
@@ -2702,6 +3067,25 @@ namespace Margins
             snapshot.locations.Sort((left, right) => string.CompareOrdinal(
                 left?.locationId,
                 right?.locationId));
+            foreach (PortfolioLocationSnapshot location in snapshot.locations)
+            {
+                location?.merchandisePrices?.Sort((left, right) =>
+                    string.CompareOrdinal(left?.productId, right?.productId));
+                location?.shelfMerchandiseAssignments?.Sort((left, right) =>
+                    string.CompareOrdinal(
+                        left?.shelfFixtureId,
+                        right?.shelfFixtureId));
+                location?.lastReport?.merchandiseSales?.Sort((left, right) =>
+                {
+                    int product = string.CompareOrdinal(
+                        left?.productId,
+                        right?.productId);
+                    return product != 0
+                        ? product
+                        : (left?.unitPriceCents ?? 0).CompareTo(
+                            right?.unitPriceCents ?? 0);
+                });
+            }
         }
 
         private static int Clamp(int value, int minimum, int maximum)

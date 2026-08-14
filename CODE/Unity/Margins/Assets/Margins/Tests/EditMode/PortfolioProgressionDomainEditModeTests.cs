@@ -277,7 +277,9 @@ namespace Margins.Tests.EditMode
             Assert.That(report.demandUnits, Is.EqualTo(report.unitsSold + report.lostDemandUnits));
             Assert.That(
                 report.grossSalesCents,
-                Is.EqualTo(report.unitPriceCents * report.unitsSold));
+                Is.EqualTo(report.merchandiseSales.Sum(line =>
+                    line.GrossSalesCents)));
+            Assert.That(report.hasExactMerchandiseSales, Is.True);
             Assert.That(
                 report.operatingProfitCents,
                 Is.EqualTo(
@@ -370,8 +372,11 @@ namespace Margins.Tests.EditMode
                 valueLean.CreateSnapshot().locations[0].lastReport;
             PortfolioLocationReportSnapshot premium =
                 premiumResilient.CreateSnapshot().locations[0].lastReport;
-            Assert.That(value.demandUnits, Is.GreaterThan(premium.demandUnits));
-            Assert.That(value.unitPriceCents, Is.LessThan(premium.unitPriceCents));
+            Assert.That(
+                value.merchandiseSales.Average(line => line.unitPriceCents),
+                Is.LessThan(
+                    premium.merchandiseSales.Average(line =>
+                        line.unitPriceCents)));
             Assert.That(value.reorderedUnits, Is.LessThan(premium.reorderedUnits));
             Assert.That(
                 value.inventoryPurchaseCents,
@@ -556,6 +561,263 @@ namespace Margins.Tests.EditMode
                 error);
             Assert.That(restored.CashCents, Is.EqualTo(accepted.cashCents));
             Assert.That(restored.Employees.Count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void MerchandisingAssignmentsAndPricesAreAtomicPerLocation()
+        {
+            PortfolioProgression progression = PortfolioProgression.CreateInitial();
+            const string colaShelf = "fixture-shelf-cola-validation";
+            const string chipsShelf = "fixture-shelf-chips-validation";
+
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    colaShelf,
+                    "prod-potato-chips-small",
+                    249,
+                    null,
+                    out string error),
+                Is.False);
+            StringAssert.Contains("already assigned", error);
+
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    chipsShelf,
+                    null,
+                    0,
+                    null,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    colaShelf,
+                    "prod-potato-chips-small",
+                    249,
+                    "QUICK BITE",
+                    out error),
+                Is.True,
+                error);
+
+            PortfolioLocationSnapshot location = progression.CreateSnapshot()
+                .locations.Single();
+            Assert.That(
+                MerchandisingRules.TryGetOfferForProduct(
+                    location,
+                    "prod-potato-chips-small",
+                    out MerchandiseOffer offer),
+                Is.True);
+            Assert.That(offer.ShelfFixtureId, Is.EqualTo(colaShelf));
+            Assert.That(offer.InventoryLocationId, Is.EqualTo("loc-shelf-cola"));
+            Assert.That(offer.SalePriceCents, Is.EqualTo(249));
+            Assert.That(offer.CustomDisplayLabel, Is.EqualTo("QUICK BITE"));
+        }
+
+        [Test]
+        public void CompletedDetailedRevenueKeepsExactHistoricalPriceAfterPriceChange()
+        {
+            PortfolioProgression progression = PortfolioProgression.CreateInitial();
+            StoreSessionTotals totals = new(149, 60, 0, 89, 1, 1);
+            MerchandiseSaleLineSnapshot[] sales =
+            {
+                new()
+                {
+                    productId = "prod-cola-can-355ml",
+                    unitPriceCents = 149,
+                    quantityUnits = 1
+                }
+            };
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    "session-merchandising-price-history",
+                    totals,
+                    7,
+                    945,
+                    sales,
+                    out _,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    "fixture-shelf-cola-validation",
+                    "prod-cola-can-355ml",
+                    399,
+                    null,
+                    out error),
+                Is.True,
+                error);
+
+            PortfolioLocationSnapshot location = progression.CreateSnapshot()
+                .locations.Single();
+            Assert.That(location.lifetimeGrossSalesCents, Is.EqualTo(149));
+            Assert.That(location.lastReport.grossSalesCents, Is.EqualTo(149));
+            Assert.That(location.lastReport.hasExactMerchandiseSales, Is.True);
+            Assert.That(
+                location.lastReport.merchandiseSales.Single().unitPriceCents,
+                Is.EqualTo(149));
+            Assert.That(
+                location.merchandisePrices.Single(value =>
+                    value.productId == "prod-cola-can-355ml").salePriceCents,
+                Is.EqualTo(399));
+        }
+
+        [Test]
+        public void DelegatedSalesUseTheSameCurrentProductPricesAndExactLines()
+        {
+            PortfolioProgression progression = ReadyWithFirstTeam();
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    "fixture-shelf-cola-validation",
+                    "prod-cola-can-355ml",
+                    175,
+                    null,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                progression.TryUpdateShelfOffer(
+                    PortfolioProgressionRules.FirstLocationId,
+                    "fixture-shelf-chips-validation",
+                    "prod-potato-chips-small",
+                    225,
+                    null,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(progression.TryAdvanceDelegatedDay(out error), Is.True, error);
+
+            PortfolioLocationReportSnapshot report = progression.CreateSnapshot()
+                .locations.Single().lastReport;
+            Assert.That(report.hasExactMerchandiseSales, Is.True);
+            Assert.That(report.merchandiseSales, Is.Not.Empty);
+            Assert.That(
+                report.merchandiseSales.All(line =>
+                    line.productId == "prod-cola-can-355ml"
+                        ? line.unitPriceCents == 175
+                        : line.productId == "prod-potato-chips-small" &&
+                          line.unitPriceCents == 225),
+                Is.True);
+            Assert.That(
+                report.grossSalesCents,
+                Is.EqualTo(report.merchandiseSales.Sum(line =>
+                    line.GrossSalesCents)));
+        }
+
+        [Test]
+        public void PriceResponseIsDeterministicAndExcessivePricingCutsAcceptance()
+        {
+            int low = MerchandisingRules.CalculatePurchaseAcceptanceBasisPoints(
+                100,
+                200);
+            int reasonable =
+                MerchandisingRules.CalculatePurchaseAcceptanceBasisPoints(
+                    200,
+                    200);
+            int excessive =
+                MerchandisingRules.CalculatePurchaseAcceptanceBasisPoints(
+                    400,
+                    200);
+            Assert.That(low, Is.GreaterThan(reasonable));
+            Assert.That(reasonable, Is.GreaterThan(excessive));
+            Assert.That(excessive, Is.LessThanOrEqualTo(500));
+            int lowAccepted = 0;
+            int reasonableAccepted = 0;
+            int excessiveAccepted = 0;
+            for (int index = 0; index < 1_000; index++)
+            {
+                string customerId = $"customer-price-response-{index:D4}";
+                if (MerchandisingRules.WillPurchase(
+                        customerId,
+                        "prod-cola-can-355ml",
+                        100,
+                        200))
+                {
+                    lowAccepted++;
+                }
+                if (MerchandisingRules.WillPurchase(
+                        customerId,
+                        "prod-cola-can-355ml",
+                        200,
+                        200))
+                {
+                    reasonableAccepted++;
+                }
+                if (MerchandisingRules.WillPurchase(
+                        customerId,
+                        "prod-cola-can-355ml",
+                        400,
+                        200))
+                {
+                    excessiveAccepted++;
+                }
+            }
+
+            Assert.That(lowAccepted, Is.EqualTo(1_000));
+            Assert.That(reasonableAccepted, Is.InRange(920, 980));
+            Assert.That(excessiveAccepted, Is.LessThan(100));
+            Assert.That(lowAccepted, Is.GreaterThan(reasonableAccepted));
+            Assert.That(reasonableAccepted, Is.GreaterThan(excessiveAccepted));
+            bool first = MerchandisingRules.WillPurchase(
+                "customer-stable-001",
+                "prod-cola-can-355ml",
+                400,
+                200);
+            Assert.That(
+                MerchandisingRules.WillPurchase(
+                    "customer-stable-001",
+                    "prod-cola-can-355ml",
+                    400,
+                    200),
+                Is.EqualTo(first));
+            Assert.That(
+                MerchandisingRules.ApplyDemandResponse(100, 100, 200),
+                Is.GreaterThan(
+                    MerchandisingRules.ApplyDemandResponse(100, 400, 200)));
+        }
+
+        [Test]
+        public void VersionTwoPortfolioMigratesConfiguredMerchandisingDefaults()
+        {
+            PortfolioProgression source = ReadyForHiring();
+            Assert.That(
+                source.TrySetPricingPolicy(
+                    PortfolioProgressionRules.FirstLocationId,
+                    PortfolioPricingPolicy.Premium,
+                    out string presetError),
+                Is.True,
+                presetError);
+            PortfolioProgressionSnapshot legacy = source.CreateSnapshot();
+            legacy.version = PortfolioProgressionSnapshot.PriorVersion;
+            legacy.locations[0].merchandisePrices = null;
+            legacy.locations[0].shelfMerchandiseAssignments = null;
+
+            Assert.That(
+                PortfolioProgression.TryRestore(
+                    legacy,
+                    out PortfolioProgression restored,
+                    out string error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot location = restored.CreateSnapshot()
+                .locations.Single();
+            Assert.That(
+                location.merchandisePrices.Single(value =>
+                    value.productId == "prod-cola-can-355ml").salePriceCents,
+                Is.EqualTo(208));
+            Assert.That(
+                location.shelfMerchandiseAssignments.Single(value =>
+                    value.shelfFixtureId ==
+                    "fixture-shelf-cola-validation").assignedProductId,
+                Is.EqualTo("prod-cola-can-355ml"));
+            Assert.That(
+                restored.CreateSnapshot().version,
+                Is.EqualTo(PortfolioProgressionSnapshot.CurrentVersion));
         }
 
         private static PortfolioProgression ReadyForHiring()

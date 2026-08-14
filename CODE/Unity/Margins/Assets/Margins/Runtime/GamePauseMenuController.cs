@@ -22,10 +22,13 @@ namespace Margins
         private GameSettingsModel draftSettings;
         private InputBindingSettings bindingSettings;
         private int lastEscapeFrame = -1;
+        private static bool gameMenuOpen;
+        private static int externalModalCount;
 
         public event Action PresentationChanged;
 
-        public static bool IsAnyMenuOpen { get; private set; }
+        public static bool IsAnyMenuOpen =>
+            gameMenuOpen || externalModalCount > 0;
         public static float UserInterfaceScale { get; private set; } = 1f;
 
         public bool IsOpen => menuState.Screen != GameMenuScreen.Closed;
@@ -80,7 +83,7 @@ namespace Margins
             {
                 Time.timeScale = 1f;
             }
-            IsAnyMenuOpen = false;
+            gameMenuOpen = false;
         }
 
         private void Update()
@@ -104,6 +107,11 @@ namespace Margins
                 return;
             }
             lastEscapeFrame = Time.frameCount;
+
+            if (externalModalCount > 0)
+            {
+                return;
+            }
 
             if (bindingSettings?.IsRebinding == true)
             {
@@ -138,6 +146,10 @@ namespace Margins
 
         public void OpenMenu()
         {
+            if (externalModalCount > 0)
+            {
+                return;
+            }
             menuState.OpenPause();
             notification.Clear();
             ApplyMenuEnvironment();
@@ -447,7 +459,7 @@ namespace Margins
 
         private void ApplyMenuEnvironment()
         {
-            IsAnyMenuOpen = IsOpen;
+            gameMenuOpen = IsOpen;
             Time.timeScale = IsOpen ? 0f : 1f;
             firstPersonController?.SetGameplayMode(!IsOpen);
         }
@@ -470,8 +482,18 @@ namespace Margins
 
         private void PublishPresentation()
         {
-            IsAnyMenuOpen = IsOpen;
+            gameMenuOpen = IsOpen;
             PresentationChanged?.Invoke();
+        }
+
+        public static void RegisterExternalModal()
+        {
+            externalModalCount++;
+        }
+
+        public static void UnregisterExternalModal()
+        {
+            externalModalCount = Math.Max(0, externalModalCount - 1);
         }
 
         private static string FriendlyPersistenceFailure(

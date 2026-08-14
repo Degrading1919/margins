@@ -1,0 +1,21 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="merchandising-editor-root" class="merchandising-editor-root">
+        <ui:VisualElement class="merchandising-scrim" />
+        <ui:VisualElement class="merchandising-card">
+            <ui:Label text="SHELF MERCHANDISING" class="merchandising-eyebrow" />
+            <ui:Label name="shelf-name" class="merchandising-title" />
+            <ui:Label text="Product" class="merchandising-field-label" />
+            <ui:DropdownField name="product-field" class="merchandising-field" />
+            <ui:Label text="Sale price" class="merchandising-field-label" />
+            <ui:TextField name="price-field" class="merchandising-field" />
+            <ui:Label name="reference-price" class="merchandising-help" />
+            <ui:Label text="Optional shelf label" class="merchandising-field-label" />
+            <ui:TextField name="custom-label-field" max-length="32" class="merchandising-field" />
+            <ui:Label name="editor-error" class="merchandising-error" />
+            <ui:VisualElement class="merchandising-actions">
+                <ui:Button name="cancel-button" text="Cancel" class="merchandising-button" />
+                <ui:Button name="apply-button" text="Apply" class="merchandising-button merchandising-button--primary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

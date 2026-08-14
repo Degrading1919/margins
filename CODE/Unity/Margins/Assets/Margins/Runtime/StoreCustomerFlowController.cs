@@ -374,6 +374,30 @@ namespace Margins
                     storeOperating.State == StoreOperatingState.Closing);
         }
 
+        public bool HasReservationAtShelfLocation(string shelfLocationId)
+        {
+            if (!FirstStoreIdentifier.IsValid(shelfLocationId))
+            {
+                return false;
+            }
+
+            foreach (RuntimeCustomer customer in customers)
+            {
+                foreach (string unitId in customer.ReservedPhysicalUnitIds)
+                {
+                    if (physicalUnits.TryGetUnit(
+                            unitId,
+                            out ProductItem item,
+                            out _) &&
+                        physicalUnits.IsAtLocation(item, shelfLocationId))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         public bool TryScanCustomerItem(
             string physicalUnitId,
             out string error)
@@ -654,13 +678,8 @@ namespace Margins
                             out PhysicalProductUnitSnapshot physical) ||
                         !requested.Contains(physical.productId) ||
                         !reservedProducts.Add(physical.productId) ||
-                        !checkout.TryGetShelfLocation(
-                            physical.productId,
-                            out string shelfLocationId) ||
-                        !string.Equals(
-                            shelfLocationId,
-                            physical.inventoryLocationId,
-                            StringComparison.Ordinal) ||
+                        !FirstStoreIdentifier.IsValid(
+                            physical.inventoryLocationId) ||
                         string.IsNullOrWhiteSpace(physical.shelfFixtureId) ||
                         string.IsNullOrWhiteSpace(physical.shelfSnapPointId))
                     {
@@ -874,17 +893,32 @@ namespace Margins
 
         private void FinishShopping(RuntimeCustomer customer)
         {
+            bool priceRejected = false;
             for (int index = 0;
                  index < customer.RequestedProductIds.Count;
                  index++)
             {
                 string productId = customer.RequestedProductIds[index];
-                if (!checkout.TryGetShelfLocation(
+                if (!checkout.TryGetCurrentOffer(
                         productId,
-                        out string shelfLocationId) ||
-                    !physicalUnits.TryGetAvailableShelvedUnit(
+                        out MerchandiseOffer offer))
+                {
+                    continue;
+                }
+
+                if (!MerchandisingRules.WillPurchase(
+                        customer.CustomerId,
                         productId,
-                        shelfLocationId,
+                        offer.SalePriceCents,
+                        offer.ReferencePriceCents))
+                {
+                    priceRejected = true;
+                    continue;
+                }
+
+                if (!physicalUnits.TryGetAvailableShelvedUnit(
+                        productId,
+                        offer.InventoryLocationId,
                         out ProductItem item))
                 {
                     continue;
@@ -907,7 +941,9 @@ namespace Margins
             {
                 customer.State = StoreCustomerState.Leaving;
                 customer.WasAbandoned = true;
-                UpdateCustomerLabel(customer, "NO STOCK");
+                UpdateCustomerLabel(
+                    customer,
+                    priceRejected ? "PRICE TOO HIGH" : "NO STOCK");
                 return;
             }
 

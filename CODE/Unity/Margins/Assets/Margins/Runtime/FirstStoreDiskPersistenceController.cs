@@ -457,6 +457,15 @@ namespace Margins
                     return Reject(
                         $"{rejectionPrefix}: procurement reconciliation failed: {error}");
                 }
+
+                if (!portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
+                        saveData.firstStore,
+                        acceptedPortfolio,
+                        out error))
+                {
+                    return Reject(
+                        $"{rejectionPrefix}: merchandising reconciliation failed: {error}");
+                }
             }
             else if (saveData.portfolio != null)
             {
