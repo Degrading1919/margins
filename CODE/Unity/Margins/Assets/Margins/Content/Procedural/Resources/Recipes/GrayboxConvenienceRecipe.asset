@@ -1,0 +1,172 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 494dd5e40468bb44abb467c66874fdb1, type: 3}
+  m_Name: GrayboxConvenienceRecipe
+  m_EditorClassIdentifier: Margins.Runtime::Margins.ProceduralBusinessRecipe
+  stableRecipeId: graybox-convenience-store
+  minimumFrontageFeet: 20
+  minimumDepthFeet: 30
+  minimumUsableAreaSquareFeet: 1200
+  requiresServiceEntrance: 1
+  zoneRequests:
+  - zoneType: 0
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 600
+    preferredAreaSquareFeet: 900
+  - zoneType: 1
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 80
+    preferredAreaSquareFeet: 120
+  - zoneType: 2
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 90
+    preferredAreaSquareFeet: 140
+  - zoneType: 3
+    required: 1
+    enclosed: 1
+    minimumAreaSquareFeet: 100
+    preferredAreaSquareFeet: 160
+  - zoneType: 4
+    required: 1
+    enclosed: 1
+    minimumAreaSquareFeet: 70
+    preferredAreaSquareFeet: 100
+  - zoneType: 6
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 0
+    preferredAreaSquareFeet: 0
+  assetRequests:
+  - requestId: dry-display
+    primaryCategory: 0
+    requiredCapabilities:
+    - dry-merchandise
+    minimum: 2
+    preferred: 4
+    maximum: 6
+    required: 1
+    preferredHostZone: 0
+    priority: 100
+    environment: 0
+  - requestId: cold-display
+    primaryCategory: 0
+    requiredCapabilities:
+    - cold-merchandise
+    minimum: 1
+    preferred: 1
+    maximum: 2
+    required: 1
+    preferredHostZone: 0
+    priority: 95
+    environment: 0
+  - requestId: checkout
+    primaryCategory: 1
+    requiredCapabilities:
+    - payment
+    minimum: 1
+    preferred: 1
+    maximum: 1
+    required: 1
+    preferredHostZone: 1
+    priority: 120
+    environment: 0
+  - requestId: prep-counter
+    primaryCategory: 2
+    requiredCapabilities:
+    - staff-prep
+    minimum: 1
+    preferred: 1
+    maximum: 2
+    required: 1
+    preferredHostZone: 2
+    priority: 110
+    environment: 0
+  - requestId: coffee-module
+    primaryCategory: 3
+    requiredCapabilities:
+    - coffee-prep
+    minimum: 1
+    preferred: 1
+    maximum: 1
+    required: 1
+    preferredHostZone: 2
+    priority: 90
+    environment: 0
+  - requestId: stock-rack
+    primaryCategory: 5
+    requiredCapabilities:
+    - inventory-storage
+    minimum: 1
+    preferred: 2
+    maximum: 3
+    required: 1
+    preferredHostZone: 3
+    priority: 100
+    environment: 0
+  - requestId: receiving
+    primaryCategory: 6
+    requiredCapabilities:
+    - receiving
+    minimum: 1
+    preferred: 1
+    maximum: 1
+    required: 1
+    preferredHostZone: 4
+    priority: 100
+    environment: 0
+  - requestId: customer-use
+    primaryCategory: 4
+    requiredCapabilities:
+    - customer-use
+    minimum: 0
+    preferred: 1
+    maximum: 2
+    required: 0
+    preferredHostZone: 0
+    priority: 20
+    environment: 0
+  - requestId: seating
+    primaryCategory: 7
+    requiredCapabilities:
+    - customer-seating
+    minimum: 0
+    preferred: 1
+    maximum: 3
+    required: 0
+    preferredHostZone: 0
+    priority: 10
+    environment: 0
+  - requestId: wall-decor
+    primaryCategory: 8
+    requiredCapabilities:
+    - wall-dressing
+    minimum: 0
+    preferred: 2
+    maximum: 4
+    required: 0
+    preferredHostZone: 0
+    priority: 5
+    environment: 0
+  - requestId: ceiling-lights
+    primaryCategory: 8
+    requiredCapabilities:
+    - illumination
+    minimum: 0
+    preferred: 2
+    maximum: 4
+    required: 0
+    preferredHostZone: 0
+    priority: 4
+    environment: 0

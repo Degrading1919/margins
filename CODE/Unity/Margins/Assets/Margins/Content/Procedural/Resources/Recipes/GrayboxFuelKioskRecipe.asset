@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 494dd5e40468bb44abb467c66874fdb1, type: 3}
+  m_Name: GrayboxFuelKioskRecipe
+  m_EditorClassIdentifier: Margins.Runtime::Margins.ProceduralBusinessRecipe
+  stableRecipeId: graybox-fuel-kiosk
+  minimumFrontageFeet: 20
+  minimumDepthFeet: 25
+  minimumUsableAreaSquareFeet: 600
+  requiresServiceEntrance: 1
+  zoneRequests:
+  - zoneType: 0
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 300
+    preferredAreaSquareFeet: 500
+  - zoneType: 1
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 80
+    preferredAreaSquareFeet: 100
+  - zoneType: 4
+    required: 1
+    enclosed: 1
+    minimumAreaSquareFeet: 100
+    preferredAreaSquareFeet: 140
+  - zoneType: 6
+    required: 1
+    enclosed: 0
+    minimumAreaSquareFeet: 0
+    preferredAreaSquareFeet: 0
+  assetRequests:
+  - requestId: checkout
+    primaryCategory: 1
+    requiredCapabilities:
+    - payment
+    minimum: 1
+    preferred: 1
+    maximum: 1
+    required: 1
+    preferredHostZone: 1
+    priority: 110
+    environment: 0
+  - requestId: fuel-pumps
+    primaryCategory: 3
+    requiredCapabilities:
+    - fuel-dispense
+    minimum: 2
+    preferred: 4
+    maximum: 6
+    required: 1
+    preferredHostZone: 4
+    priority: 100
+    environment: 1
+  - requestId: receiving
+    primaryCategory: 6
+    requiredCapabilities:
+    - receiving
+    minimum: 1
+    preferred: 1
+    maximum: 1
+    required: 1
+    preferredHostZone: 4
+    priority: 90
+    environment: 0
+  - requestId: wall-decor
+    primaryCategory: 8
+    requiredCapabilities:
+    - wall-dressing
+    minimum: 0
+    preferred: 1
+    maximum: 2
+    required: 0
+    preferredHostZone: 0
+    priority: 5
+    environment: 0
