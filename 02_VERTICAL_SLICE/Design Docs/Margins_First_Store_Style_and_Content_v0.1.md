@@ -22,7 +22,7 @@ The first store should feel like a plausible small leased neighborhood convenien
 | Backroom/delivery share | 15–25% | 20% | Box opening and loose stock |
 | Checkout/front service share | 8–12% | 10% | Entry oversight and scanning |
 | Utility/task share | 3–8% | 5% | Cleaning or maintenance fixture |
-| Placement grid | 0.5 m cells | 0.5 m | Readable deterministic placement |
+| Fixture placement grid | 6 in cells | 0.1524 m | Readable deterministic placement |
 | Primary aisle clearance | 1.2–1.5 m | 1.35 m | First-person comfort and later navigation test |
 | Door clear width target | 0.9–1.1 m | 1.0 m | Readability and future accessibility review |
 

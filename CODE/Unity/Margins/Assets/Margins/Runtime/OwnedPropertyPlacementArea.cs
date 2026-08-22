@@ -81,14 +81,13 @@ namespace Margins
         public bool TryValidateFixturePlacement(
             PlaceableFixtureComponent fixture,
             Transform gridOrigin,
-            float cellSize,
             int quarterTurns,
             out FixturePlacementFailure failure,
             out string error)
         {
             failure = FixturePlacementFailure.None;
             if (!TryValidateConfiguration(out error) || fixture == null ||
-                gridOrigin == null || cellSize <= 0f)
+                gridOrigin == null)
             {
                 failure = FixturePlacementFailure.InvalidSupport;
                 error ??= "Fixture placement physical validation is unavailable.";
@@ -96,10 +95,16 @@ namespace Margins
             }
 
             GridFootprint footprint = fixture.Footprint.Rotate(quarterTurns);
-            Vector3 halfRight = fixture.transform.right *
-                                Mathf.Max(0f, footprint.width * cellSize * 0.5f - 0.02f);
-            Vector3 halfForward = fixture.transform.forward *
-                                  Mathf.Max(0f, footprint.depth * cellSize * 0.5f - 0.02f);
+            Vector3 halfRight = gridOrigin.right *
+                                Mathf.Max(
+                                    0f,
+                                    FixturePlacementGrid.CellsToMeters(footprint.width) *
+                                    0.5f - 0.02f);
+            Vector3 halfForward = gridOrigin.forward *
+                                  Mathf.Max(
+                                      0f,
+                                      FixturePlacementGrid.CellsToMeters(footprint.depth) *
+                                      0.5f - 0.02f);
             Vector3 center = fixture.transform.position;
             Vector3[] supportSamples =
             {

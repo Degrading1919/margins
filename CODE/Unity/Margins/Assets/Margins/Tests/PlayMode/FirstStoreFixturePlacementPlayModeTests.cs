@@ -58,7 +58,7 @@ namespace Margins.Tests
             yield return Tap(keyboard.eKey);
             Assert.That(mode.IsActive, Is.True, interaction.LastFeedback);
 
-            Vector3 exteriorCell = GridCellCenter(placement, 1, 1);
+            Vector3 exteriorCell = GridCellCenter(placement, 72, 36);
             AimCameraDownAt(exteriorCell);
             Assert.That(interaction.RefreshFocus(), Is.True);
             Assert.That(mode.HasPreview, Is.True);
@@ -77,7 +77,7 @@ namespace Margins.Tests
                     fixture.StableFixtureInstanceId,
                     out FixturePlacementSnapshot accepted),
                 Is.True);
-            Assert.That(accepted.gridPosition, Is.EqualTo(new GridPosition(1, 1)));
+            Assert.That(accepted.gridPosition, Is.EqualTo(new GridPosition(72, 36)));
             Assert.That(accepted.quarterTurns, Is.EqualTo(1));
 
             yield return Tap(keyboard.bKey);
@@ -152,9 +152,40 @@ namespace Margins.Tests
                 Is.True,
                 error);
 
-            Vector3 wallPoint = leftWall.bounds.center;
-            wallPoint.y = 0f;
-            Assert.That(mode.TryPreviewAtWorldPoint(wallPoint, out error), Is.False);
+            bool foundStructuralCollision = false;
+            for (int sampleIndex = 1; sampleIndex < 10; sampleIndex++)
+            {
+                Vector3 wallCenter = leftWall.bounds.center;
+                wallCenter.z = Mathf.Lerp(
+                    leftWall.bounds.min.z,
+                    leftWall.bounds.max.z,
+                    sampleIndex / 10f);
+                wallCenter.y = 0f;
+                GridPosition wallPosition =
+                    FixturePlacementGrid.NearestPositionForLocalCenter(
+                        placement.GridOrigin.InverseTransformPoint(wallCenter),
+                        fixture.Footprint,
+                        0);
+                if (!placement.PreviewMove(fixture, wallPosition, 0).IsSuccess)
+                {
+                    continue;
+                }
+
+                Vector3 wallSelectionPoint = placement.GridOrigin.TransformPoint(
+                    new Vector3(
+                        (wallPosition.x + 0.1f) * placement.CellSize,
+                        0f,
+                        (wallPosition.z + 0.1f) * placement.CellSize));
+                if (!mode.TryPreviewAtWorldPoint(wallSelectionPoint, out error) &&
+                    mode.PreviewResult.Failure ==
+                    FixturePlacementFailure.StructuralCollision)
+                {
+                    foundStructuralCollision = true;
+                    break;
+                }
+            }
+
+            Assert.That(foundStructuralCollision, Is.True, error);
             Assert.That(
                 mode.PreviewResult.Failure,
                 Is.EqualTo(FixturePlacementFailure.StructuralCollision));
@@ -238,6 +269,15 @@ namespace Margins.Tests
             };
 
             Assert.That(GameObject.Find("Essential Checkout Fixture Placement Handle"), Is.Null);
+            Assert.That(
+                placement.CellSize,
+                Is.EqualTo(FixturePlacementGrid.PlacementIncrementMeters));
+            Assert.That(
+                placement.GridWidthCells,
+                Is.EqualTo(FixturePlacementGrid.CellsToCoverMeters(24f)));
+            Assert.That(
+                placement.GridDepthCells,
+                Is.EqualTo(FixturePlacementGrid.CellsToCoverMeters(27f)));
             Assert.That(placement.PlacedCount, Is.EqualTo(fixtures.Length));
             foreach ((string objectName, string fixtureId) in fixtures)
             {
@@ -271,6 +311,82 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator PriorPropertyGridLoadPreservesFixtureIdsAndNearestWorldCenters()
+        {
+            yield return LoadValidationScene();
+
+            FixturePlacementController placement =
+                Require("Fixture Placement").GetComponent<FixturePlacementController>();
+            (string Name, string Id, GridPosition Position, GridFootprint Footprint)[]
+                legacyFixtures =
+                {
+                    (
+                        "Essential Checkout Fixture",
+                        "fixture-checkout-essential-01",
+                        new GridPosition(16, 16),
+                        new GridFootprint(2, 1)),
+                    (
+                        "fixture-shelf-cola-validation",
+                        "fixture-shelf-cola-validation",
+                        new GridPosition(7, 21),
+                        new GridFootprint(3, 1)),
+                    (
+                        "fixture-shelf-chips-validation",
+                        "fixture-shelf-chips-validation",
+                        new GridPosition(14, 21),
+                        new GridFootprint(3, 1)),
+                    (
+                        "Stockroom Delivery Drop",
+                        "fixture-delivery-drop-01",
+                        new GridPosition(3, 12),
+                        new GridFootprint(1, 1))
+                };
+            FixtureLayout legacy = new(24, 27);
+            foreach (var item in legacyFixtures)
+            {
+                FixturePlacementResult result = legacy.TryPlace(
+                    item.Id,
+                    item.Position,
+                    item.Footprint,
+                    0);
+                Assert.That(result.IsSuccess, Is.True, result.Failure.ToString());
+            }
+
+            Assert.That(placement.TryApplyRestoredLayout(legacy, out string error), Is.True, error);
+            Assert.That(placement.PlacedCount, Is.EqualTo(legacyFixtures.Length));
+            foreach (var item in legacyFixtures)
+            {
+                PlaceableFixtureComponent fixture = Require(item.Name)
+                    .GetComponent<PlaceableFixtureComponent>();
+                Assert.That(fixture.StableFixtureInstanceId, Is.EqualTo(item.Id));
+                Assert.That(
+                    placement.TryGetPlacement(item.Id, out FixturePlacementSnapshot migrated),
+                    Is.True);
+                Assert.That(migrated.fixtureInstanceId, Is.EqualTo(item.Id));
+
+                GridFootprint legacyRotated = item.Footprint.Rotate(0);
+                Vector3 exactLegacyCenter = new(
+                    item.Position.x + legacyRotated.width * 0.5f,
+                    0f,
+                    item.Position.z + legacyRotated.depth * 0.5f);
+                Vector3 migratedCenter = placement.GridOrigin.InverseTransformPoint(
+                    fixture.transform.position);
+                Assert.That(
+                    Mathf.Abs(migratedCenter.x - exactLegacyCenter.x),
+                    Is.LessThanOrEqualTo(
+                        FixturePlacementGrid.PlacementIncrementMeters * 0.5f +
+                        0.0001f),
+                    item.Id);
+                Assert.That(
+                    Mathf.Abs(migratedCenter.z - exactLegacyCenter.z),
+                    Is.LessThanOrEqualTo(
+                        FixturePlacementGrid.PlacementIncrementMeters * 0.5f +
+                        0.0001f),
+                    item.Id);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator LegacyGridLoadPreservesCheckoutIdentityAndSeedsNewMovables()
         {
             yield return LoadValidationScene();
@@ -284,7 +400,7 @@ namespace Margins.Tests
             FixturePlacementResult legacyPlacement = legacy.TryPlace(
                 checkout.StableFixtureInstanceId,
                 new GridPosition(6, 1),
-                checkout.Footprint,
+                new GridFootprint(2, 1),
                 0);
             Assert.That(legacyPlacement.IsSuccess, Is.True, legacyPlacement.Failure.ToString());
 
@@ -295,7 +411,11 @@ namespace Margins.Tests
                     "fixture-checkout-essential-01",
                     out FixturePlacementSnapshot migratedCheckout),
                 Is.True);
-            Assert.That(migratedCheckout.gridPosition, Is.EqualTo(new GridPosition(14, 20)));
+            Assert.That(migratedCheckout.gridPosition, Is.EqualTo(new GridPosition(91, 131)));
+            Vector3 migratedLocalCenter = placement.GridOrigin.InverseTransformPoint(
+                checkout.transform.position);
+            Assert.That(migratedLocalCenter.x, Is.EqualTo(15f).Within(0.0763f));
+            Assert.That(migratedLocalCenter.z, Is.EqualTo(20.5f).Within(0.0763f));
             Assert.That(placement.IsPlaced("fixture-shelf-cola-validation"), Is.True);
             Assert.That(placement.IsPlaced("fixture-shelf-chips-validation"), Is.True);
             Assert.That(placement.IsPlaced("fixture-delivery-drop-01"), Is.True);
