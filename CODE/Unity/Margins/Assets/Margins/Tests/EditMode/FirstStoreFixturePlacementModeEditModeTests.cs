@@ -24,6 +24,19 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void FixturePlacementGridUsesApprovedSixInchMeterNativeContract()
+        {
+            Assert.That(FixturePlacementGrid.MetersPerUnityUnit, Is.EqualTo(1f));
+            Assert.That(
+                FixturePlacementGrid.PlacementIncrementMeters,
+                Is.EqualTo(0.1524f).Within(0.000001f));
+            Assert.That(FixturePlacementGrid.CellsToCoverMeters(0.3048f), Is.EqualTo(2));
+            Assert.That(
+                FixturePlacementGrid.CellsToMeters(2),
+                Is.EqualTo(0.3048f).Within(0.000001f));
+        }
+
+        [Test]
         public void FloorRayAndInverseGridMappingUseFloorDivision()
         {
             PlacementRig rig = CreateRig();
@@ -31,14 +44,20 @@ namespace Margins.Tests
             StringAssert.Contains("[Q]", rig.Mode.Prompt.FormattedText);
             StringAssert.Contains("mouse wheel rotates", rig.Mode.Prompt.FormattedText);
 
-            Ray ray = new(new Vector3(1.99f, 2f, 2.01f), Vector3.down);
+            float cellSize = rig.Controller.CellSize;
+            Ray ray = new(
+                new Vector3(1.99f * cellSize, 2f, 2.01f * cellSize),
+                Vector3.down);
             Assert.That(rig.Mode.TryRefreshPreview(ray, out error), Is.True, error);
             Assert.That(rig.Mode.PreviewPosition, Is.EqualTo(new GridPosition(1, 2)));
 
             rig.Origin.SetPositionAndRotation(
                 new Vector3(4f, 0f, 3f),
                 Quaternion.Euler(0f, 90f, 0f));
-            Vector3 localPoint = new(1.99f, 0f, 2.01f);
+            Vector3 localPoint = new(
+                1.99f * cellSize,
+                0f,
+                2.01f * cellSize);
             Assert.That(
                 rig.Mode.TryGetGridPosition(rig.Origin.TransformPoint(localPoint), out GridPosition mapped, out error),
                 Is.True,
@@ -52,11 +71,20 @@ namespace Margins.Tests
             PlacementRig rig = CreateRig();
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
 
-            Assert.That(rig.Mode.TryPreviewAtWorldPoint(new Vector3(1.2f, 0f, 1.2f), out error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(
+                    GridCellPoint(rig, 1, 1),
+                    out error),
+                Is.True,
+                error);
             Assert.That(rig.Controller.PlacedCount, Is.Zero);
             Assert.That(rig.Fixture.PreviewState, Is.EqualTo(FixturePlacementPreviewState.Valid));
 
-            Assert.That(rig.Mode.TryPreviewAtWorldPoint(new Vector3(9f, 0f, 1f), out error), Is.False);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(
+                    GridCellPoint(rig, 41, 1),
+                    out error),
+                Is.False);
             StringAssert.Contains("outside", error);
             Assert.That(rig.Controller.PlacedCount, Is.Zero);
             Assert.That(rig.Fixture.PreviewState, Is.EqualTo(FixturePlacementPreviewState.Invalid));
@@ -68,7 +96,7 @@ namespace Margins.Tests
             PlacementRig rig = CreateRig();
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
             Assert.That(
-                rig.Mode.TryPreviewAtWorldPoint(new Vector3(1.2f, 0f, 1.2f), out error),
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 1, 1), out error),
                 Is.True,
                 error);
             Assert.That(rig.Mode.HasPreview, Is.True);
@@ -96,7 +124,10 @@ namespace Margins.Tests
             Quaternion acceptedRotation = rig.Fixture.transform.rotation;
 
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
-            Assert.That(rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 3.2f), out error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 4, 3), out error),
+                Is.True,
+                error);
             Assert.That(rig.Mode.AdjustQuarterTurns(1, out error), Is.True, error);
             Assert.That(rig.Mode.TryCancel(out error), Is.True, error);
 
@@ -120,7 +151,7 @@ namespace Margins.Tests
 
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
             Assert.That(
-                rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 3.2f), out error),
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 4, 3), out error),
                 Is.True,
                 error);
             Assert.That(rig.Fixture.transform.position, Is.Not.EqualTo(acceptedPosition));
@@ -139,7 +170,10 @@ namespace Margins.Tests
         {
             PlacementRig rig = CreateRig();
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
-            Assert.That(rig.Mode.TryPreviewAtWorldPoint(new Vector3(2.2f, 0f, 3.2f), out error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 2, 3), out error),
+                Is.True,
+                error);
             Assert.That(rig.Mode.AdjustQuarterTurns(1, out error), Is.True, error);
             Assert.That(rig.Mode.TryConfirm(out error), Is.True, error);
 
@@ -162,7 +196,10 @@ namespace Margins.Tests
             Assert.That(rig.Fixture.gameObject.activeSelf, Is.False);
 
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out error), Is.True, error);
-            Assert.That(rig.Mode.TryPreviewAtWorldPoint(new Vector3(3.1f, 0f, 1.1f), out error), Is.True, error);
+            Assert.That(
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 3, 1), out error),
+                Is.True,
+                error);
             Assert.That(rig.Mode.TryConfirm(out error), Is.True, error);
             Assert.That(rig.Controller.TryGetPlacement("fixture-test-01", out FixturePlacementSnapshot placement), Is.True);
             Assert.That(placement.gridPosition, Is.EqualTo(new GridPosition(3, 1)));
@@ -192,7 +229,7 @@ namespace Margins.Tests
             Vector3 accepted = rig.Fixture.transform.position;
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
             Assert.That(
-                rig.Mode.TryPreviewAtWorldPoint(new Vector3(4.2f, 0f, 3.2f), out error),
+                rig.Mode.TryPreviewAtWorldPoint(GridCellPoint(rig, 4, 3), out error),
                 Is.True,
                 error);
             Assert.That(rig.Fixture.transform.position, Is.Not.EqualTo(accepted));
@@ -228,6 +265,29 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void RotatedRectangularFootprintUsesGridAlignedOwnedPropertyExtents()
+        {
+            PlacementRig rig = CreateRig();
+            GridPosition position = new(10, 10);
+            rig.Fixture.ApplyPreview(position, 1, rig.Origin, true);
+            Vector3 center = rig.Fixture.transform.position;
+            rig.Bounds.center = new Vector3(center.x, 1.5f, center.z);
+            rig.Bounds.size = new Vector3(1f, 4f, 0.2f);
+            Physics.SyncTransforms();
+
+            Assert.That(
+                rig.PropertyArea.TryValidateFixturePlacement(
+                    rig.Fixture,
+                    rig.Origin,
+                    1,
+                    out FixturePlacementFailure failure,
+                    out string error),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(FixturePlacementFailure.InvalidSupport));
+            StringAssert.Contains("supported owned property", error);
+        }
+
+        [Test]
         public void PreviewRejectsCollisionWithConfiguredStructure()
         {
             PlacementRig rig = CreateRig();
@@ -244,13 +304,73 @@ namespace Margins.Tests
 
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
             Assert.That(
-                rig.Mode.TryPreviewAtWorldPoint(new Vector3(2.2f, 0f, 2.2f), out error),
+                rig.Mode.TryPreviewAtWorldPoint(
+                    new Vector3(3f, 0f, 2.5f),
+                    out error),
                 Is.False);
             Assert.That(
                 rig.Mode.PreviewResult.Failure,
                 Is.EqualTo(FixturePlacementFailure.StructuralCollision));
             StringAssert.Contains("collides", error);
             Assert.That(rig.Controller.PlacedCount, Is.Zero);
+        }
+
+        [Test]
+        public void HalfMeterLegacyLayoutMigratesStableIdentityToNearestSixInchCenter()
+        {
+            Transform origin = CreateGameObject("Migrated Grid Origin").transform;
+            origin.SetPositionAndRotation(
+                new Vector3(3f, 0f, -2f),
+                Quaternion.Euler(0f, 90f, 0f));
+            PlaceableFixtureComponent fixture = CreateFixture();
+            FixturePlacementController controller = CreateLegacyController(
+                origin,
+                fixture,
+                10,
+                10,
+                FixturePlacementGrid.LegacyPlacementIncrementMeters,
+                Vector3.zero);
+
+            FixtureLayout legacy = new(10, 10);
+            Assert.That(
+                legacy.TryPlace(
+                    fixture.StableFixtureInstanceId,
+                    new GridPosition(3, 4),
+                    new GridFootprint(2, 1),
+                    1).IsSuccess,
+                Is.True);
+
+            Assert.That(controller.TryApplyRestoredLayout(legacy, out string error), Is.True, error);
+            Assert.That(
+                controller.TryGetPlacement(
+                    fixture.StableFixtureInstanceId,
+                    out FixturePlacementSnapshot first),
+                Is.True);
+            Assert.That(first.fixtureInstanceId, Is.EqualTo("fixture-test-01"));
+            Assert.That(first.unrotatedFootprint, Is.EqualTo(fixture.Footprint));
+            Assert.That(first.quarterTurns, Is.EqualTo(1));
+
+            Vector3 exactLegacyCenter = new(1.75f, 0f, 2.5f);
+            Vector3 migratedLocalCenter = origin.InverseTransformPoint(
+                fixture.transform.position);
+            Assert.That(
+                Mathf.Abs(migratedLocalCenter.x - exactLegacyCenter.x),
+                Is.LessThanOrEqualTo(
+                    FixturePlacementGrid.PlacementIncrementMeters * 0.5f + 0.0001f));
+            Assert.That(
+                Mathf.Abs(migratedLocalCenter.z - exactLegacyCenter.z),
+                Is.LessThanOrEqualTo(
+                    FixturePlacementGrid.PlacementIncrementMeters * 0.5f + 0.0001f));
+
+            Vector3 firstWorldPosition = fixture.transform.position;
+            Assert.That(controller.TryApplyRestoredLayout(legacy, out error), Is.True, error);
+            Assert.That(
+                controller.TryGetPlacement(
+                    fixture.StableFixtureInstanceId,
+                    out FixturePlacementSnapshot second),
+                Is.True);
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(fixture.transform.position, Is.EqualTo(firstWorldPosition));
         }
 
         private PlacementRig CreateRig()
@@ -314,15 +434,60 @@ namespace Margins.Tests
                 .AddComponent<FixturePlacementController>();
             SerializedObject serialized = new(controller);
             serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
-            serialized.FindProperty("gridWidthCells").intValue = 6;
-            serialized.FindProperty("gridDepthCells").intValue = 6;
-            serialized.FindProperty("cellSize").floatValue = 1f;
+            serialized.FindProperty("gridWidthCells").intValue = 40;
+            serialized.FindProperty("gridDepthCells").intValue = 40;
             SerializedProperty fixtures = serialized.FindProperty("fixtures");
             fixtures.arraySize = 1;
             fixtures.GetArrayElementAtIndex(0).objectReferenceValue = fixture;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(controller.TryInitialize(out string error), Is.True, error);
             return controller;
+        }
+
+        private FixturePlacementController CreateLegacyController(
+            Transform origin,
+            PlaceableFixtureComponent fixture,
+            int legacyWidth,
+            int legacyDepth,
+            float legacyCellSizeMeters,
+            Vector3 legacyOriginOffsetMeters)
+        {
+            FixturePlacementController controller = CreateGameObject(
+                    "Legacy Placement Controller")
+                .AddComponent<FixturePlacementController>();
+            SerializedObject serialized = new(controller);
+            serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
+            serialized.FindProperty("gridWidthCells").intValue = 40;
+            serialized.FindProperty("gridDepthCells").intValue = 40;
+            SerializedProperty fixtures = serialized.FindProperty("fixtures");
+            fixtures.arraySize = 1;
+            fixtures.GetArrayElementAtIndex(0).objectReferenceValue = fixture;
+            SerializedProperty legacyGrids = serialized.FindProperty(
+                "legacyGridConfigurations");
+            legacyGrids.arraySize = 1;
+            SerializedProperty legacy = legacyGrids.GetArrayElementAtIndex(0);
+            legacy.FindPropertyRelative("gridWidthCells").intValue = legacyWidth;
+            legacy.FindPropertyRelative("gridDepthCells").intValue = legacyDepth;
+            legacy.FindPropertyRelative("cellSizeMeters").floatValue =
+                legacyCellSizeMeters;
+            legacy.FindPropertyRelative("originOffsetMeters").vector3Value =
+                legacyOriginOffsetMeters;
+            SerializedProperty identifiers = legacy.FindPropertyRelative(
+                "fixtureInstanceIds");
+            identifiers.arraySize = 1;
+            identifiers.GetArrayElementAtIndex(0).stringValue =
+                fixture.StableFixtureInstanceId;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(controller.TryInitialize(out string error), Is.True, error);
+            return controller;
+        }
+
+        private static Vector3 GridCellPoint(PlacementRig rig, int x, int z)
+        {
+            return rig.Origin.TransformPoint(new Vector3(
+                (x + 0.5f) * rig.Controller.CellSize,
+                0f,
+                (z + 0.5f) * rig.Controller.CellSize));
         }
 
         private FirstStoreFixturePlacementModeController CreateMode(

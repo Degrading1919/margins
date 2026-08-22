@@ -581,7 +581,13 @@ namespace Margins.Tests
             Assert.That(included.gameObject.activeSelf, Is.True);
             Assert.That(controller.IsPlaced(omitted.StableFixtureInstanceId), Is.False);
             Assert.That(omitted.gameObject.activeSelf, Is.False);
-            Assert.That(included.transform.position, Is.EqualTo(new Vector3(1.25f, 0f, 2f)));
+            Assert.That(
+                included.transform.position,
+                Is.EqualTo(
+                    FixturePlacementGrid.LocalCenter(
+                        new GridPosition(2, 3),
+                        included.Footprint,
+                        1)));
             Assert.That(included.transform.rotation.eulerAngles.y, Is.EqualTo(90f).Within(0.01f));
         }
 
@@ -1351,7 +1357,6 @@ namespace Margins.Tests
             serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
             serialized.FindProperty("gridWidthCells").intValue = 8;
             serialized.FindProperty("gridDepthCells").intValue = 8;
-            serialized.FindProperty("cellSize").floatValue = 0.5f;
             SetObjectArray(serialized.FindProperty("fixtures"), fixtures);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             Assert.That(controller.TryInitialize(out string error), Is.True, error);

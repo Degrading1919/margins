@@ -6576,8 +6576,8 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.PlaceableFixtureComponent
   stableFixtureInstanceId: fixture-delivery-drop-01
-  footprintWidthCells: 1
-  footprintDepthCells: 1
+  footprintWidthCells: 7
+  footprintDepthCells: 7
   previewRenderer: {fileID: 34911519}
   defaultMaterial: {fileID: 2100000, guid: e8cc7c406d3a23845818175911649f14, type: 2}
   validMaterial: {fileID: 2100000, guid: d8f0c4f7741a5f045a0886be50bef895, type: 2}
@@ -6611,7 +6611,7 @@ NavMeshObstacle:
   m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
-  m_Extents: {x: 0.5, y: 0.9, z: 0.5}
+  m_Extents: {x: 0.5334, y: 0.9, z: 0.5334}
   m_MoveThreshold: 0.1
   m_Carve: 1
   m_CarveOnlyStationary: 0
@@ -13515,8 +13515,8 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.PlaceableFixtureComponent
   stableFixtureInstanceId: fixture-shelf-cola-validation
-  footprintWidthCells: 3
-  footprintDepthCells: 1
+  footprintWidthCells: 20
+  footprintDepthCells: 7
   previewRenderer: {fileID: 534790551}
   defaultMaterial: {fileID: 2100000, guid: b2eec699dc4bd104c935ccdb8c85d73b, type: 2}
   validMaterial: {fileID: 2100000, guid: d8f0c4f7741a5f045a0886be50bef895, type: 2}
@@ -13547,7 +13547,7 @@ NavMeshObstacle:
   m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
-  m_Extents: {x: 1.5, y: 0.9, z: 0.5}
+  m_Extents: {x: 1.524, y: 0.9, z: 0.5334}
   m_MoveThreshold: 0.1
   m_Carve: 1
   m_CarveOnlyStationary: 0
@@ -14217,8 +14217,8 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.PlaceableFixtureComponent
   stableFixtureInstanceId: fixture-checkout-essential-01
-  footprintWidthCells: 2
-  footprintDepthCells: 1
+  footprintWidthCells: 14
+  footprintDepthCells: 7
   previewRenderer: {fileID: 453927216}
   defaultMaterial: {fileID: 2100000, guid: e8cc7c406d3a23845818175911649f14, type: 2}
   validMaterial: {fileID: 2100000, guid: d8f0c4f7741a5f045a0886be50bef895, type: 2}
@@ -14374,7 +14374,7 @@ NavMeshObstacle:
   m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
-  m_Extents: {x: 1, y: 0.9, z: 0.5}
+  m_Extents: {x: 1.0668, y: 0.9, z: 0.5334}
   m_MoveThreshold: 0.1
   m_Carve: 1
   m_CarveOnlyStationary: 0
@@ -15892,9 +15892,8 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.FixturePlacementController
   gridOrigin: {fileID: 1915191472}
-  gridWidthCells: 24
-  gridDepthCells: 27
-  cellSize: 1
+  gridWidthCells: 158
+  gridDepthCells: 178
   fixtures:
   - {fileID: 1362594655}
   - {fileID: 1306546952}
@@ -15903,31 +15902,46 @@ MonoBehaviour:
   initialPlacements:
   - fixture: {fileID: 1362594655}
     gridPosition:
-      x: 16
-      z: 16
+      x: 105
+      z: 105
     quarterTurns: 0
   - fixture: {fileID: 1306546952}
     gridPosition:
-      x: 7
-      z: 21
+      x: 46
+      z: 138
     quarterTurns: 0
   - fixture: {fileID: 1650835382}
     gridPosition:
-      x: 14
-      z: 21
+      x: 92
+      z: 138
     quarterTurns: 0
   - fixture: {fileID: 700615414}
     gridPosition:
-      x: 3
-      z: 12
+      x: 19
+      z: 79
     quarterTurns: 0
-  legacyGridWidthCells: 8
-  legacyGridDepthCells: 6
-  legacyGridOffset:
-    x: 8
-    z: 19
-  legacyFixtureInstanceIds:
-  - fixture-checkout-essential-01
+  legacyGridConfigurations:
+  - gridWidthCells: 24
+    gridDepthCells: 27
+    cellSizeMeters: 1
+    originOffsetMeters: {x: 0, y: 0, z: 0}
+    fixtureInstanceIds:
+    - fixture-checkout-essential-01
+    - fixture-shelf-cola-validation
+    - fixture-shelf-chips-validation
+    - fixture-delivery-drop-01
+  - gridWidthCells: 8
+    gridDepthCells: 6
+    cellSizeMeters: 1
+    originOffsetMeters: {x: 8, y: 0, z: 19}
+    fixtureInstanceIds:
+    - fixture-checkout-essential-01
+  - gridWidthCells: 10
+    gridDepthCells: 10
+    cellSizeMeters: 0.5
+    originOffsetMeters: {x: 8, y: 0, z: 19}
+    fixtureInstanceIds:
+    - fixture-checkout-essential-01
 --- !u!4 &1558599836
 Transform:
   m_ObjectHideFlags: 0
@@ -17366,8 +17380,8 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Margins.Runtime::Margins.PlaceableFixtureComponent
   stableFixtureInstanceId: fixture-shelf-chips-validation
-  footprintWidthCells: 3
-  footprintDepthCells: 1
+  footprintWidthCells: 20
+  footprintDepthCells: 7
   previewRenderer: {fileID: 1633332471}
   defaultMaterial: {fileID: 2100000, guid: d8dd26a8467a5af4fbe909451677473f, type: 2}
   validMaterial: {fileID: 2100000, guid: d8f0c4f7741a5f045a0886be50bef895, type: 2}
@@ -17398,7 +17412,7 @@ NavMeshObstacle:
   m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
-  m_Extents: {x: 1.5, y: 0.9, z: 0.5}
+  m_Extents: {x: 1.524, y: 0.9, z: 0.5334}
   m_MoveThreshold: 0.1
   m_Carve: 1
   m_CarveOnlyStationary: 0

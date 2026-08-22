@@ -17,6 +17,31 @@ namespace Margins
         public int QuarterTurns => quarterTurns;
     }
 
+    [Serializable]
+    public sealed class LegacyFixtureGridConfiguration
+    {
+        [SerializeField, Min(1)] private int gridWidthCells;
+        [SerializeField, Min(1)] private int gridDepthCells;
+        [SerializeField, Min(0.01f)] private float cellSizeMeters =
+            FixturePlacementGrid.LegacyPlacementIncrementMeters;
+        [SerializeField] private Vector3 originOffsetMeters;
+        [SerializeField] private string[] fixtureInstanceIds;
+
+        public int GridWidthCells => gridWidthCells;
+        public int GridDepthCells => gridDepthCells;
+        public float CellSizeMeters => cellSizeMeters;
+        public Vector3 OriginOffsetMeters => originOffsetMeters;
+        public IReadOnlyList<string> FixtureInstanceIds =>
+            fixtureInstanceIds ?? Array.Empty<string>();
+
+        public bool Matches(FixtureLayout layout)
+        {
+            return layout != null &&
+                   layout.Width == gridWidthCells &&
+                   layout.Depth == gridDepthCells;
+        }
+    }
+
     public enum FixturePlacementPreviewState
     {
         None,
@@ -29,14 +54,10 @@ namespace Margins
         [SerializeField] private Transform gridOrigin;
         [SerializeField, Min(1)] private int gridWidthCells = 10;
         [SerializeField, Min(1)] private int gridDepthCells = 10;
-        [SerializeField, Min(0.01f)] private float cellSize = 0.5f;
         [SerializeField] private PlaceableFixtureComponent[] fixtures;
         [SerializeField] private InitialFixturePlacementConfiguration[] initialPlacements;
         [Header("Save compatibility")]
-        [SerializeField, Min(0)] private int legacyGridWidthCells;
-        [SerializeField, Min(0)] private int legacyGridDepthCells;
-        [SerializeField] private GridPosition legacyGridOffset;
-        [SerializeField] private string[] legacyFixtureInstanceIds;
+        [SerializeField] private LegacyFixtureGridConfiguration[] legacyGridConfigurations;
 
         private readonly Dictionary<string, PlaceableFixtureComponent> fixturesById =
             new(StringComparer.Ordinal);
@@ -48,7 +69,7 @@ namespace Margins
         public Transform GridOrigin => gridOrigin;
         public int GridWidthCells => gridWidthCells;
         public int GridDepthCells => gridDepthCells;
-        public float CellSize => cellSize;
+        public float CellSize => FixturePlacementGrid.PlacementIncrementMeters;
 
         public bool HasConfiguredFixture(string fixtureInstanceId)
         {
@@ -119,9 +140,9 @@ namespace Margins
                 return false;
             }
 
-            if (gridWidthCells <= 0 || gridDepthCells <= 0 || cellSize <= 0f)
+            if (gridWidthCells <= 0 || gridDepthCells <= 0)
             {
-                error = "Fixture grid dimensions and cell size must be positive.";
+                error = "Fixture grid dimensions must be positive.";
                 return false;
             }
 
@@ -159,6 +180,58 @@ namespace Margins
                     {
                         error = "Initial fixture placements contain a missing, unconfigured, or duplicate fixture.";
                         return false;
+                    }
+                }
+            }
+
+            HashSet<string> legacyDimensions = new(StringComparer.Ordinal);
+            if (legacyGridConfigurations != null)
+            {
+                foreach (LegacyFixtureGridConfiguration legacy in legacyGridConfigurations)
+                {
+                    if (legacy == null ||
+                        legacy.GridWidthCells <= 0 ||
+                        legacy.GridDepthCells <= 0 ||
+                        float.IsNaN(legacy.CellSizeMeters) ||
+                        float.IsInfinity(legacy.CellSizeMeters) ||
+                        legacy.CellSizeMeters <= 0f ||
+                        float.IsNaN(legacy.OriginOffsetMeters.x) ||
+                        float.IsInfinity(legacy.OriginOffsetMeters.x) ||
+                        float.IsNaN(legacy.OriginOffsetMeters.y) ||
+                        float.IsInfinity(legacy.OriginOffsetMeters.y) ||
+                        float.IsNaN(legacy.OriginOffsetMeters.z) ||
+                        float.IsInfinity(legacy.OriginOffsetMeters.z))
+                    {
+                        error = "Fixture placement contains an invalid legacy grid configuration.";
+                        return false;
+                    }
+
+                    if (legacy.GridWidthCells == gridWidthCells &&
+                        legacy.GridDepthCells == gridDepthCells)
+                    {
+                        error = "A legacy fixture grid cannot share the current grid dimensions.";
+                        return false;
+                    }
+
+                    string dimensions =
+                        $"{legacy.GridWidthCells}x{legacy.GridDepthCells}";
+                    if (!legacyDimensions.Add(dimensions))
+                    {
+                        error = $"Duplicate legacy fixture grid dimensions '{dimensions}'.";
+                        return false;
+                    }
+
+                    HashSet<string> legacyIds = new(StringComparer.Ordinal);
+                    foreach (string fixtureInstanceId in legacy.FixtureInstanceIds)
+                    {
+                        if (!FirstStoreIdentifier.IsValid(fixtureInstanceId) ||
+                            !identifiers.Contains(fixtureInstanceId) ||
+                            !legacyIds.Add(fixtureInstanceId))
+                        {
+                            error =
+                                $"Legacy fixture grid '{dimensions}' contains an invalid, unconfigured, or duplicate fixture id.";
+                            return false;
+                        }
                     }
                 }
             }
@@ -371,8 +444,7 @@ namespace Margins
             {
                 fixturesById[placement.fixtureInstanceId].ApplyPlacement(
                     placement,
-                    gridOrigin,
-                    cellSize);
+                    gridOrigin);
             }
             return true;
         }
@@ -392,12 +464,20 @@ namespace Margins
             bool currentDimensions =
                 restored.Width == gridWidthCells &&
                 restored.Depth == gridDepthCells;
-            bool legacyDimensions =
-                legacyGridWidthCells > 0 &&
-                legacyGridDepthCells > 0 &&
-                restored.Width == legacyGridWidthCells &&
-                restored.Depth == legacyGridDepthCells;
-            if (!currentDimensions && !legacyDimensions)
+            LegacyFixtureGridConfiguration legacy = null;
+            if (!currentDimensions && legacyGridConfigurations != null)
+            {
+                foreach (LegacyFixtureGridConfiguration candidate in legacyGridConfigurations)
+                {
+                    if (candidate != null && candidate.Matches(restored))
+                    {
+                        legacy = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (!currentDimensions && legacy == null)
             {
                 error = "Restored fixture grid dimensions do not match the current or supported legacy property grid.";
                 return false;
@@ -425,10 +505,16 @@ namespace Margins
             {
                 PlaceableFixtureComponent fixture =
                     fixturesById[placement.fixtureInstanceId];
-                GridPosition migratedPosition = new(
-                    placement.gridPosition.x + legacyGridOffset.x,
-                    placement.gridPosition.z + legacyGridOffset.z);
-                FixturePlacementResult result = migrated.TryPlace(
+                GridPosition migratedPosition =
+                    FixturePlacementGrid.MigrateLegacyPosition(
+                        placement.gridPosition,
+                        placement.unrotatedFootprint,
+                        placement.quarterTurns,
+                        legacy.CellSizeMeters,
+                        legacy.OriginOffsetMeters,
+                        fixture.Footprint);
+                FixturePlacementResult result = TryPlaceNearest(
+                    migrated,
                     placement.fixtureInstanceId,
                     migratedPosition,
                     fixture.Footprint,
@@ -442,7 +528,7 @@ namespace Margins
             }
 
             HashSet<string> legacyIds = new(
-                legacyFixtureInstanceIds ?? Array.Empty<string>(),
+                legacy.FixtureInstanceIds,
                 StringComparer.Ordinal);
             if (initialPlacements != null)
             {
@@ -474,6 +560,65 @@ namespace Margins
             compatible = migrated;
             error = null;
             return true;
+        }
+
+        private static FixturePlacementResult TryPlaceNearest(
+            FixtureLayout layout,
+            string fixtureInstanceId,
+            GridPosition preferredPosition,
+            GridFootprint footprint,
+            int quarterTurns)
+        {
+            FixturePlacementResult preferred = layout.TryPlace(
+                fixtureInstanceId,
+                preferredPosition,
+                footprint,
+                quarterTurns);
+            if (preferred.IsSuccess ||
+                (preferred.Failure != FixturePlacementFailure.Occupied &&
+                 preferred.Failure != FixturePlacementFailure.OutOfBounds))
+            {
+                return preferred;
+            }
+
+            int maximumRadius = layout.Width + layout.Depth;
+            for (int radius = 1; radius <= maximumRadius; radius++)
+            {
+                for (int xOffset = -radius; xOffset <= radius; xOffset++)
+                {
+                    int zMagnitude = radius - Math.Abs(xOffset);
+                    FixturePlacementResult result = layout.TryPlace(
+                        fixtureInstanceId,
+                        new GridPosition(
+                            preferredPosition.x + xOffset,
+                            preferredPosition.z - zMagnitude),
+                        footprint,
+                        quarterTurns);
+                    if (result.IsSuccess)
+                    {
+                        return result;
+                    }
+
+                    if (zMagnitude == 0)
+                    {
+                        continue;
+                    }
+
+                    result = layout.TryPlace(
+                        fixtureInstanceId,
+                        new GridPosition(
+                            preferredPosition.x + xOffset,
+                            preferredPosition.z + zMagnitude),
+                        footprint,
+                        quarterTurns);
+                    if (result.IsSuccess)
+                    {
+                        return result;
+                    }
+                }
+            }
+
+            return preferred;
         }
 
         public bool TryBindOperatingController(
@@ -530,7 +675,7 @@ namespace Margins
                     fixture.StableFixtureInstanceId,
                     out FixturePlacementSnapshot placement))
             {
-                fixture.ApplyPlacement(placement, gridOrigin, cellSize);
+                fixture.ApplyPlacement(placement, gridOrigin);
             }
             else
             {

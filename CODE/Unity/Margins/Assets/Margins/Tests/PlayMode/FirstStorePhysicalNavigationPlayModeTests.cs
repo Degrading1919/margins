@@ -82,6 +82,18 @@ namespace Margins.Tests
                 NavMeshObstacle obstacle = fixture.GetComponent<NavMeshObstacle>();
                 Assert.That(obstacle, Is.Not.Null, fixture.name);
                 Assert.That(obstacle.carving, Is.True, fixture.name);
+                Assert.That(
+                    obstacle.size.x,
+                    Is.EqualTo(
+                        FixturePlacementGrid.CellsToMeters(
+                            fixture.Footprint.width)).Within(0.0001f),
+                    fixture.name);
+                Assert.That(
+                    obstacle.size.z,
+                    Is.EqualTo(
+                        FixturePlacementGrid.CellsToMeters(
+                            fixture.Footprint.depth)).Within(0.0001f),
+                    fixture.name);
             }
 
             LocalNavigationAgent[] employees = Object
@@ -150,15 +162,24 @@ namespace Margins.Tests
             Assert.That(targetFixture, Is.Not.Null);
             int repathsBeforeMove = navigation.RepathCount;
             Vector3 destinationBeforeMove = navigation.LastRequestedDestination;
-            GridPosition destination = targetFixture.StableFixtureInstanceId.Contains("cola")
-                ? new GridPosition(4, 21)
-                : new GridPosition(18, 21);
+            Vector3 requestedCenter = targetFixture.transform.position +
+                                      (targetFixture.StableFixtureInstanceId.Contains("cola")
+                                          ? Vector3.left * 3f
+                                          : Vector3.right * 4f);
+            GridPosition destination =
+                FixturePlacementGrid.NearestPositionForLocalCenter(
+                    prepared.Placement.GridOrigin.InverseTransformPoint(requestedCenter),
+                    targetFixture.Footprint,
+                    0);
 
             FixturePlacementResult moved = prepared.Placement.TryMove(
                 targetFixture,
                 destination,
                 0);
             Assert.That(moved.IsSuccess, Is.True, moved.Failure.ToString());
+            NavMeshObstacle movedObstacle = targetFixture.GetComponent<NavMeshObstacle>();
+            Assert.That(movedObstacle, Is.Not.Null);
+            Assert.That(movedObstacle.carving, Is.True);
 
             deadline = Time.realtimeSinceStartup + 2f;
             while (navigation.RepathCount <= repathsBeforeMove &&

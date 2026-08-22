@@ -210,8 +210,7 @@ namespace Margins
 
                 activeFixture.ApplyPlacement(
                     priorPlacement,
-                    fixturePlacement.GridOrigin,
-                    fixturePlacement.CellSize);
+                    fixturePlacement.GridOrigin);
                 ClearSession();
                 return false;
             }
@@ -267,10 +266,9 @@ namespace Margins
                 return false;
             }
 
-            Vector3 localPoint = fixturePlacement.GridOrigin.InverseTransformPoint(worldPoint);
-            gridPosition = new GridPosition(
-                Mathf.FloorToInt(localPoint.x / fixturePlacement.CellSize),
-                Mathf.FloorToInt(localPoint.z / fixturePlacement.CellSize));
+            gridPosition = FixturePlacementGrid.WorldPointToGridPosition(
+                fixturePlacement.GridOrigin,
+                worldPoint);
             error = null;
             return true;
         }
@@ -317,7 +315,6 @@ namespace Margins
             if (!propertyArea.TryValidateFixturePlacement(
                     activeFixture,
                     fixturePlacement.GridOrigin,
-                    fixturePlacement.CellSize,
                     previewQuarterTurns,
                     out FixturePlacementFailure physicalFailure,
                     out error))
@@ -340,7 +337,6 @@ namespace Margins
                     previewPosition,
                     previewQuarterTurns,
                     fixturePlacement.GridOrigin,
-                    fixturePlacement.CellSize,
                     false);
                 error = FormatResult(result);
                 return false;
@@ -363,8 +359,7 @@ namespace Margins
             {
                 activeFixture.ApplyPlacement(
                     priorPlacement,
-                    fixturePlacement.GridOrigin,
-                    fixturePlacement.CellSize);
+                    fixturePlacement.GridOrigin);
             }
             else
             {
@@ -386,8 +381,7 @@ namespace Margins
                 {
                     activeFixture.ApplyPlacement(
                         restoredPlacement,
-                        fixturePlacement.GridOrigin,
-                        fixturePlacement.CellSize);
+                        fixturePlacement.GridOrigin);
                 }
                 else
                 {
@@ -477,14 +471,12 @@ namespace Margins
                 gridPosition,
                 previewQuarterTurns,
                 fixturePlacement.GridOrigin,
-                fixturePlacement.CellSize,
                 previewResult.IsSuccess);
 
             if (previewResult.IsSuccess &&
                 !propertyArea.TryValidateFixturePlacement(
                     activeFixture,
                     fixturePlacement.GridOrigin,
-                    fixturePlacement.CellSize,
                     previewQuarterTurns,
                     out FixturePlacementFailure physicalFailure,
                     out string physicalError))

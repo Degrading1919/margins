@@ -65,15 +65,13 @@ namespace Margins
 
         public void ApplyPlacement(
             FixturePlacementSnapshot placement,
-            Transform gridOrigin,
-            float cellSize)
+            Transform gridOrigin)
         {
             gameObject.SetActive(true);
-            GridFootprint rotated = placement.RotatedFootprint;
-            Vector3 localCenter = new(
-                (placement.gridPosition.x + rotated.width * 0.5f) * cellSize,
-                0f,
-                (placement.gridPosition.z + rotated.depth * 0.5f) * cellSize);
+            Vector3 localCenter = FixturePlacementGrid.LocalCenter(
+                placement.gridPosition,
+                placement.unrotatedFootprint,
+                placement.quarterTurns);
             transform.SetPositionAndRotation(
                 gridOrigin.TransformPoint(localCenter),
                 gridOrigin.rotation *
@@ -85,10 +83,9 @@ namespace Margins
             GridPosition gridPosition,
             int quarterTurns,
             Transform gridOrigin,
-            float cellSize,
             bool isValid)
         {
-            if (gridOrigin == null || cellSize <= 0f)
+            if (gridOrigin == null)
             {
                 SetPreviewState(FixturePlacementPreviewState.Invalid);
                 return;
@@ -96,11 +93,10 @@ namespace Margins
 
             gameObject.SetActive(true);
             int normalizedTurns = GridFootprint.NormalizeQuarterTurns(quarterTurns);
-            GridFootprint rotated = Footprint.Rotate(normalizedTurns);
-            Vector3 localCenter = new(
-                (gridPosition.x + rotated.width * 0.5f) * cellSize,
-                0f,
-                (gridPosition.z + rotated.depth * 0.5f) * cellSize);
+            Vector3 localCenter = FixturePlacementGrid.LocalCenter(
+                gridPosition,
+                Footprint,
+                normalizedTurns);
             transform.SetPositionAndRotation(
                 gridOrigin.TransformPoint(localCenter),
                 gridOrigin.rotation * Quaternion.Euler(0f, normalizedTurns * 90f, 0f));

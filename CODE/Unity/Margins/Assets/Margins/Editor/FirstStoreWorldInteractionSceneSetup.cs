@@ -27,6 +27,11 @@ namespace Margins.Editor
             "Assets/Margins/UI/MerchandisingEditor.uxml";
         private const string MerchandisingStyleSheetPath =
             "Assets/Margins/UI/MerchandisingEditor.uss";
+        private const float PropertyWidthMeters = 24f;
+        private const float PropertyDepthMeters = 27f;
+        private const float PreviousPropertyGridCellSizeMeters = 1f;
+        private static readonly Vector3 EarlierGridOriginOffsetMeters =
+            new(8f, 0f, 19f);
 
         public static void Apply()
         {
@@ -108,23 +113,23 @@ namespace Margins.Editor
             ConfigurePlaceableFixture(
                 requiredFixture,
                 "fixture-checkout-essential-01",
-                2,
-                1);
+                2f,
+                1f);
             ConfigurePlaceableFixture(
                 colaShelfFixture,
                 colaShelf.StableFixtureId,
-                3,
-                1);
+                3f,
+                1f);
             ConfigurePlaceableFixture(
                 chipsShelfFixture,
                 chipsShelf.StableFixtureId,
-                3,
-                1);
+                3f,
+                1f);
             ConfigurePlaceableFixture(
                 deliveryDropFixture,
                 "fixture-delivery-drop-01",
-                1,
-                1);
+                1f,
+                1f);
 
             ConfigurePropertyGrid(
                 fixtureControllerObject,
@@ -646,12 +651,18 @@ namespace Margins.Editor
         private static void ConfigurePlaceableFixture(
             PlaceableFixtureComponent fixture,
             string stableFixtureInstanceId,
-            int footprintWidth,
-            int footprintDepth)
+            float footprintWidthMeters,
+            float footprintDepthMeters)
         {
             SetObject(fixture, "stableFixtureInstanceId", stableFixtureInstanceId);
-            SetInteger(fixture, "footprintWidthCells", footprintWidth);
-            SetInteger(fixture, "footprintDepthCells", footprintDepth);
+            SetInteger(
+                fixture,
+                "footprintWidthCells",
+                FixturePlacementGrid.CellsToCoverMeters(footprintWidthMeters));
+            SetInteger(
+                fixture,
+                "footprintDepthCells",
+                FixturePlacementGrid.CellsToCoverMeters(footprintDepthMeters));
         }
 
         private static void ConfigureFixtureTarget(
@@ -689,13 +700,14 @@ namespace Margins.Editor
                 new Vector3(0f, -0.05f, -7.5f),
                 Quaternion.identity);
             placementFloorObject.transform.localScale =
-                new Vector3(24f, 0.1f, 27f);
+                new Vector3(PropertyWidthMeters, 0.1f, PropertyDepthMeters);
 
             SerializedObject serialized = new(fixturePlacement);
             serialized.FindProperty("gridOrigin").objectReferenceValue = origin;
-            serialized.FindProperty("gridWidthCells").intValue = 24;
-            serialized.FindProperty("gridDepthCells").intValue = 27;
-            serialized.FindProperty("cellSize").floatValue = 1f;
+            serialized.FindProperty("gridWidthCells").intValue =
+                FixturePlacementGrid.CellsToCoverMeters(PropertyWidthMeters);
+            serialized.FindProperty("gridDepthCells").intValue =
+                FixturePlacementGrid.CellsToCoverMeters(PropertyDepthMeters);
             SerializedProperty fixtureReferences = serialized.FindProperty("fixtures");
             fixtureReferences.arraySize = fixtures.Length;
             for (int index = 0; index < fixtures.Length; index++)
@@ -703,18 +715,58 @@ namespace Margins.Editor
                 fixtureReferences.GetArrayElementAtIndex(index).objectReferenceValue =
                     fixtures[index];
             }
-            serialized.FindProperty("legacyGridWidthCells").intValue = 8;
-            serialized.FindProperty("legacyGridDepthCells").intValue = 6;
-            SerializedProperty legacyOffset = serialized.FindProperty("legacyGridOffset");
-            legacyOffset.FindPropertyRelative("x").intValue = 8;
-            legacyOffset.FindPropertyRelative("z").intValue = 19;
-            SerializedProperty legacyIds = serialized.FindProperty(
-                "legacyFixtureInstanceIds");
-            legacyIds.arraySize = 1;
-            legacyIds.GetArrayElementAtIndex(0).stringValue =
-                "fixture-checkout-essential-01";
+            SerializedProperty legacyGrids = serialized.FindProperty(
+                "legacyGridConfigurations");
+            legacyGrids.arraySize = 3;
+            ConfigureLegacyGrid(
+                legacyGrids.GetArrayElementAtIndex(0),
+                24,
+                27,
+                PreviousPropertyGridCellSizeMeters,
+                Vector3.zero,
+                "fixture-checkout-essential-01",
+                "fixture-shelf-cola-validation",
+                "fixture-shelf-chips-validation",
+                "fixture-delivery-drop-01");
+            ConfigureLegacyGrid(
+                legacyGrids.GetArrayElementAtIndex(1),
+                8,
+                6,
+                PreviousPropertyGridCellSizeMeters,
+                EarlierGridOriginOffsetMeters,
+                "fixture-checkout-essential-01");
+            ConfigureLegacyGrid(
+                legacyGrids.GetArrayElementAtIndex(2),
+                10,
+                10,
+                FixturePlacementGrid.LegacyPlacementIncrementMeters,
+                EarlierGridOriginOffsetMeters,
+                "fixture-checkout-essential-01");
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(fixturePlacement);
+        }
+
+        private static void ConfigureLegacyGrid(
+            SerializedProperty legacy,
+            int widthCells,
+            int depthCells,
+            float cellSizeMeters,
+            Vector3 originOffsetMeters,
+            params string[] fixtureInstanceIds)
+        {
+            legacy.FindPropertyRelative("gridWidthCells").intValue = widthCells;
+            legacy.FindPropertyRelative("gridDepthCells").intValue = depthCells;
+            legacy.FindPropertyRelative("cellSizeMeters").floatValue = cellSizeMeters;
+            legacy.FindPropertyRelative("originOffsetMeters").vector3Value =
+                originOffsetMeters;
+            SerializedProperty identifiers = legacy.FindPropertyRelative(
+                "fixtureInstanceIds");
+            identifiers.arraySize = fixtureInstanceIds.Length;
+            for (int index = 0; index < fixtureInstanceIds.Length; index++)
+            {
+                identifiers.GetArrayElementAtIndex(index).stringValue =
+                    fixtureInstanceIds[index];
+            }
         }
 
         private static OwnedPropertyPlacementArea ConfigureOwnedPropertyArea(
@@ -729,7 +781,10 @@ namespace Margins.Editor
                 new Vector3(0f, 1.75f, -7.5f),
                 Quaternion.identity);
             BoxCollider bounds = boundsObject.AddComponent<BoxCollider>();
-            bounds.size = new Vector3(24f, 3.5f, 27f);
+            bounds.size = new Vector3(
+                PropertyWidthMeters,
+                3.5f,
+                PropertyDepthMeters);
             bounds.isTrigger = true;
 
             OwnedPropertyPlacementArea area =
@@ -786,7 +841,10 @@ namespace Margins.Editor
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
             surface.layerMask = ~0;
             surface.center = new Vector3(0f, 1.75f, -7.5f);
-            surface.size = new Vector3(24f, 4.5f, 27f);
+            surface.size = new Vector3(
+                PropertyWidthMeters,
+                4.5f,
+                PropertyDepthMeters);
 
             if (AssetDatabase.LoadAssetAtPath<NavMeshData>(NavMeshDataPath) != null &&
                 !AssetDatabase.DeleteAsset(NavMeshDataPath))
@@ -851,9 +909,9 @@ namespace Margins.Editor
             obstacle.shape = NavMeshObstacleShape.Box;
             obstacle.center = new Vector3(0f, 0.9f, 0f);
             obstacle.size = new Vector3(
-                fixture.Footprint.width,
+                FixturePlacementGrid.CellsToMeters(fixture.Footprint.width),
                 1.8f,
-                fixture.Footprint.depth);
+                FixturePlacementGrid.CellsToMeters(fixture.Footprint.depth));
             obstacle.carving = true;
             obstacle.carveOnlyStationary = false;
             EditorUtility.SetDirty(obstacle);
@@ -894,24 +952,32 @@ namespace Margins.Editor
                 checkoutFixture,
                 16,
                 16,
+                2,
+                1,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(1),
                 colaShelfFixture,
                 7,
                 21,
+                3,
+                1,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(2),
                 chipsShelfFixture,
                 14,
                 21,
+                3,
+                1,
                 0);
             ConfigureInitialPlacement(
                 placements.GetArrayElementAtIndex(3),
                 deliveryDropFixture,
                 3,
                 12,
+                1,
+                1,
                 0);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(fixturePlacement);
@@ -922,12 +988,21 @@ namespace Margins.Editor
             PlaceableFixtureComponent fixture,
             int x,
             int z,
+            int legacyFootprintWidth,
+            int legacyFootprintDepth,
             int quarterTurns)
         {
             placement.FindPropertyRelative("fixture").objectReferenceValue = fixture;
+            GridPosition migratedPosition = FixturePlacementGrid.MigrateLegacyPosition(
+                new GridPosition(x, z),
+                new GridFootprint(legacyFootprintWidth, legacyFootprintDepth),
+                quarterTurns,
+                PreviousPropertyGridCellSizeMeters,
+                Vector3.zero,
+                fixture.Footprint);
             SerializedProperty grid = placement.FindPropertyRelative("gridPosition");
-            grid.FindPropertyRelative("x").intValue = x;
-            grid.FindPropertyRelative("z").intValue = z;
+            grid.FindPropertyRelative("x").intValue = migratedPosition.x;
+            grid.FindPropertyRelative("z").intValue = migratedPosition.z;
             placement.FindPropertyRelative("quarterTurns").intValue = quarterTurns;
         }
 
