@@ -1,8 +1,11 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
@@ -11,322 +14,870 @@ namespace Margins.Tests.PlayMode
 {
     public sealed class PersistentPortfolioLocationSceneAdapterPlayModeTests
     {
-        private const string ExpansionLocationId =
+        private const string RiverbendLocationId =
             "location-riverbend-market";
+        private const string DowntownLocationId =
+            "location-downtown-market";
+        private static readonly string[] FirstTeam =
+        {
+            "employee-elena-ruiz",
+            "employee-marcus-reed",
+            "employee-priya-shah"
+        };
+        private static readonly string[] ExpansionTeam =
+        {
+            "employee-jonah-brooks",
+            "employee-nia-carter",
+            "employee-luis-ortega"
+        };
+        private sealed class SceneContext
+        {
+            public PortfolioProgressionController Portfolio;
+            public PersistentPortfolioLocationSceneAdapter Adapter;
+            public PersistentPortfolioLocationController Locations;
+            public FirstStorePersistenceMapperComponent Persistence;
+            public StoreOperatingController Store;
+            public CheckoutStationComponent Checkout;
+            public FirstStoreInventoryComponent Inventory;
+            public PhysicalProductUnitRegistry PhysicalUnits;
+            public StockingController Stocking;
+            public FirstStoreMerchandisingComponent Merchandising;
+            public StoreCustomerFlowController CustomerFlow;
+            public InStoreEmployeeWorkController EmployeeWork;
+            public DeliveryBoxComponent Delivery;
+            public CleaningTaskComponent Cleaning;
+            public CleaningWorldInteractionTarget CleaningTarget;
+            public CarryableToolComponent CleaningTool;
+            public StoreOperatingWorldInteractionTarget OperatingControl;
+            public FirstPersonController Player;
+            public ProductDefinition[] Products;
+        }
 
         [UnityTest]
-        public IEnumerator LeaveEnterOperateLeaveAggregateReturnAndOperateReconcilesExactly()
+        public IEnumerator GeneratedStoreRunsSharedCustomersEmployeesDeliveryStockingCleaningAndNavigation()
         {
-            yield return SceneManager.LoadSceneAsync(
-                "FirstStoreValidation",
-                LoadSceneMode.Single);
-            yield return null;
-
-            PortfolioProgressionController portfolio =
-                Object.FindAnyObjectByType<PortfolioProgressionController>();
-            PersistentPortfolioLocationSceneAdapter adapter =
-                Object.FindAnyObjectByType<
-                    PersistentPortfolioLocationSceneAdapter>();
-            PersistentPortfolioLocationController locations =
-                Object.FindAnyObjectByType<
-                    PersistentPortfolioLocationController>();
-            FirstStorePersistenceMapperComponent persistence =
-                Object.FindAnyObjectByType<
-                    FirstStorePersistenceMapperComponent>();
-            FirstStoreDiskPersistenceController disk =
-                Object.FindAnyObjectByType<
-                    FirstStoreDiskPersistenceController>();
-            StoreOperatingController store =
-                Object.FindAnyObjectByType<StoreOperatingController>();
-            CheckoutStationComponent checkout =
-                Object.FindAnyObjectByType<CheckoutStationComponent>();
-            FirstStoreMerchandisingComponent merchandising =
-                Object.FindAnyObjectByType<
-                    FirstStoreMerchandisingComponent>();
-            StoreCustomerFlowController customerFlow =
-                Object.FindAnyObjectByType<StoreCustomerFlowController>();
-            InStoreEmployeeWorkController employeeWork =
-                Object.FindAnyObjectByType<
-                    InStoreEmployeeWorkController>();
-            FirstPersonController player =
-                Object.FindAnyObjectByType<FirstPersonController>();
-
-            Assert.That(portfolio, Is.Not.Null);
-            Assert.That(adapter, Is.Not.Null);
-            Assert.That(locations, Is.Not.Null);
-            Assert.That(persistence, Is.Not.Null);
-            Assert.That(disk, Is.Not.Null);
-            Assert.That(store, Is.Not.Null);
-            Assert.That(checkout, Is.Not.Null);
-            Assert.That(merchandising, Is.Not.Null);
-            Assert.That(player, Is.Not.Null);
-            Assert.That(adapter.TryValidateConfiguration(out string error),
-                Is.True,
-                error);
-
-            if (customerFlow != null)
-            {
-                customerFlow.enabled = false;
-            }
-            if (employeeWork != null)
-            {
-                employeeWork.enabled = false;
-            }
-
-            CompletePhysicalFirstShift(portfolio, store);
-            HireTeam(
-                portfolio,
-                PortfolioProgressionRules.FirstLocationId,
-                "employee-elena-ruiz",
-                "employee-marcus-reed",
-                "employee-priya-shah");
-            player.SetGameplayMode(false);
+            SceneContext context = null;
+            yield return LoadContext(value => context = value);
+            PrepareRiverbendPortfolio(context);
             Assert.That(
-                portfolio.TryAdvanceDelegatedDay(out error),
-                Is.True,
-                error);
-            Assert.That(
-                portfolio.TryLeaseLocation(ExpansionLocationId, out error),
-                Is.True,
-                error);
-            HireTeam(
-                portfolio,
-                ExpansionLocationId,
-                "employee-jonah-brooks",
-                "employee-nia-carter",
-                "employee-luis-ortega");
-            Assert.That(
-                portfolio.Progression.TrySetPricingPolicy(
-                    ExpansionLocationId,
-                    PortfolioPricingPolicy.Premium,
-                    out error),
-                Is.True,
-                error);
-            Assert.That(
-                persistence.TryCapture(
+                context.Persistence.TryCapture(
                     out FirstStoreSnapshot firstStoreBeforeTravel,
+                    out string error),
+                Is.True,
+                error);
+
+            PortfolioLocationSnapshot beforeVisit = Location(
+                context.Portfolio.Progression.CreateSnapshot(),
+                RiverbendLocationId);
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
                     out error),
                 Is.True,
                 error);
-
-            PortfolioProgressionSnapshot beforeVisit =
-                portfolio.Progression.CreateSnapshot();
-            PortfolioLocationSnapshot remoteBefore = beforeVisit.locations
-                .Single(value => value.locationId == ExpansionLocationId);
-            Assert.That(
-                adapter.TryEnterLocation(ExpansionLocationId, out error),
-                Is.True,
-                error);
             yield return null;
 
-            Assert.That(adapter.ActiveLocationId,
-                Is.EqualTo(ExpansionLocationId));
-            Assert.That(locations.ActiveBuilding, Is.Not.Null);
-            Assert.That(merchandising.LocationId,
-                Is.EqualTo(ExpansionLocationId));
+            AssertGeneratedDetailedAuthorities(
+                context,
+                RiverbendLocationId,
+                CommercialBuildingArchetype.StripCenterInlineRetail);
+            string generatedSignature = context.Locations.ActiveBuilding
+                .LastSignature;
+            SuppressAutomaticArrivalForControlledSale(context);
+            int shelvedBeforeSale = context.PhysicalUnits.VisibleUnits.Count(
+                value => value != null && value.IsSnapped);
+            CheckoutTransactionSummary employeeSale = null;
+            yield return CompleteLiveCustomerSale(
+                context,
+                employeeCheckout: true,
+                value => employeeSale = value);
+            Assert.That(employeeSale, Is.Not.Null);
             Assert.That(
-                portfolio.Progression.CreateSnapshot().company
-                    .activeDetailedLocationId,
-                Is.EqualTo(ExpansionLocationId));
-            AssertPlayerInsideSelectedUnit(player, locations.ActiveBuilding);
-            string firstGeneratedSignature =
-                locations.ActiveBuilding.LastSignature;
+                context.PhysicalUnits.VisibleUnits.Count(value =>
+                    value != null && value.IsSnapped),
+                Is.EqualTo(shelvedBeforeSale - employeeSale.unitsSold));
 
-            CheckoutTransactionSummary firstRemoteSale =
-                CompleteGeneratedCheckout(locations.ActiveBuilding, checkout);
             Assert.That(
-                adapter.TrySynchronizeActiveLocation(out error),
+                context.Cleaning.NeedsCleaning ||
+                context.Cleaning.TryCreateMess(),
+                Is.True);
+            Assert.That(context.CleaningTool.TryPrimary(out error), Is.True, error);
+            while (!context.Cleaning.IsComplete)
+            {
+                Assert.That(
+                    context.CleaningTarget.TryPrimary(out error),
+                    Is.True,
+                    error);
+            }
+            Assert.That(context.Cleaning.IsComplete, Is.True);
+            Assert.That(context.CleaningTool.TryPrimary(out error), Is.True, error);
+
+            Assert.That(
+                context.Portfolio.TryPlaceManualPurchaseOrder(
+                    RiverbendLocationId,
+                    out error),
                 Is.True,
                 error);
-            PortfolioProgressionSnapshot afterFirstSale =
-                portfolio.Progression.CreateSnapshot();
-            PortfolioLocationSnapshot remoteAfterFirstSale =
-                afterFirstSale.locations.Single(value =>
-                    value.locationId == ExpansionLocationId);
-            long remotePayroll = afterFirstSale.employees
-                .Where(value => value.assignedLocationId == ExpansionLocationId)
-                .Sum(value => value.dailyWageCents);
-            Assert.That(remoteAfterFirstSale.inventoryUnits,
-                Is.EqualTo(
-                    remoteBefore.inventoryUnits - firstRemoteSale.unitsSold));
-            Assert.That(remoteAfterFirstSale.lifetimeGrossSalesCents,
-                Is.EqualTo(
-                    remoteBefore.lifetimeGrossSalesCents +
-                    firstRemoteSale.subtotalCents));
-            Assert.That(afterFirstSale.cashCents,
-                Is.EqualTo(
-                    beforeVisit.cashCents + firstRemoteSale.subtotalCents -
-                    remoteBefore.dailyRentCents - remotePayroll));
-
             Assert.That(
-                adapter.TrySynchronizeActiveLocation(out error),
+                context.Portfolio.Progression.TryAdvanceProcurementTicks(
+                    ConvenienceStoreProcurement.FulfillmentDelayTicks,
+                    out int fulfilled,
+                    out error),
                 Is.True,
                 error);
-            PortfolioProgressionSnapshot repeated =
-                portfolio.Progression.CreateSnapshot();
-            Assert.That(repeated.cashCents,
-                Is.EqualTo(afterFirstSale.cashCents));
+            Assert.That(fulfilled, Is.EqualTo(1));
             Assert.That(
-                repeated.locations.Single(value =>
-                    value.locationId == ExpansionLocationId).inventoryUnits,
-                Is.EqualTo(remoteAfterFirstSale.inventoryUnits));
-            LogAssert.Expect(
-                LogType.Warning,
-                "Save rejected: Leave the generated location before saving, loading, or starting a new business.");
-            Assert.That(
-                disk.TrySaveToPath(System.IO.Path.Combine(
-                    Application.temporaryCachePath,
-                    $"margins-generated-location-{Guid.NewGuid():N}.json")),
-                Is.False,
-                "The parked first-store snapshot must not be replaced by a generated-location rig.");
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot order = context.Portfolio.Progression
+                .PurchaseOrders.Single(value =>
+                    value.locationId == RiverbendLocationId &&
+                    !value.IsTerminal);
+            Assert.That(order.status, Is.EqualTo(PurchaseOrderStatus.Delivered));
+            Assert.That(context.Delivery.IsSealed, Is.True);
+            int deliveryUnitsBeforeWork = RemainingDeliveryUnits(context);
+            Assert.That(deliveryUnitsBeforeWork, Is.EqualTo(
+                ConvenienceStoreProcurement.DetailedCaseUnitsPerProduct *
+                context.Products.Length));
 
-            PersistentLocationExitWorldInteractionTarget exit = locations
-                .ActiveBuilding.GetComponentInChildren<
-                    PersistentLocationExitWorldInteractionTarget>();
-            Assert.That(exit, Is.Not.Null);
-            Assert.That(exit.TryPrimary(out error), Is.True, error);
-            yield return null;
-
-            Assert.That(adapter.ActiveLocationId, Is.Null);
+            yield return WaitUntil(
+                () => RemainingDeliveryUnits(context) < deliveryUnitsBeforeWork,
+                25f,
+                "The assigned stock clerk did not navigate, open the physical delivery, and remove stock.");
+            yield return WaitUntil(
+                () => !context.EmployeeWork.IsHandlingInventory,
+                20f,
+                "The stock clerk did not finish the physical shelf placement.");
             Assert.That(
-                portfolio.Progression.CreateSnapshot().company
-                    .activeDetailedLocationId,
-                Is.Null);
-            Assert.That(player.IsGameplayMode, Is.False);
-            Assert.That(merchandising.LocationId,
+                context.PhysicalUnits.VisibleUnits.Count(value =>
+                    value != null && value.IsSnapped),
+                Is.EqualTo(shelvedBeforeSale),
+                "Employee stocking must refill the shelf position freed by the live customer sale.");
+
+            context.EmployeeWork.enabled = false;
+            DrainDeliveryToGeneratedLooseStock(context);
+            Assert.That(RemainingDeliveryUnits(context), Is.Zero);
+            Assert.That(
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            Assert.That(
+                context.Portfolio.Progression.PurchaseOrders.Single(value =>
+                    value.orderId == order.orderId).status,
+                Is.EqualTo(PurchaseOrderStatus.Completed));
+            context.EmployeeWork.enabled = true;
+
+            Assert.That(
+                context.Adapter.TrySynchronizeActiveLocation(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot afterDetailedWork =
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot afterVisit = Location(
+                afterDetailedWork,
+                RiverbendLocationId);
+            Assert.That(afterVisit.inventoryUnits,
+                Is.EqualTo(
+                    beforeVisit.inventoryUnits - employeeSale.unitsSold +
+                    ConvenienceStoreProcurement.DetailedCaseUnitsPerProduct *
+                    context.Products.Length));
+            Assert.That(afterVisit.lifetimeGrossSalesCents,
+                Is.EqualTo(
+                    beforeVisit.lifetimeGrossSalesCents +
+                    employeeSale.subtotalCents));
+
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
+                Is.True,
+                error);
+            Assert.That(context.Adapter.ActiveLocationId, Is.Null);
+            Assert.That(context.Merchandising.LocationId,
                 Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
             Assert.That(
-                persistence.TryCapture(
+                context.Persistence.TryCapture(
                     out FirstStoreSnapshot firstStoreAfterTravel,
                     out error),
                 Is.True,
                 error);
             Assert.That(firstStoreAfterTravel,
                 Is.EqualTo(firstStoreBeforeTravel),
-                "Reusing the detailed rig must not mutate the parked first-store state.");
+                "Generated detailed operation must not mutate the parked first-store state.");
+            context.CustomerFlow.enabled = false;
+            context.EmployeeWork.enabled = false;
+            yield return null;
 
             Assert.That(
-                portfolio.TryAdvanceDelegatedDay(out error),
+                context.Portfolio.TryAdvanceDelegatedDay(out error),
                 Is.True,
                 error);
             PortfolioProgressionSnapshot afterAggregate =
-                portfolio.Progression.CreateSnapshot();
-            PortfolioLocationSnapshot remoteAfterAggregate = afterAggregate
-                .locations.Single(value =>
-                    value.locationId == ExpansionLocationId);
-            Assert.That(remoteAfterAggregate.lastReport.isDetailedOperation,
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot afterAggregateLocation = Location(
+                afterAggregate,
+                RiverbendLocationId);
+            Assert.That(
+                afterAggregateLocation.lastReport.isDetailedOperation,
                 Is.False);
-
+            PurchaseOrderSnapshot aggregateReturnOrder = afterAggregate
+                .procurement.orders.Single(value =>
+                    value.locationId == RiverbendLocationId &&
+                    !value.IsTerminal);
+            int deliveryCapacity = context.Inventory.Inventory.CreateSnapshot()
+                .locations.Single(value =>
+                    value.locationId == context.Delivery.InventoryLocationId)
+                .capacityUnits;
             Assert.That(
-                adapter.TryEnterLocation(ExpansionLocationId, out error),
+                aggregateReturnOrder.OrderedQuantityUnits,
+                Is.GreaterThan(deliveryCapacity),
+                "This regression must cross the aggregate-order/physical-container boundary.");
+
+            context.CustomerFlow.enabled = true;
+            context.EmployeeWork.enabled = true;
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
+                    out error),
                 Is.True,
                 error);
             yield return null;
-            Assert.That(locations.ActiveBuilding.LastSignature,
-                Is.EqualTo(firstGeneratedSignature));
-            AssertPlayerInsideSelectedUnit(player, locations.ActiveBuilding);
-            CheckoutTransactionSummary secondRemoteSale =
-                CompleteGeneratedCheckout(locations.ActiveBuilding, checkout);
             Assert.That(
-                adapter.TryLeaveToManagement(out error),
+                context.Locations.ActiveBuilding.LastSignature,
+                Is.EqualTo(generatedSignature));
+            SuppressAutomaticArrivalForControlledSale(context);
+            CheckoutTransactionSummary returnSale = null;
+            yield return CompleteLiveCustomerSale(
+                context,
+                employeeCheckout: true,
+                value => returnSale = value);
+            yield return WaitUntil(
+                () => !context.EmployeeWork.IsHandlingInventory,
+                20f,
+                "The stock clerk did not finish the aggregate-return delivery move.");
+            context.EmployeeWork.enabled = false;
+            if (context.Delivery.IsSealed)
+            {
+                Assert.That(
+                    context.Delivery.TryOpen(out _, out error),
+                    Is.True,
+                    error);
+            }
+            DrainDeliveryToGeneratedLooseStock(context);
+            Assert.That(
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
                 Is.True,
                 error);
-            yield return null;
-
-            PortfolioProgressionSnapshot afterSecondLeave =
-                portfolio.Progression.CreateSnapshot();
-            PortfolioLocationSnapshot remoteAfterSecondLeave =
-                afterSecondLeave.locations.Single(value =>
-                    value.locationId == ExpansionLocationId);
-            Assert.That(remoteAfterSecondLeave.inventoryUnits,
-                Is.EqualTo(
-                    remoteAfterAggregate.inventoryUnits -
-                    secondRemoteSale.unitsSold));
-            Assert.That(remoteAfterSecondLeave.lifetimeGrossSalesCents,
-                Is.EqualTo(
-                    remoteAfterAggregate.lifetimeGrossSalesCents +
-                    secondRemoteSale.subtotalCents));
-            Assert.That(afterSecondLeave.cashCents,
-                Is.EqualTo(
-                    afterAggregate.cashCents +
-                    secondRemoteSale.subtotalCents),
-                "Aggregate daily costs were already charged before detailed return and must not post twice.");
             Assert.That(
-                adapter.TryLeaveToManagement(out error),
+                context.Portfolio.Progression.PurchaseOrders.Single(value =>
+                    value.orderId == aggregateReturnOrder.orderId).status,
+                Is.EqualTo(PurchaseOrderStatus.Completed));
+            context.EmployeeWork.enabled = true;
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
                 Is.True,
                 error);
-            PortfolioProgressionSnapshot afterRepeatedLeave =
-                portfolio.Progression.CreateSnapshot();
-            Assert.That(afterRepeatedLeave.cashCents,
-                Is.EqualTo(afterSecondLeave.cashCents));
+            PortfolioProgressionSnapshot afterDetailedReturn =
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot returnedLocation = Location(
+                afterDetailedReturn,
+                RiverbendLocationId);
             Assert.That(
-                afterRepeatedLeave.locations.Single(value =>
-                    value.locationId == ExpansionLocationId).inventoryUnits,
-                Is.EqualTo(remoteAfterSecondLeave.inventoryUnits));
+                returnedLocation.inventoryUnits,
+                Is.EqualTo(
+                    afterAggregateLocation.inventoryUnits -
+                    returnSale.unitsSold +
+                    aggregateReturnOrder.OrderedQuantityUnits));
+            Assert.That(
+                returnedLocation.lifetimeGrossSalesCents,
+                Is.EqualTo(
+                    afterAggregateLocation.lifetimeGrossSalesCents +
+                    returnSale.subtotalCents));
+            Assert.That(
+                afterDetailedReturn.cashCents,
+                Is.EqualTo(afterAggregate.cashCents + returnSale.subtotalCents),
+                "Aggregate daily costs must not post again on detailed return.");
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
+                Is.True,
+                error);
+            Assert.That(
+                context.Portfolio.Progression.CreateSnapshot().cashCents,
+                Is.EqualTo(afterDetailedReturn.cashCents));
         }
 
-        private static CheckoutTransactionSummary CompleteGeneratedCheckout(
-            ProceduralCommercialBuilding building,
-            CheckoutStationComponent checkout)
+        [UnityTest]
+        public IEnumerator TwoGeneratedStoresOperatePhysicallyWithoutSharingLocationState()
         {
-            StagedCheckoutWorldInteractionTarget register = building
-                .GetComponentsInChildren<
-                    StagedCheckoutWorldInteractionTarget>(true)
-                .Single(value => value.StableTargetId.StartsWith(
-                    "target-persistent-checkout-",
-                    StringComparison.Ordinal));
-            int transactionsBefore = checkout.CompletedTransactionCount;
-            Assert.That(register.TryPrimary(out string error), Is.True, error);
-            int safety = 8;
-            while (checkout.HasActiveIncompleteSession && safety-- > 0)
+            SceneContext context = null;
+            yield return LoadContext(value => context = value);
+            PrepareRiverbendPortfolio(context);
+
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
+                    out string error),
+                Is.True,
+                error);
+            yield return null;
+            string riverbendSignature = context.Locations.ActiveBuilding
+                .LastSignature;
+            SuppressAutomaticArrivalForControlledSale(context);
+            CheckoutTransactionSummary firstRiverbendSale = null;
+            yield return CompleteLiveCustomerSale(
+                context,
+                employeeCheckout: true,
+                value => firstRiverbendSale = value);
+            Assert.That(firstRiverbendSale, Is.Not.Null);
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
+                Is.True,
+                error);
+            yield return null;
+
+            SeedReconciledHistoricalEarnings(context, 1_000_000);
+            Assert.That(
+                context.Portfolio.TryLeaseLocation(
+                    DowntownLocationId,
+                    out error),
+                Is.True,
+                error);
+            ReassignTeam(
+                context.Portfolio.Progression,
+                DowntownLocationId,
+                ExpansionTeam);
+
+            PortfolioProgressionSnapshot beforeDowntown =
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot riverbendBeforeDowntown = Location(
+                beforeDowntown,
+                RiverbendLocationId);
+            PortfolioLocationSnapshot downtownBeforeVisit = Location(
+                beforeDowntown,
+                DowntownLocationId);
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    DowntownLocationId,
+                    out error),
+                Is.True,
+                error);
+            yield return null;
+            AssertGeneratedDetailedAuthorities(
+                context,
+                DowntownLocationId,
+                CommercialBuildingArchetype.OlderMainStreetMixedUse);
+            Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                Is.Not.EqualTo(riverbendSignature));
+            SuppressAutomaticArrivalForControlledSale(context);
+
+            CheckoutTransactionSummary downtownSale = null;
+            yield return CompleteLiveCustomerSale(
+                context,
+                employeeCheckout: false,
+                value => downtownSale = value);
+            Assert.That(
+                context.Adapter.TrySynchronizeActiveLocation(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot afterDowntown =
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot riverbendAfterDowntown = Location(
+                afterDowntown,
+                RiverbendLocationId);
+            PortfolioLocationSnapshot downtownAfterVisit = Location(
+                afterDowntown,
+                DowntownLocationId);
+            AssertLocationBusinessStateEqual(
+                riverbendBeforeDowntown,
+                riverbendAfterDowntown,
+                "Operating Downtown must not mutate Riverbend state.");
+            Assert.That(downtownAfterVisit.inventoryUnits,
+                Is.EqualTo(
+                    downtownBeforeVisit.inventoryUnits -
+                    downtownSale.unitsSold));
+            Assert.That(downtownAfterVisit.lifetimeGrossSalesCents,
+                Is.EqualTo(
+                    downtownBeforeVisit.lifetimeGrossSalesCents +
+                    downtownSale.subtotalCents));
+
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
+                Is.True,
+                error);
+            yield return null;
+            ReassignTeam(
+                context.Portfolio.Progression,
+                RiverbendLocationId,
+                ExpansionTeam);
+            PortfolioLocationSnapshot downtownBeforeReturn = Location(
+                context.Portfolio.Progression.CreateSnapshot(),
+                DowntownLocationId);
+
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
+                    out error),
+                Is.True,
+                error);
+            yield return null;
+            Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                Is.EqualTo(riverbendSignature));
+            Assert.That(context.EmployeeWork.DetailedLocationId,
+                Is.EqualTo(RiverbendLocationId));
+            SuppressAutomaticArrivalForControlledSale(context);
+            CheckoutTransactionSummary secondRiverbendSale = null;
+            yield return CompleteLiveCustomerSale(
+                context,
+                employeeCheckout: true,
+                value => secondRiverbendSale = value);
+            Assert.That(
+                context.Adapter.TrySynchronizeActiveLocation(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot afterRiverbendReturn =
+                context.Portfolio.Progression.CreateSnapshot();
+            AssertLocationBusinessStateEqual(
+                downtownBeforeReturn,
+                Location(afterRiverbendReturn, DowntownLocationId),
+                "Returning physically to Riverbend must not mutate Downtown state.");
+            PortfolioLocationSnapshot riverbendAfterReturn = Location(
+                afterRiverbendReturn,
+                RiverbendLocationId);
+            Assert.That(riverbendAfterReturn.inventoryUnits,
+                Is.EqualTo(
+                    riverbendBeforeDowntown.inventoryUnits -
+                    secondRiverbendSale.unitsSold));
+            Assert.That(riverbendAfterReturn.lifetimeGrossSalesCents,
+                Is.EqualTo(
+                    riverbendBeforeDowntown.lifetimeGrossSalesCents +
+                    secondRiverbendSale.subtotalCents));
+            Assert.That(
+                context.Adapter.TryLeaveToManagement(out error),
+                Is.True,
+                error);
+        }
+
+        private static IEnumerator LoadContext(Action<SceneContext> assign)
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "FirstStoreValidation",
+                LoadSceneMode.Single);
+            yield return null;
+
+            SceneContext context = new()
             {
-                CheckoutProductWorldInteractionTarget[] productTargets = building
-                    .GetComponentsInChildren<
-                        CheckoutProductWorldInteractionTarget>(true);
-                StagedCheckoutInteractionComponent staged =
-                    checkout.GetComponent<StagedCheckoutInteractionComponent>();
+                Portfolio = Object.FindAnyObjectByType<
+                    PortfolioProgressionController>(),
+                Adapter = Object.FindAnyObjectByType<
+                    PersistentPortfolioLocationSceneAdapter>(),
+                Locations = Object.FindAnyObjectByType<
+                    PersistentPortfolioLocationController>(),
+                Persistence = Object.FindAnyObjectByType<
+                    FirstStorePersistenceMapperComponent>(),
+                Store = Object.FindAnyObjectByType<StoreOperatingController>(),
+                Checkout = Object.FindAnyObjectByType<CheckoutStationComponent>(),
+                Inventory = Object.FindAnyObjectByType<
+                    FirstStoreInventoryComponent>(),
+                PhysicalUnits = Object.FindAnyObjectByType<
+                    PhysicalProductUnitRegistry>(),
+                Stocking = Object.FindAnyObjectByType<StockingController>(),
+                Merchandising = Object.FindAnyObjectByType<
+                    FirstStoreMerchandisingComponent>(),
+                CustomerFlow = Object.FindAnyObjectByType<
+                    StoreCustomerFlowController>(),
+                EmployeeWork = Object.FindAnyObjectByType<
+                    InStoreEmployeeWorkController>(),
+                Delivery = Object.FindAnyObjectByType<DeliveryBoxComponent>(),
+                Cleaning = Object.FindAnyObjectByType<CleaningTaskComponent>(),
+                CleaningTarget = Object.FindAnyObjectByType<
+                    CleaningWorldInteractionTarget>(),
+                CleaningTool = Object.FindObjectsByType<CarryableToolComponent>(
+                        FindObjectsInactive.Include,
+                        FindObjectsSortMode.None)
+                    .Single(value => value.CapabilityId == "clean-floor"),
+                OperatingControl = Object.FindAnyObjectByType<
+                    StoreOperatingWorldInteractionTarget>(),
+                Player = Object.FindAnyObjectByType<FirstPersonController>(),
+                Products = Resources.FindObjectsOfTypeAll<ProductDefinition>()
+                    .Where(value => value != null &&
+                                    (value.StableProductId ==
+                                         ConvenienceStoreProcurement.ColaProductId ||
+                                     value.StableProductId ==
+                                         ConvenienceStoreProcurement.ChipsProductId))
+                    .OrderBy(value => value.StableProductId, StringComparer.Ordinal)
+                    .ToArray()
+            };
+            Assert.That(context.Portfolio, Is.Not.Null);
+            Assert.That(context.Adapter, Is.Not.Null);
+            Assert.That(context.Locations, Is.Not.Null);
+            Assert.That(context.Persistence, Is.Not.Null);
+            Assert.That(context.Store, Is.Not.Null);
+            Assert.That(context.Checkout, Is.Not.Null);
+            Assert.That(context.Inventory, Is.Not.Null);
+            Assert.That(context.PhysicalUnits, Is.Not.Null);
+            Assert.That(context.Stocking, Is.Not.Null);
+            Assert.That(context.Merchandising, Is.Not.Null);
+            Assert.That(context.CustomerFlow, Is.Not.Null);
+            Assert.That(context.EmployeeWork, Is.Not.Null);
+            Assert.That(context.Delivery, Is.Not.Null);
+            Assert.That(context.Cleaning, Is.Not.Null);
+            Assert.That(context.CleaningTarget, Is.Not.Null);
+            Assert.That(context.CleaningTool, Is.Not.Null);
+            Assert.That(context.OperatingControl, Is.Not.Null);
+            Assert.That(context.Player, Is.Not.Null);
+            Assert.That(context.Products, Has.Length.EqualTo(2));
+            Assert.That(
+                context.Adapter.TryValidateConfiguration(out string error),
+                Is.True,
+                error);
+            SetField(context.CustomerFlow, "arrivalIntervalSeconds", 1_000f);
+            assign(context);
+        }
+
+        private static void PrepareRiverbendPortfolio(SceneContext context)
+        {
+            CompletePhysicalFirstShift(context.Portfolio, context.Store);
+            HireTeam(
+                context.Portfolio,
+                PortfolioProgressionRules.FirstLocationId,
+                FirstTeam);
+            context.Player.SetGameplayMode(false);
+            Assert.That(
+                context.Portfolio.TryAdvanceDelegatedDay(out string error),
+                Is.True,
+                error);
+            Assert.That(
+                context.Portfolio.TryLeaseLocation(
+                    RiverbendLocationId,
+                    out error),
+                Is.True,
+                error);
+            HireTeam(context.Portfolio, RiverbendLocationId, ExpansionTeam);
+        }
+
+        private static void SuppressAutomaticArrivalForControlledSale(
+            SceneContext context)
+        {
+            SetField(context.CustomerFlow, "secondsUntilNextArrival", 1_000f);
+        }
+
+        private static void SeedReconciledHistoricalEarnings(
+            SceneContext context,
+            long grossSalesCents)
+        {
+            PortfolioProgressionSnapshot snapshot =
+                context.Portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot firstStore = Location(
+                snapshot,
+                PortfolioProgressionRules.FirstLocationId);
+            firstStore.lifetimeGrossSalesCents = checked(
+                firstStore.lifetimeGrossSalesCents + grossSalesCents);
+            firstStore.lifetimeOperatingProfitCents = checked(
+                firstStore.lifetimeOperatingProfitCents + grossSalesCents);
+            firstStore.lifetimeCashChangeCents = checked(
+                firstStore.lifetimeCashChangeCents + grossSalesCents);
+            snapshot.cashCents = checked(snapshot.cashCents + grossSalesCents);
+            Assert.That(
+                context.Portfolio.TryRestoreSnapshot(
+                    snapshot,
+                    out string error),
+                Is.True,
+                error);
+        }
+
+        private static void AssertGeneratedDetailedAuthorities(
+            SceneContext context,
+            string locationId,
+            CommercialBuildingArchetype archetype)
+        {
+            ProceduralCommercialBuilding building = context.Locations
+                .ActiveBuilding;
+            Assert.That(context.Adapter.ActiveLocationId, Is.EqualTo(locationId));
+            Assert.That(building, Is.Not.Null);
+            Assert.That(building.LastResult.Archetype, Is.EqualTo(archetype));
+            Assert.That(context.Adapter.ActiveBindings, Is.Not.Null);
+            Assert.That(context.Adapter.HasActiveGeneratedNavigation, Is.True);
+            Assert.That(
+                context.Adapter.TryValidateActiveNavigation(out string error),
+                Is.True,
+                error);
+            Assert.That(context.CustomerFlow.enabled, Is.True);
+            Assert.That(context.EmployeeWork.enabled, Is.True);
+            Assert.That(context.EmployeeWork.DetailedLocationId,
+                Is.EqualTo(locationId));
+            Assert.That(
+                context.CustomerFlow.TryValidateConfiguration(out error),
+                Is.True,
+                error);
+            Assert.That(
+                context.EmployeeWork.TryValidateConfiguration(out error),
+                Is.True,
+                error);
+            Assert.That(context.Merchandising.LocationId, Is.EqualTo(locationId));
+            Assert.That(
+                context.Portfolio.Progression.CreateSnapshot().company
+                    .activeDetailedLocationId,
+                Is.EqualTo(locationId));
+
+            PlaceableFixtureComponent checkoutFixture = Resources
+                .FindObjectsOfTypeAll<PlaceableFixtureComponent>()
+                .Single(value => value.StableFixtureInstanceId ==
+                                 "fixture-checkout-essential-01");
+            AssertInsideSelectedUnit(building, checkoutFixture.transform.position);
+            Assert.That(
+                checkoutFixture.GetComponent<CustomerCheckoutWorldInteractionTarget>(),
+                Is.Not.Null);
+            foreach (ShelfFixture shelf in context.Stocking.AuthoredProductMappings
+                         .Where(value => value?.ShelfFixture != null)
+                         .Select(value => value.ShelfFixture)
+                         .Distinct())
+            {
+                AssertInsideSelectedUnit(building, shelf.transform.position);
                 Assert.That(
-                    productTargets.Any(value => value.IsAvailable),
-                    Is.True,
-                    $"Generated checkout has no available physical product target; " +
-                    $"targets={productTargets.Length}, action={staged.NextAction}, " +
-                    $"active={staged.ActiveProduct?.StableProductId}, " +
-                    $"store={checkout.GetComponent<StoreOperatingController>()?.State}/{staged.Checkout != null}.");
-                CheckoutProductWorldInteractionTarget product =
-                    productTargets.Single(value => value.IsAvailable);
-                Assert.That(product.TryPrimary(out error), Is.True, error);
-                if (!checkout.HasActiveIncompleteSession)
-                {
-                    break;
-                }
-
-                if (staged.NextAction == StagedCheckoutPrimaryAction.Complete)
-                {
-                    Assert.That(register.TryPrimary(out error), Is.True, error);
-                }
+                    shelf.GetComponent<ShelfFixtureWorldInteractionTarget>(),
+                    Is.Not.Null);
+                NavMeshObstacle obstacle = shelf.GetComponent<NavMeshObstacle>();
+                Assert.That(obstacle, Is.Not.Null);
+                Assert.That(obstacle.carving, Is.True);
             }
-
-            if (checkout.HasActiveIncompleteSession)
+            AssertInsideSelectedUnit(building, context.Delivery.transform.position);
+            AssertInsideSelectedUnit(
+                building,
+                context.CleaningTarget.transform.position);
+            AssertInsideSelectedUnit(
+                building,
+                context.CleaningTool.transform.position);
+            AssertInsideSelectedUnit(
+                building,
+                context.OperatingControl.transform.position);
+            foreach (PhysicalProductUnitConfiguration configuration in
+                     context.PhysicalUnits.ProductConfigurations)
             {
-                Assert.That(register.TryPrimary(out error), Is.True, error);
+                AssertInsideSelectedUnit(
+                    building,
+                    configuration.LooseSpawnPoint.position);
             }
-            Assert.That(checkout.CompletedTransactionCount,
+            Assert.That(
+                context.Delivery.GetComponentsInChildren<
+                    DeliveryProductWorldInteractionTarget>(true),
+                Has.Length.EqualTo(context.Products.Length));
+            Assert.That(context.Adapter.ActiveBindings.BrowsePoints.Count,
+                Is.EqualTo(2));
+            Assert.That(context.Adapter.ActiveBindings.QueuePoints.Count,
+                Is.GreaterThanOrEqualTo(2));
+            AssertPlayerInsideSelectedUnit(context.Player, building);
+        }
+
+        private static IEnumerator CompleteLiveCustomerSale(
+            SceneContext context,
+            bool employeeCheckout,
+            Action<CheckoutTransactionSummary> completed)
+        {
+            int transactionsBefore = context.Checkout.CompletedTransactionCount;
+            if (!employeeCheckout)
+            {
+                context.EmployeeWork.enabled = false;
+            }
+            Assert.That(
+                context.CustomerFlow.TryAdmitCustomerNow(
+                    out string customerId,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                context.CustomerFlow.TryGetCustomerNavigationAgent(
+                    customerId,
+                    out LocalNavigationAgent navigation),
+                Is.True);
+            yield return WaitUntil(
+                () => navigation != null && navigation.Agent.isOnNavMesh &&
+                      navigation.RepathCount > 0,
+                5f,
+                "The generated customer never acquired a NavMesh path.");
+            Assert.That(navigation.State,
+                Is.Not.EqualTo(LocalNavigationState.PathUnavailable));
+
+            if (employeeCheckout)
+            {
+                yield return WaitUntil(
+                    () => context.Checkout.CompletedTransactionCount >
+                          transactionsBefore,
+                    30f,
+                    "The assigned cashier did not complete the live generated-store checkout.");
+            }
+            else
+            {
+                yield return WaitUntil(
+                    () => context.CustomerFlow.CanStartCheckout,
+                    25f,
+                    "The generated customer did not reach the physical checkout queue.");
+                Assert.That(
+                    context.CustomerFlow.TryStartCheckout(out error),
+                    Is.True,
+                    error);
+                foreach (string physicalUnitId in context.CustomerFlow
+                             .ActiveCheckoutPhysicalUnitIds.ToArray())
+                {
+                    Assert.That(
+                        context.CustomerFlow.TryScanCustomerItem(
+                            physicalUnitId,
+                            out error),
+                        Is.True,
+                        error);
+                }
+                Assert.That(
+                    context.CustomerFlow.TryCompleteCheckout(out error),
+                    Is.True,
+                    error);
+            }
+
+            Assert.That(context.Checkout.CompletedTransactionCount,
                 Is.EqualTo(transactionsBefore + 1));
-            return checkout.CompletedTransactions.Last();
+            CheckoutTransactionSummary summary = context.Checkout
+                .CompletedTransactions.Last();
+            Assert.That(summary.isCompleted, Is.True);
+            Assert.That(summary.unitsSold, Is.GreaterThan(0));
+            yield return WaitUntil(
+                () => !context.CustomerFlow.HasCustomersInStore,
+                20f,
+                "Served generated customers did not navigate back to the exit.");
+            if (!employeeCheckout)
+            {
+                context.EmployeeWork.enabled = true;
+            }
+            completed(summary);
+        }
+
+        private static IEnumerator WaitUntil(
+            Func<bool> condition,
+            float timeoutSeconds,
+            string failure)
+        {
+            float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+            while (!condition() && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(condition(), Is.True, failure);
+        }
+
+        private static int RemainingDeliveryUnits(SceneContext context)
+        {
+            int result = 0;
+            foreach (ProductDefinition product in context.Products)
+            {
+                Assert.That(
+                    context.Delivery.TryGetConfiguredProductRemaining(
+                        product,
+                        out _,
+                        out int remaining,
+                        out string error),
+                    Is.True,
+                    error);
+                result += remaining;
+            }
+            return result;
+        }
+
+        private static void DrainDeliveryToGeneratedLooseStock(
+            SceneContext context)
+        {
+            foreach (ProductDefinition product in context.Products)
+            {
+                Assert.That(
+                    context.Delivery.TryGetConfiguredProductRemaining(
+                        product,
+                        out _,
+                        out int remaining,
+                        out string error),
+                    Is.True,
+                    error);
+                for (int index = 0; index < remaining; index++)
+                {
+                    Assert.That(
+                        context.Delivery.TryRemoveOneUnit(
+                            product,
+                            out ProductItem loose,
+                            out DeliveryContainerFailure failure,
+                            out _,
+                            out error),
+                        Is.True,
+                        $"{error} ({failure})");
+                    Assert.That(loose, Is.Not.Null);
+                    AssertInsideSelectedUnit(
+                        context.Locations.ActiveBuilding,
+                        loose.transform.position);
+                }
+            }
+        }
+
+        private static void ReassignTeam(
+            PortfolioProgression progression,
+            string locationId,
+            IEnumerable<string> employeeIds)
+        {
+            foreach (string employeeId in employeeIds)
+            {
+                Assert.That(
+                    progression.TryReassignEmployee(
+                        employeeId,
+                        locationId,
+                        out string error),
+                    Is.True,
+                    error);
+            }
+        }
+
+        private static PortfolioLocationSnapshot Location(
+            PortfolioProgressionSnapshot snapshot,
+            string locationId)
+        {
+            return snapshot.locations.Single(value =>
+                value.locationId == locationId);
+        }
+
+        private static void AssertLocationBusinessStateEqual(
+            PortfolioLocationSnapshot expected,
+            PortfolioLocationSnapshot actual,
+            string message)
+        {
+            Assert.That(actual.inventoryUnits,
+                Is.EqualTo(expected.inventoryUnits),
+                message);
+            Assert.That(actual.lifetimeGrossSalesCents,
+                Is.EqualTo(expected.lifetimeGrossSalesCents),
+                message);
+            Assert.That(actual.lifetimeCostOfGoodsSoldCents,
+                Is.EqualTo(expected.lifetimeCostOfGoodsSoldCents),
+                message);
+            Assert.That(
+                actual.productInventory
+                    .OrderBy(value => value.productId, StringComparer.Ordinal)
+                    .Select(value => (value.productId, value.quantityUnits)),
+                Is.EqualTo(expected.productInventory
+                    .OrderBy(value => value.productId, StringComparer.Ordinal)
+                    .Select(value => (value.productId, value.quantityUnits))),
+                message);
         }
 
         private static void AssertPlayerInsideSelectedUnit(
             FirstPersonController player,
             ProceduralCommercialBuilding building)
         {
+            AssertInsideSelectedUnit(building, player.transform.position);
+        }
+
+        private static void AssertInsideSelectedUnit(
+            ProceduralCommercialBuilding building,
+            Vector3 worldPosition)
+        {
             Vector3 local = building.transform.InverseTransformPoint(
-                player.transform.position);
+                worldPosition);
             Assert.That(
                 building.LastResult.Units[0].BoundsMeters.Contains(
                     new Vector2(local.x, local.z),
-                    0.02f),
+                    0.05f),
                 Is.True,
-                "The scene adapter must place the player inside the selected persistent commercial unit.");
+                $"Expected ({local.x:0.00}, {local.z:0.00}) inside the selected persistent unit.");
         }
 
         private static void CompletePhysicalFirstShift(
@@ -359,7 +910,7 @@ namespace Margins.Tests.PlayMode
             ProductDefinition cola = Resources
                 .FindObjectsOfTypeAll<ProductDefinition>()
                 .Single(value => value.StableProductId ==
-                                 "prod-cola-can-355ml");
+                                 ConvenienceStoreProcurement.ColaProductId);
             Assert.That(delivery.TryOpen(out _, out string error),
                 Is.True,
                 error);
@@ -406,7 +957,7 @@ namespace Margins.Tests.PlayMode
         private static void HireTeam(
             PortfolioProgressionController portfolio,
             string locationId,
-            params string[] employeeIds)
+            IEnumerable<string> employeeIds)
         {
             foreach (string employeeId in employeeIds)
             {
@@ -418,6 +969,18 @@ namespace Margins.Tests.PlayMode
                     Is.True,
                     error);
             }
+        }
+
+        private static void SetField(
+            object target,
+            string fieldName,
+            object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName);
+            field.SetValue(target, value);
         }
     }
 }
