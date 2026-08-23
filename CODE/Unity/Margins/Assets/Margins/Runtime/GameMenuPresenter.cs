@@ -31,8 +31,11 @@ namespace Margins
         private readonly List<Button> bindingButtons = new();
         private readonly List<Button> staticTitleButtons = new();
         private readonly List<Button> staticPauseButtons = new();
-        private readonly List<Button> staticManagementButtons = new();
+        private readonly List<Button> managementTabButtons = new();
+        private readonly List<Button> managementFooterButtons = new();
         private readonly List<Button> dynamicManagementButtons = new();
+        private readonly HashSet<string> expandedStaff = new(StringComparer.Ordinal);
+        private readonly HashSet<string> expandedReports = new(StringComparer.Ordinal);
 
         private VisualElement root;
         private VisualElement titleView;
@@ -60,6 +63,8 @@ namespace Margins
         private Button settingsApply;
         private Label managementSummary;
         private Label managementStatus;
+        private Label managementPageTitle;
+        private Label managementPageHelp;
         private ScrollView managementContent;
         private Button managementOverviewTab;
         private Button managementTeamTab;
@@ -75,6 +80,8 @@ namespace Margins
         private NotificationElements settingsNotification;
         private bool initialized;
         private bool managementWasVisible;
+        private bool operatingStandardsExpanded;
+        private bool resolvedAlertsExpanded;
         private ManagementPage managementPage;
         private int renderedBindingRevision = -1;
         private string renderedActiveBindingKey;
@@ -194,6 +201,8 @@ namespace Margins
             settingsApply = Require<Button>("settings-apply");
             managementSummary = Require<Label>("management-summary");
             managementStatus = Require<Label>("management-status");
+            managementPageTitle = Require<Label>("management-page-title");
+            managementPageHelp = Require<Label>("management-page-help");
             managementContent = Require<ScrollView>("management-content");
             managementOverviewTab = Require<Button>("management-overview-tab");
             managementTeamTab = Require<Button>("management-team-tab");
@@ -287,15 +296,15 @@ namespace Margins
             staticPauseButtons.Add(Require<Button>("pause-title"));
             staticPauseButtons.Add(Require<Button>("pause-quit"));
 
-            staticManagementButtons.Add(managementOverviewTab);
-            staticManagementButtons.Add(managementTeamTab);
-            staticManagementButtons.Add(managementPolicyTab);
-            staticManagementButtons.Add(managementAlertsTab);
-            staticManagementButtons.Add(managementLocationsTab);
-            staticManagementButtons.Add(managementReportsTab);
-            staticManagementButtons.Add(managementSave);
-            staticManagementButtons.Add(managementLoad);
-            staticManagementButtons.Add(managementResume);
+            managementTabButtons.Add(managementOverviewTab);
+            managementTabButtons.Add(managementLocationsTab);
+            managementTabButtons.Add(managementTeamTab);
+            managementTabButtons.Add(managementPolicyTab);
+            managementTabButtons.Add(managementReportsTab);
+            managementTabButtons.Add(managementAlertsTab);
+            managementFooterButtons.Add(managementSave);
+            managementFooterButtons.Add(managementLoad);
+            managementFooterButtons.Add(managementResume);
         }
 
         private void RegisterSettingChanges()
@@ -517,8 +526,9 @@ namespace Margins
             focusables.Clear();
             if (management)
             {
-                AddEnabled(staticManagementButtons);
+                AddEnabled(managementTabButtons);
                 AddEnabled(dynamicManagementButtons);
+                AddEnabled(managementFooterButtons);
                 return;
             }
             if (title)
@@ -670,6 +680,23 @@ namespace Margins
                 controller.SelectSettingsTab(direction > 0);
                 return true;
             }
+            if (focused is Button managementTab)
+            {
+                int tabIndex = managementTabButtons.IndexOf(managementTab);
+                if (tabIndex >= 0)
+                {
+                    int nextIndex = (tabIndex + direction +
+                                     managementTabButtons.Count) %
+                                    managementTabButtons.Count;
+                    Button next = managementTabButtons[nextIndex];
+                    next.Focus();
+                    if (activations.TryGetValue(next, out Action action))
+                    {
+                        action();
+                    }
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -753,17 +780,26 @@ namespace Margins
 
             PortfolioProgressionSnapshot snapshot =
                 portfolio.Progression.CreateSnapshot();
+            int openAlertCount = snapshot.locations.Sum(location =>
+                location.operatingAlerts.Count(alert => alert.IsOpen));
             managementSummary.text =
-                $"DAY {snapshot.currentDay}   •   CASH {FormatCents(snapshot.cashCents)}   •   " +
-                $"REPUTATION {snapshot.companyReputation}/100   •   {snapshot.locations.Count} LOCATION" +
-                (snapshot.locations.Count == 1 ? string.Empty : "S");
+                $"Day {snapshot.currentDay}   •   {FormatCents(snapshot.cashCents)} cash   •   " +
+                $"{snapshot.locations.Count} store" +
+                (snapshot.locations.Count == 1 ? string.Empty : "s") +
+                (openAlertCount == 0
+                    ? string.Empty
+                    : $"   •   {openAlertCount} need attention");
+            managementAlertsTab.text = openAlertCount == 0
+                ? "Alerts"
+                : $"Alerts ({openAlertCount})";
 
             bool menuError = controller.Notification.IsVisible &&
                              controller.Notification.Kind ==
                              MenuNotificationKind.Error;
-            managementStatus.text = controller.Notification.IsVisible
+            managementStatus.text = PlayerFacingText(
+                controller.Notification.IsVisible
                 ? controller.Notification.Message
-                : portfolio.LastAction;
+                : portfolio.LastAction);
             managementStatus.EnableInClassList(
                 "management-status--error",
                 menuError ||
@@ -773,8 +809,8 @@ namespace Margins
             managementLoad.text =
                 controller.PendingReplacement ==
                 SessionReplacementAction.LoadBusiness
-                    ? "Confirm Load"
-                    : "Load";
+                    ? "Confirm Load Game"
+                    : "Load Game";
 
             string activeLocationId = snapshot.company.activeDetailedLocationId;
             managementResume.SetEnabled(snapshot.locations.Count > 0);
@@ -784,8 +820,8 @@ namespace Margins
                     activeLocationId,
                     StringComparison.Ordinal));
             managementResume.text = activeLocation == null
-                ? $"Enter {snapshot.locations[0].displayName}"
-                : $"Return to {activeLocation.displayName}";
+                ? $"Go to {snapshot.locations[0].displayName}"
+                : $"Back to {activeLocation.displayName}";
 
             managementOverviewTab.EnableInClassList(
                 "management-tab--active",
@@ -820,7 +856,12 @@ namespace Margins
                     location.locationId,
                     portfolio.SelectedLocationId,
                     StringComparison.Ordinal)) ?? snapshot.locations[0];
-            BuildManagementLocationSelector(snapshot, selected);
+            ConfigureManagementPage(selected);
+            if (managementPage != ManagementPage.Locations &&
+                managementPage != ManagementPage.Reports)
+            {
+                BuildManagementLocationSelector(snapshot, selected);
+            }
             switch (managementPage)
             {
                 case ManagementPage.Team:
@@ -848,7 +889,7 @@ namespace Margins
             PortfolioProgressionSnapshot snapshot,
             PortfolioLocationSnapshot selected)
         {
-            AddManagementSection("MANAGING LOCATION");
+            AddManagementSection("VIEWING");
             VisualElement row = AddManagementRow(managementContent);
             foreach (PortfolioLocationSnapshot location in snapshot.locations
                          .OrderBy(value => value.displayName, StringComparer.Ordinal))
@@ -868,62 +909,183 @@ namespace Margins
             }
         }
 
+        private void ConfigureManagementPage(
+            PortfolioLocationSnapshot selected)
+        {
+            switch (managementPage)
+            {
+                case ManagementPage.Team:
+                    managementPageTitle.text = "Staff";
+                    managementPageHelp.text =
+                        $"Set schedules and responsibilities for {selected.displayName}. Open a person for training, promotion, or transfers.";
+                    break;
+                case ManagementPage.Policies:
+                    managementPageTitle.text = "Operations";
+                    managementPageHelp.text =
+                        $"Decide how {selected.displayName} prices, orders stock, and handles routine problems.";
+                    break;
+                case ManagementPage.Alerts:
+                    managementPageTitle.text = "Alerts";
+                    managementPageHelp.text =
+                        $"Problems at {selected.displayName}, with the next useful action beside each one.";
+                    break;
+                case ManagementPage.Locations:
+                    managementPageTitle.text = "Stores";
+                    managementPageHelp.text =
+                        "Choose where to work, manage an existing store, or lease the next available location.";
+                    break;
+                case ManagementPage.Reports:
+                    managementPageTitle.text = "Results";
+                    managementPageHelp.text =
+                        "Start with the headline result. Open a store breakdown only when you need the detail.";
+                    break;
+                default:
+                    managementPageTitle.text = "Today";
+                    managementPageHelp.text =
+                        "See what needs attention, choose where to work, and end the day when every store is ready.";
+                    break;
+            }
+        }
+
         private void BuildManagementOverview(
             PortfolioProgressionSnapshot snapshot,
             PortfolioLocationSnapshot selected)
         {
-            AddManagementSection("OPERATING STATUS");
+            var openAlerts = snapshot.locations
+                .SelectMany(location => location.operatingAlerts
+                    .Where(alert => alert.IsOpen)
+                    .Select(alert => new { Location = location, Alert = alert }))
+                .OrderByDescending(value => value.Alert.severity)
+                .ThenBy(value => value.Location.displayName, StringComparer.Ordinal)
+                .ThenBy(value => value.Alert.alertId, StringComparer.Ordinal)
+                .ToArray();
+            AddManagementSection("NEEDS ATTENTION");
+            if (openAlerts.Length == 0)
+            {
+                AddManagementCard(
+                    "Nothing urgent",
+                    "None of your stores has an open problem. You can keep working or review the latest results.");
+            }
+            else
+            {
+                PortfolioOperatingAlertSnapshot first = openAlerts[0].Alert;
+                PortfolioLocationSnapshot alertLocation = openAlerts[0].Location;
+                VisualElement attention = AddManagementCard(
+                    $"{alertLocation.displayName} · {AlertTitle(first)}",
+                    PlayerFacingText(first.summary),
+                    first.severity == PortfolioAlertSeverity.Critical
+                        ? "management-card--critical"
+                        : "management-card--warning");
+                AddManagementCopy(
+                    attention,
+                    openAlerts.Length == 1
+                        ? "1 open alert across your stores."
+                        : $"{openAlerts.Length} open alerts across your stores.");
+                AddManagementButton(
+                    AddManagementRow(attention),
+                    "Review alerts",
+                    "management-open-alerts",
+                    () =>
+                    {
+                        portfolio.TrySelectManagementLocation(
+                            alertLocation.locationId,
+                            out _);
+                        SelectManagementPage(ManagementPage.Alerts);
+                    },
+                    primary: true);
+            }
+
+            AddManagementSection("STORE AT A GLANCE");
             VisualElement location = AddManagementCard(
                 selected.displayName,
-                selected.operatingModel);
+                $"Stock {selected.inventoryUnits} of {selected.inventoryCapacityUnits} units   •   " +
+                $"Service {HealthLabel(selected.serviceQuality)}   •   " +
+                $"Store condition {HealthLabel(selected.maintenanceCondition)}");
             AddManagementCopy(
                 location,
-                $"Inventory {selected.inventoryUnits}/{selected.inventoryCapacityUnits}   •   " +
-                $"Service {selected.serviceQuality}/100   •   Satisfaction {selected.customerSatisfaction}/100\n" +
-                $"Availability {selected.productAvailabilityBasisPoints / 100f:0.#}%   •   " +
-                $"Product mix {selected.productMixBasisPoints / 100f:0.#}%   •   " +
-                $"Maintenance {selected.maintenanceCondition}/100");
+                $"Customer satisfaction {HealthLabel(selected.customerSatisfaction)}   •   " +
+                $"Products available {selected.productAvailabilityBasisPoints / 100f:0.#}%");
 
             string activeId = portfolio.ActiveDetailedSimulationLocationId;
             bool detailedSimulationActive =
                 portfolio.HasActiveDetailedSimulation;
             VisualElement physical = AddManagementCard(
-                "Physical operation",
+                "Where you're working",
                 !detailedSimulationActive
-                    ? "No detailed location is active. Choose a location to enter physically."
-                    : $"{LocationDisplayName(snapshot, activeId)} is active in detailed simulation.");
+                    ? "You're managing remotely. Choose a store whenever you want to work there in person."
+                    : $"You're currently at {LocationDisplayName(snapshot, activeId)}. The store keeps running while this phone is open.");
             if (!detailedSimulationActive)
             {
                 AddManagementButton(
                     AddManagementRow(physical),
-                    $"Visit {selected.displayName}",
+                    $"Go to {selected.displayName}",
                     "management-visit-location",
                     () => portfolio.TryVisitLocation(
                         selected.locationId,
                         out _),
                     primary: true);
             }
-            else
+            else if (string.Equals(
+                         activeId,
+                         selected.locationId,
+                         StringComparison.Ordinal))
             {
                 AddManagementButton(
                     AddManagementRow(physical),
-                    "Close and leave active location",
-                    "management-leave-location",
+                    $"Back to {selected.displayName}",
+                    "management-back-to-active-location",
+                    ResumeManagement,
+                    primary: true);
+            }
+            else
+            {
+                VisualElement physicalActions = AddManagementRow(physical);
+                AddManagementButton(
+                    physicalActions,
+                    $"Go to {selected.displayName}",
+                    "management-switch-location",
+                    () => portfolio.TryVisitLocation(
+                        selected.locationId,
+                        out _),
+                    primary: true);
+                AddManagementButton(
+                    physicalActions,
+                    $"Leave {LocationDisplayName(snapshot, activeId)}",
+                    "management-leave-active-location",
                     () => portfolio.TryLeaveVisitedLocation(out _),
                     danger: true);
             }
 
-            AddManagementSection("OVERNIGHT");
+            AddManagementSection("END THE DAY");
             bool canAdvance = portfolio.CanAdvanceOvernight(
                 out string blocker);
             VisualElement overnight = AddManagementCard(
-                $"Advance to operating day {snapshot.currentDay + 1}",
                 canAdvance
-                    ? "Resolve the next delegated operating day for every location, including procurement, payroll, rent, operating costs, reports, alerts, and employee progress."
-                    : blocker);
+                    ? $"Ready to finish Day {snapshot.currentDay}"
+                    : $"Day {snapshot.currentDay} is still in progress",
+                canAdvance
+                    ? "Finish today for every store. Staff, stock orders, rent, costs, reports, and alerts will update together."
+                    : PlayerFacingText(blocker));
+            if (!canAdvance)
+            {
+                AddNamedManagementCopy(
+                    overnight,
+                    "Finish or leave the active store first. Your in-store work will be saved before the day can move forward.",
+                    "management-end-day-blocker",
+                    "management-blocker");
+            }
+            VisualElement overnightActions = AddManagementRow(overnight);
+            if (!canAdvance && detailedSimulationActive)
+            {
+                AddManagementButton(
+                    overnightActions,
+                    $"Leave {LocationDisplayName(snapshot, activeId)}",
+                    "management-leave-location",
+                    () => portfolio.TryLeaveVisitedLocation(out _));
+            }
             AddManagementButton(
-                AddManagementRow(overnight),
-                "Advance overnight",
+                overnightActions,
+                $"End Day {snapshot.currentDay}",
                 "management-advance-overnight",
                 () => portfolio.TryAdvanceOvernight(out _),
                 primary: true,
@@ -934,15 +1096,17 @@ namespace Margins
             {
                 PortfolioLocationReportSnapshot report = selected.lastReport;
                 VisualElement reportCard = AddManagementCard(
-                    $"Day {report.day} · " +
-                    (report.isDetailedOperation ? "Detailed" : "Delegated"),
+                    $"Day {report.day} · {ReportModeLabel(report)}",
                     report.primaryCause);
                 AddManagementCopy(
                     reportCard,
                     $"Sales {FormatCents(report.grossSalesCents)}   •   " +
-                    $"Operating profit {FormatCents(report.operatingProfitCents)}   •   " +
-                    $"Units {report.unitsSold}/{report.demandUnits} demand   •   " +
-                    $"Alerts {report.openAlertCount}");
+                    $"Profit from operations {FormatCents(report.operatingProfitCents)}");
+                AddManagementButton(
+                    AddManagementRow(reportCard),
+                    "See full report",
+                    "management-open-reports",
+                    () => SelectManagementPage(ManagementPage.Reports));
             }
             else
             {
@@ -957,7 +1121,7 @@ namespace Margins
             PortfolioProgressionSnapshot snapshot,
             PortfolioLocationSnapshot selected)
         {
-            AddManagementSection("ASSIGNMENTS & SCHEDULES");
+            AddManagementSection($"STAFF AT {selected.displayName.ToUpperInvariant()}");
             PortfolioEmployeeSnapshot[] assigned = snapshot.employees
                 .Where(employee => string.Equals(
                     employee.assignedLocationId,
@@ -970,7 +1134,7 @@ namespace Margins
             {
                 AddManagementCopy(
                     managementContent,
-                    "No employees are assigned. Hire the approved cashier, stock clerk, and manager roles before delegation.",
+                    "No one works here yet. Hire staff below before asking this store to run without you.",
                     "management-empty");
             }
 
@@ -979,10 +1143,11 @@ namespace Margins
                 PortfolioEmployeeSnapshot target = employee;
                 VisualElement card = AddManagementCard(
                     $"{target.displayName} · {FriendlyRole(target.role)}",
-                    $"{target.trait}   •   Skill {target.skill}   •   Reliability {target.reliability}   •   Morale {target.satisfaction}\n" +
-                    $"Scheduled {FormatScheduledDays(target.schedule)}   •   Focus {target.taskFocus}   •   Wage {FormatCents(target.dailyWageCents)}/day");
+                    $"Works {FormatScheduledDays(target.schedule)}   •   " +
+                    $"Focus: {FriendlyTaskFocus(target.taskFocus)}   •   " +
+                    $"Pay: {FormatCents(target.dailyWageCents)} each day worked");
 
-                AddManagementCopy(card, "Scheduled days", "management-policy-value");
+                AddManagementCopy(card, "Work days", "management-policy-value");
                 VisualElement scheduleRow = AddManagementRow(card);
                 AddSchedulePreset(
                     scheduleRow,
@@ -1009,22 +1174,39 @@ namespace Margins
                     Enum.GetValues(typeof(PortfolioTaskFocus)).Length);
                 AddManagementButton(
                     actionRow,
-                    $"Focus: {target.taskFocus}",
+                    $"Change focus to {FriendlyTaskFocus(nextFocus)}",
                     $"management-focus-{target.employeeId}",
                     () => portfolio.TrySetTaskFocus(
                         target.employeeId,
                         nextFocus,
                         out _));
+                bool detailsExpanded = expandedStaff.Contains(target.employeeId);
                 AddManagementButton(
                     actionRow,
+                    detailsExpanded ? "Hide details" : "More actions",
+                    $"management-staff-details-{target.employeeId}",
+                    () => ToggleExpanded(expandedStaff, target.employeeId));
+                if (!detailsExpanded)
+                {
+                    continue;
+                }
+
+                VisualElement details = AddManagementDetail(card);
+                AddManagementCopy(
+                    details,
+                    $"{target.trait}   •   Skill {target.skill}/100   •   " +
+                    $"Reliability {target.reliability}/100   •   Morale {target.satisfaction}/100");
+                VisualElement detailActions = AddManagementRow(details);
+                AddManagementButton(
+                    detailActions,
                     $"Train · {FormatCents(PortfolioProgressionRules.TrainingCostCents)}",
                     $"management-train-{target.employeeId}",
                     () => portfolio.TryTrainEmployee(target.employeeId, out _));
                 if (target.role != PortfolioEmployeeRole.Manager)
                 {
                     AddManagementButton(
-                        actionRow,
-                        $"Promote · {FormatCents(PortfolioProgressionRules.PromotionCostCents)}",
+                        detailActions,
+                        $"Promote to manager · {FormatCents(PortfolioProgressionRules.PromotionCostCents)}",
                         $"management-promote-{target.employeeId}",
                         () => portfolio.TryPromoteEmployeeToManager(
                             target.employeeId,
@@ -1038,8 +1220,8 @@ namespace Margins
                 {
                     PortfolioLocationSnapshot destination = other;
                     AddManagementButton(
-                        actionRow,
-                        $"Assign to {destination.displayName}",
+                        detailActions,
+                        $"Move to {destination.displayName}",
                         $"management-assign-{target.employeeId}-{destination.locationId}",
                         () => portfolio.TryReassignEmployee(
                             target.employeeId,
@@ -1061,17 +1243,17 @@ namespace Margins
                 return;
             }
 
-            AddManagementSection("AVAILABLE PEOPLE");
+            AddManagementSection("PEOPLE AVAILABLE TO HIRE");
             foreach (PortfolioCandidateDefinition candidate in candidates)
             {
                 PortfolioCandidateDefinition target = candidate;
                 VisualElement card = AddManagementCard(
                     $"{target.DisplayName} · {FriendlyRole(target.Role)}",
-                    $"{target.Trait}   •   Skill {target.Skill}   •   Reliability {target.Reliability}   •   " +
-                    $"{FormatCents(target.DailyWageCents)}/day");
+                    $"{target.Trait}   •   Skill {target.Skill}/100   •   " +
+                    $"Reliability {target.Reliability}/100   •   {FormatCents(target.DailyWageCents)} each day worked");
                 AddManagementButton(
                     AddManagementRow(card),
-                    $"Hire here · {FormatCents(target.HiringCostCents)}",
+                    $"Hire for {selected.displayName} · {FormatCents(target.HiringCostCents)}",
                     $"management-hire-{target.EmployeeId}",
                     () => portfolio.TryHireCandidate(
                         target.EmployeeId,
@@ -1107,11 +1289,11 @@ namespace Margins
 
         private void BuildManagementPolicies(PortfolioLocationSnapshot location)
         {
-            AddManagementSection("PRICING & PROCUREMENT");
+            AddManagementSection("PRICES & STOCK");
             VisualElement commerce = AddManagementCard(
                 location.displayName,
-                "Policies remain provisional and feed the same detailed and aggregate business authorities.");
-            AddManagementCopy(commerce, "Pricing", "management-policy-value");
+                "Set the store's general price position and how much backup stock it should keep.");
+            AddManagementCopy(commerce, "Price approach", "management-policy-value");
             VisualElement pricing = AddManagementRow(commerce);
             foreach (PortfolioPricingPolicy value in
                      Enum.GetValues(typeof(PortfolioPricingPolicy)))
@@ -1119,7 +1301,7 @@ namespace Margins
                 PortfolioPricingPolicy policy = value;
                 AddManagementButton(
                     pricing,
-                    policy.ToString(),
+                    FriendlyPricingPolicy(policy),
                     $"management-pricing-{policy.ToString().ToLowerInvariant()}",
                     () => portfolio.TrySetPricingPreset(
                         location.locationId,
@@ -1127,7 +1309,7 @@ namespace Margins
                         out _),
                     location.pricingPolicy == policy);
             }
-            AddManagementCopy(commerce, "Reorder target", "management-policy-value");
+            AddManagementCopy(commerce, "Stock approach", "management-policy-value");
             VisualElement reorder = AddManagementRow(commerce);
             foreach (PortfolioReorderPolicy value in
                      Enum.GetValues(typeof(PortfolioReorderPolicy)))
@@ -1135,7 +1317,7 @@ namespace Margins
                 PortfolioReorderPolicy policy = value;
                 AddManagementButton(
                     reorder,
-                    policy.ToString(),
+                    FriendlyReorderPolicy(policy),
                     $"management-reorder-{policy.ToString().ToLowerInvariant()}",
                     () => portfolio.TrySetReorderPolicy(
                         location.locationId,
@@ -1145,7 +1327,7 @@ namespace Margins
             }
             AddManagementButton(
                 AddManagementRow(commerce),
-                "Place owner reorder",
+                "Order stock now",
                 "management-owner-reorder",
                 () => portfolio.TryPlaceManualPurchaseOrder(
                     location.locationId,
@@ -1160,14 +1342,14 @@ namespace Margins
             if (activeOrder != null)
             {
                 VisualElement order = AddManagementCard(
-                    "Active purchase order",
-                    $"{activeOrder.orderId}   •   {activeOrder.status}   •   due tick {activeOrder.fulfillAtTick}");
+                    "Stock order",
+                    PurchaseOrderMessage(activeOrder.status));
                 if (activeOrder.status == PurchaseOrderStatus.Pending)
                 {
                     string orderId = activeOrder.orderId;
                     AddManagementButton(
                         AddManagementRow(order),
-                        "Cancel pending order",
+                        "Cancel order and refund payment",
                         $"management-cancel-order-{orderId}",
                         () => portfolio.TryCancelPurchaseOrder(
                             orderId,
@@ -1178,15 +1360,15 @@ namespace Margins
 
             PortfolioDelegationPolicySnapshot policyState =
                 location.delegationPolicy;
-            AddManagementSection("MANAGER AUTHORITY & BUDGET");
+            AddManagementSection("WHAT YOUR MANAGER CAN HANDLE");
             VisualElement authority = AddManagementCard(
-                "Delegated authority",
-                "Choose what the manager may resolve without owner intervention. Alerts remain visible when authority or budget blocks action.");
+                "Manager decisions",
+                "Allow routine decisions here. If a manager lacks permission or money, the phone will ask you instead.");
             VisualElement authorityRow = AddManagementRow(authority);
             AddPolicyToggle(
                 authorityRow,
                 location,
-                "Purchasing",
+                "Buy stock",
                 "purchase-authority",
                 policyState.managerCanPurchase,
                 policy => policy.managerCanPurchase =
@@ -1194,20 +1376,20 @@ namespace Margins
             AddPolicyToggle(
                 authorityRow,
                 location,
-                "Maintenance",
+                "Approve repairs",
                 "maintenance-authority",
                 policyState.managerCanAuthorizeMaintenance,
                 policy => policy.managerCanAuthorizeMaintenance =
                     !policy.managerCanAuthorizeMaintenance);
             AddManagementCopy(
                 authority,
-                $"Daily delegated spending limit: {FormatCents(policyState.dailySpendingLimitCents)}",
+                $"Manager can spend up to {FormatCents(policyState.dailySpendingLimitCents)} per day",
                 "management-policy-value");
             VisualElement budget = AddManagementRow(authority);
             AddPolicyChange(
                 budget,
                 location,
-                $"− {FormatCents(PolicyBudgetStepCents)}",
+                $"Lower to {FormatCents(Math.Max(0, policyState.dailySpendingLimitCents - PolicyBudgetStepCents))}",
                 "budget-decrease",
                 policy => policy.dailySpendingLimitCents = Math.Max(
                     0,
@@ -1216,7 +1398,7 @@ namespace Margins
             AddPolicyChange(
                 budget,
                 location,
-                $"+ {FormatCents(PolicyBudgetStepCents)}",
+                $"Raise to {FormatCents(policyState.dailySpendingLimitCents <= long.MaxValue - PolicyBudgetStepCents ? policyState.dailySpendingLimitCents + PolicyBudgetStepCents : long.MaxValue)}",
                 "budget-increase",
                 policy => policy.dailySpendingLimitCents =
                     policy.dailySpendingLimitCents <=
@@ -1226,12 +1408,29 @@ namespace Margins
                         : long.MaxValue,
                 enabled: policyState.dailySpendingLimitCents < long.MaxValue);
 
-            AddManagementSection("OPERATING STANDARDS");
+            AddManagementSection("STORE STANDARDS");
             VisualElement standards = AddManagementCard(
-                "Owner standards",
-                "Standards create understandable exceptions; they do not fabricate final balance targets.");
+                "When should the phone alert you?",
+                $"Current targets: service {policyState.minimumServiceQuality}/100, " +
+                $"products available {policyState.minimumProductAvailabilityBasisPoints / 100f:0.#}%, " +
+                $"store condition {policyState.minimumMaintenanceCondition}/100.");
+            AddManagementButton(
+                AddManagementRow(standards),
+                operatingStandardsExpanded ? "Hide standards" : "Adjust standards",
+                "management-toggle-standards",
+                () =>
+                {
+                    operatingStandardsExpanded = !operatingStandardsExpanded;
+                    Refresh();
+                });
+            if (!operatingStandardsExpanded)
+            {
+                return;
+            }
+
+            VisualElement standardDetails = AddManagementDetail(standards);
             AddStandardControl(
-                standards,
+                standardDetails,
                 location,
                 "Service quality",
                 policyState.minimumServiceQuality,
@@ -1242,7 +1441,7 @@ namespace Margins
                 (policy, value) => policy.minimumServiceQuality = value,
                 value => $"{value}/100");
             AddStandardControl(
-                standards,
+                standardDetails,
                 location,
                 "Product availability",
                 policyState.minimumProductAvailabilityBasisPoints,
@@ -1254,7 +1453,7 @@ namespace Margins
                     policy.minimumProductAvailabilityBasisPoints = value,
                 value => $"{value / 100f:0.#}%");
             AddStandardControl(
-                standards,
+                standardDetails,
                 location,
                 "Maintenance condition",
                 policyState.minimumMaintenanceCondition,
@@ -1265,8 +1464,8 @@ namespace Margins
                 (policy, value) => policy.minimumMaintenanceCondition = value,
                 value => $"{value}/100");
 
-            AddManagementCopy(standards, "Maintenance policy", "management-policy-value");
-            VisualElement maintenance = AddManagementRow(standards);
+            AddManagementCopy(standardDetails, "Repair approach", "management-policy-value");
+            VisualElement maintenance = AddManagementRow(standardDetails);
             foreach (PortfolioMaintenancePolicy value in
                      Enum.GetValues(typeof(PortfolioMaintenancePolicy)))
             {
@@ -1274,7 +1473,7 @@ namespace Margins
                 AddPolicyChange(
                     maintenance,
                     location,
-                    maintenancePolicy.ToString(),
+                    FriendlyMaintenancePolicy(maintenancePolicy),
                     $"maintenance-{maintenancePolicy.ToString().ToLowerInvariant()}",
                     policy => policy.maintenancePolicy = maintenancePolicy,
                     selected: policyState.maintenancePolicy == maintenancePolicy);
@@ -1292,7 +1491,7 @@ namespace Margins
             AddPolicyChange(
                 row,
                 location,
-                $"{label}: {(enabledValue ? "Allowed" : "Owner only")}",
+                $"{label}: {(enabledValue ? "Manager can decide" : "Ask me")}",
                 suffix,
                 change,
                 selected: enabledValue);
@@ -1346,7 +1545,7 @@ namespace Margins
             AddPolicyChange(
                 row,
                 location,
-                $"− {format(step)}",
+                $"Lower to {format(Math.Max(minimum, current - step))}",
                 $"{suffix}-decrease",
                 policy => assign(
                     policy,
@@ -1355,7 +1554,7 @@ namespace Margins
             AddPolicyChange(
                 row,
                 location,
-                $"+ {format(step)}",
+                $"Raise to {format(Math.Min(maximum, current + step))}",
                 $"{suffix}-increase",
                 policy => assign(
                     policy,
@@ -1366,7 +1565,8 @@ namespace Margins
         private void BuildManagementLocations(
             PortfolioProgressionSnapshot snapshot)
         {
-            AddManagementSection("CURRENT LOCATIONS");
+            AddManagementSection("YOUR STORES");
+            string activeLocationId = portfolio.ActiveDetailedSimulationLocationId;
             foreach (PortfolioLocationSnapshot location in snapshot.locations
                          .OrderBy(value =>
                              value.displayName,
@@ -1384,14 +1584,24 @@ namespace Margins
                     StringComparison.Ordinal));
                 VisualElement card = AddManagementCard(
                     target.displayName,
-                    $"{target.districtName}   •   {(property == null ? "Property unavailable" : property.tenure.ToString())}\n" +
+                    $"{target.districtName}   •   {FriendlyTenure(property)}\n" +
                     $"{target.marketSummary}\n" +
-                    $"Team {staff}   •   Inventory {target.inventoryUnits}/{target.inventoryCapacityUnits}   •   Rent {FormatCents(target.dailyRentCents)}/day");
+                    $"{staff} staff   •   Stock {target.inventoryUnits}/{target.inventoryCapacityUnits}   •   " +
+                    $"{FormatCents(target.dailyRentCents)} rent each day");
                 card.name = $"management-location-card-{target.locationId}";
+                bool isActive = string.Equals(
+                    activeLocationId,
+                    target.locationId,
+                    StringComparison.Ordinal);
+                AddNamedManagementCopy(
+                    card,
+                    isActive ? "YOU'RE HERE" : "AVAILABLE TO VISIT",
+                    $"management-location-state-{target.locationId}",
+                    "management-card-kicker");
                 VisualElement actions = AddManagementRow(card);
                 AddManagementButton(
                     actions,
-                    "Manage location",
+                    "Manage this store",
                     $"management-manage-location-{target.locationId}",
                     () =>
                     {
@@ -1400,11 +1610,20 @@ namespace Margins
                             out _);
                         SelectManagementPage(ManagementPage.Overview);
                     });
-                if (!portfolio.HasActiveDetailedSimulation)
+                if (isActive)
                 {
                     AddManagementButton(
                         actions,
-                        "Visit physically",
+                        $"Back to {target.displayName}",
+                        $"management-visit-{target.locationId}",
+                        ResumeManagement,
+                        primary: true);
+                }
+                else
+                {
+                    AddManagementButton(
+                        actions,
+                        $"Go to {target.displayName}",
                         $"management-visit-{target.locationId}",
                         () => portfolio.TryVisitLocation(
                             target.locationId,
@@ -1424,12 +1643,12 @@ namespace Margins
                         option.DisplayName,
                         StringComparer.Ordinal)
                     .ToArray();
-            AddManagementSection("AVAILABLE LEASES");
+            AddManagementSection("GROW THE BUSINESS");
             if (available.Length == 0)
             {
                 AddManagementCopy(
                     managementContent,
-                    "No additional approved vertical-slice locations are currently available.",
+                    "There are no more storefronts available to lease right now.",
                     "management-empty");
                 return;
             }
@@ -1443,11 +1662,13 @@ namespace Margins
                 VisualElement card = AddManagementCard(
                     target.DisplayName,
                     $"{target.DistrictName}\n{target.MarketSummary}\n" +
-                    $"Demand {target.BaseDemandUnits}   •   Competition {target.CompetitionIndex}/100   •   Rent {FormatCents(target.DailyRentCents)}/day\n" +
-                    $"Lease and opening inventory {FormatCents(committed)}");
+                    $"Expected demand {target.BaseDemandUnits} units a day   •   " +
+                    $"{CompetitionLabel(target.CompetitionIndex)} competition   •   " +
+                    $"{FormatCents(target.DailyRentCents)} rent each day\n" +
+                    $"Up-front total {FormatCents(committed)}, including opening stock");
                 AddManagementButton(
                     AddManagementRow(card),
-                    $"Lease and open · {FormatCents(committed)}",
+                    $"Lease {target.DisplayName} · {FormatCents(committed)}",
                     $"management-lease-{target.LocationId}",
                     () => portfolio.TryLeaseLocation(
                         target.LocationId,
@@ -1461,15 +1682,20 @@ namespace Margins
         {
             PortfolioConsolidatedReportSnapshot consolidated =
                 portfolio.Progression.CreateConsolidatedReport();
-            AddManagementSection("PORTFOLIO REPORT");
+            AddManagementSection("COMPANY AT A GLANCE");
             VisualElement portfolioReport = AddManagementCard(
-                $"Company through day {consolidated.day}",
-                $"Cash {FormatCents(consolidated.cashCents)}   •   Brands {consolidated.brandCount}   •   Locations {consolidated.locationCount}\n" +
-                $"Lifetime sales {FormatCents(consolidated.lifetimeGrossSalesCents)}   •   Operating costs {FormatCents(consolidated.lifetimeOperatingCostsCents)}   •   Profit {FormatCents(consolidated.lifetimeOperatingProfitCents)}\n" +
-                $"Properties {consolidated.leasedPropertyCount} leased / {consolidated.ownedPropertyCount} owned   •   Alerts {consolidated.openAlertCount} open / {consolidated.ownerAttentionAlertCount} owner attention");
+                $"Through Day {consolidated.day}",
+                $"Cash {FormatCents(consolidated.cashCents)}   •   " +
+                $"Total sales {FormatCents(consolidated.lifetimeGrossSalesCents)}   •   " +
+                $"Profit from operations {FormatCents(consolidated.lifetimeOperatingProfitCents)}\n" +
+                $"Company reputation {snapshot.companyReputation}/100   •   " +
+                $"{consolidated.locationCount} store" +
+                (consolidated.locationCount == 1 ? string.Empty : "s") +
+                $"   •   {consolidated.leasedPropertyCount} leased properties   •   " +
+                $"{consolidated.ownedPropertyCount} owned   •   {consolidated.openAlertCount} open alerts");
             portfolioReport.name = "management-portfolio-report";
 
-            AddManagementSection("LOCATION REPORTS");
+            AddManagementSection("STORE RESULTS");
             foreach (PortfolioLocationSnapshot location in snapshot.locations
                          .OrderBy(value =>
                              value.displayName,
@@ -1487,15 +1713,44 @@ namespace Margins
 
                 PortfolioLocationReportSnapshot report = location.lastReport;
                 VisualElement locationReport = AddManagementCard(
-                    $"{location.displayName} · Day {report.day} · " +
-                    (report.isDetailedOperation ? "Detailed" : "Delegated"),
-                    $"Sales {FormatCents(report.grossSalesCents)}   •   COGS {FormatCents(report.costOfGoodsSoldCents)}   •   Payroll {FormatCents(report.payrollCents)}   •   Rent {FormatCents(report.rentCents)}\n" +
-                    $"Operating profit {FormatCents(report.operatingProfitCents)}   •   Cash change {FormatCents(report.cashChangeCents)}\n" +
-                    $"Demand {report.unitsSold}/{report.demandUnits} sold, {report.lostDemandUnits} lost   •   Ending inventory {report.endingInventoryUnits}\n" +
-                    $"Service {report.serviceQuality}/100   •   Satisfaction {report.customerSatisfaction}/100   •   Availability {report.productAvailabilityBasisPoints / 100f:0.#}%   •   Maintenance {report.maintenanceCondition}/100\n" +
-                    $"Primary cause: {report.primaryCause}");
+                    $"{location.displayName} · Day {report.day}",
+                    $"{ReportModeLabel(report)}\n" +
+                    $"Sales {FormatCents(report.grossSalesCents)}   •   " +
+                    $"Profit from operations {FormatCents(report.operatingProfitCents)}\n" +
+                    report.primaryCause);
                 locationReport.name =
                     $"management-location-report-{location.locationId}";
+                bool expanded = expandedReports.Contains(location.locationId);
+                AddManagementButton(
+                    AddManagementRow(locationReport),
+                    expanded ? "Hide breakdown" : "Show breakdown",
+                    $"management-report-details-{location.locationId}",
+                    () => ToggleExpanded(
+                        expandedReports,
+                        location.locationId));
+                if (!expanded)
+                {
+                    continue;
+                }
+
+                VisualElement detail = AddManagementDetail(locationReport);
+                detail.name =
+                    $"management-location-report-detail-{location.locationId}";
+                AddManagementCopy(
+                    detail,
+                    $"Product costs {FormatCents(report.costOfGoodsSoldCents)}   •   " +
+                    $"Staff pay {FormatCents(report.payrollCents)}   •   " +
+                    $"Rent {FormatCents(report.rentCents)}   •   " +
+                    $"Cash change {FormatCents(report.cashChangeCents)}\n" +
+                    $"Sold {report.unitsSold} of {report.demandUnits} requested units   •   " +
+                    $"Missed {report.lostDemandUnits} sales   •   " +
+                    $"Ended with {report.endingInventoryUnits} units in stock\n" +
+                    $"Service {report.serviceQuality}/100   •   " +
+                    $"Customer satisfaction {report.customerSatisfaction}/100   •   " +
+                    $"Products available {report.productAvailabilityBasisPoints / 100f:0.#}%   •   " +
+                    $"Product range match {report.productMixBasisPoints / 100f:0.#}%\n" +
+                    $"Store condition {report.maintenanceCondition}/100   •   " +
+                    $"Failure risk {report.failurePressure}/100");
             }
         }
 
@@ -1506,36 +1761,36 @@ namespace Margins
                 .OrderByDescending(alert => alert.severity)
                 .ThenBy(alert => alert.alertId, StringComparer.Ordinal)
                 .ToArray();
-            AddManagementSection($"OPEN EXCEPTIONS · {open.Length}");
+            AddManagementSection($"NEEDS ATTENTION · {open.Length}");
             if (open.Length == 0)
             {
                 AddManagementCopy(
                     managementContent,
-                    "No open operating exceptions. Resolved history remains below.",
+                    "Nothing at this store needs your attention right now.",
                     "management-empty");
             }
             foreach (PortfolioOperatingAlertSnapshot alert in open)
             {
                 PortfolioOperatingAlertSnapshot target = alert;
                 VisualElement card = AddManagementCard(
-                    $"{target.severity} · {target.problemTypeId}",
-                    target.summary,
+                    $"{FriendlyAlertSeverity(target.severity)} · {AlertTitle(target)}",
+                    PlayerFacingText(target.summary),
                     target.severity == PortfolioAlertSeverity.Critical
                         ? "management-card--critical"
                         : "management-card--warning");
                 AddManagementCopy(
                     card,
-                    $"Recovery: {target.recoveryAction}\n" +
-                    $"Opened day {target.openedDay}   •   " +
+                    $"What you can do: {PlayerFacingText(target.recoveryAction)}\n" +
+                    $"Open since Day {target.openedDay}   •   " +
                     (target.requiresOwnerAttention
-                        ? "Owner attention required"
-                        : "Manager-visible exception"));
+                        ? "Waiting for you"
+                        : "Your manager can see this"));
                 VisualElement actions = AddManagementRow(card);
                 if (!target.acknowledged)
                 {
                     AddManagementButton(
                         actions,
-                        "Acknowledge",
+                        "Mark as seen",
                         $"management-ack-{target.alertId}",
                         () => portfolio.TryAcknowledgeOperatingAlert(
                             location.locationId,
@@ -1547,15 +1802,14 @@ namespace Margins
 
             if (location.maintenanceCondition < 100)
             {
-                AddManagementSection("DIRECT RECOVERY");
+                AddManagementSection("REPAIR OPTION");
                 VisualElement maintenance = AddManagementCard(
-                    "Emergency maintenance",
-                    $"Current condition {location.maintenanceCondition}/100 and failure pressure {location.failurePressure}/100. " +
-                    "This action uses the existing provisional emergency cost and recovery profile.",
+                    "Repair the store now",
+                    $"Store condition is {location.maintenanceCondition}/100. Paying for an immediate repair improves it now and reduces the chance of another failure.",
                     "management-card--warning");
                 AddManagementButton(
                     AddManagementRow(maintenance),
-                    "Perform emergency maintenance",
+                    "Pay for immediate repair",
                     "management-emergency-maintenance",
                     () => portfolio.TryPerformEmergencyMaintenance(
                         location.locationId,
@@ -1572,12 +1826,29 @@ namespace Margins
             {
                 return;
             }
-            AddManagementSection($"RESOLVED HISTORY · {resolved.Length}");
+            AddManagementSection("PAST ALERTS");
+            VisualElement history = AddManagementCard(
+                $"{resolved.Length} resolved alert" +
+                (resolved.Length == 1 ? string.Empty : "s"),
+                "Past alerts are kept for reference and do not need action.");
+            AddManagementButton(
+                AddManagementRow(history),
+                resolvedAlertsExpanded ? "Hide past alerts" : "Show past alerts",
+                "management-toggle-resolved-alerts",
+                () =>
+                {
+                    resolvedAlertsExpanded = !resolvedAlertsExpanded;
+                    Refresh();
+                });
+            if (!resolvedAlertsExpanded)
+            {
+                return;
+            }
             foreach (PortfolioOperatingAlertSnapshot alert in resolved)
             {
                 AddManagementCard(
-                    $"Resolved day {alert.resolvedDay} · {alert.problemTypeId}",
-                    alert.summary);
+                    $"Resolved Day {alert.resolvedDay} · {AlertTitle(alert)}",
+                    PlayerFacingText(alert.summary));
             }
         }
 
@@ -1591,7 +1862,7 @@ namespace Margins
                 case "maintenance-pressure":
                     AddManagementButton(
                         row,
-                        "Emergency maintenance",
+                        "Repair store now",
                         $"management-recover-{alert.alertId}",
                         () => portfolio.TryPerformEmergencyMaintenance(
                             location.locationId,
@@ -1602,7 +1873,7 @@ namespace Margins
                 case "purchasing-authority":
                     AddManagementButton(
                         row,
-                        "Place owner reorder",
+                        "Order stock",
                         $"management-recover-{alert.alertId}",
                         () => portfolio.TryPlaceManualPurchaseOrder(
                             location.locationId,
@@ -1611,14 +1882,14 @@ namespace Margins
                 case "service-standard":
                     AddManagementButton(
                         row,
-                        "Open team controls",
+                        "Review staff",
                         $"management-recover-{alert.alertId}",
                         () => SelectManagementPage(ManagementPage.Team));
                     break;
                 default:
                     AddManagementButton(
                         row,
-                        "Open policy controls",
+                        "Review operations",
                         $"management-recover-{alert.alertId}",
                         () => SelectManagementPage(ManagementPage.Policies));
                     break;
@@ -1671,6 +1942,29 @@ namespace Margins
             parent.Add(label);
         }
 
+        private static void AddNamedManagementCopy(
+            VisualElement parent,
+            string text,
+            string name,
+            string className = "management-card-copy")
+        {
+            Label label = new(text)
+            {
+                name = name
+            };
+            label.AddToClassList(className);
+            parent.Add(label);
+        }
+
+        private static VisualElement AddManagementDetail(
+            VisualElement parent)
+        {
+            VisualElement detail = new();
+            detail.AddToClassList("management-detail");
+            parent.Add(detail);
+            return detail;
+        }
+
         private static VisualElement AddManagementRow(VisualElement parent)
         {
             VisualElement row = new();
@@ -1705,6 +1999,17 @@ namespace Margins
             return button;
         }
 
+        private void ToggleExpanded(
+            HashSet<string> expanded,
+            string key)
+        {
+            if (!expanded.Add(key))
+            {
+                expanded.Remove(key);
+            }
+            Refresh();
+        }
+
         private static string LocationDisplayName(
             PortfolioProgressionSnapshot snapshot,
             string locationId)
@@ -1727,9 +2032,198 @@ namespace Margins
                 PortfolioOperationsRules.AllDaysMask => "Every day",
                 0x1f => "Days 1–5",
                 0x60 => "Days 6–7",
-                _ => $"Custom mask {schedule.scheduledDayMask}"
+                _ => string.Join(
+                    ", ",
+                    Enumerable.Range(1, 7)
+                        .Where(day =>
+                            (schedule.scheduledDayMask & (1 << (day - 1))) != 0)
+                        .Select(day => $"Day {day}"))
             };
-            return days;
+            return string.IsNullOrWhiteSpace(days) ? "No scheduled days" : days;
+        }
+
+        private static string FriendlyTaskFocus(PortfolioTaskFocus focus)
+        {
+            return focus switch
+            {
+                PortfolioTaskFocus.Service => "Helping customers",
+                PortfolioTaskFocus.Inventory => "Stocking shelves",
+                PortfolioTaskFocus.Standards => "Cleaning and upkeep",
+                _ => "Balanced"
+            };
+        }
+
+        private static string FriendlyPricingPolicy(
+            PortfolioPricingPolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioPricingPolicy.Value => "Lower prices",
+                PortfolioPricingPolicy.Premium => "Higher margins",
+                _ => "Balanced"
+            };
+        }
+
+        private static string FriendlyReorderPolicy(
+            PortfolioReorderPolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioReorderPolicy.Lean => "Keep less back stock",
+                PortfolioReorderPolicy.Resilient => "Keep extra back stock",
+                _ => "Balanced"
+            };
+        }
+
+        private static string FriendlyMaintenancePolicy(
+            PortfolioMaintenancePolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioMaintenancePolicy.Deferred => "Repair when needed",
+                PortfolioMaintenancePolicy.Preventive => "Prevent problems",
+                _ => "Routine upkeep"
+            };
+        }
+
+        private static string FriendlyTenure(
+            PortfolioCommercialPropertySnapshot property)
+        {
+            if (property == null)
+            {
+                return "Property details unavailable";
+            }
+            return property.tenure == PortfolioPropertyTenure.Owned
+                ? "Owned property"
+                : "Leased storefront";
+        }
+
+        private static string CompetitionLabel(int competition)
+        {
+            return competition >= 67
+                ? "High"
+                : competition >= 34
+                    ? "Moderate"
+                    : "Low";
+        }
+
+        private static string HealthLabel(int value)
+        {
+            string label = value >= 80
+                ? "Good"
+                : value >= 60
+                    ? "Watch"
+                    : "Needs attention";
+            return $"{label} ({value}/100)";
+        }
+
+        private static string ReportModeLabel(
+            PortfolioLocationReportSnapshot report)
+        {
+            return report.isDetailedOperation
+                ? "Run while you were there"
+                : "Run by your staff";
+        }
+
+        private static string PurchaseOrderMessage(PurchaseOrderStatus status)
+        {
+            return status switch
+            {
+                PurchaseOrderStatus.Pending =>
+                    "Waiting for the supplier. You can still cancel for a refund.",
+                PurchaseOrderStatus.Fulfilled =>
+                    "The supplier has packed this order for delivery.",
+                PurchaseOrderStatus.Delivered =>
+                    "Delivered at the store. Receive the products there.",
+                PurchaseOrderStatus.PartiallyReceived =>
+                    "Some products were received. Finish receiving the rest at the store.",
+                PurchaseOrderStatus.Canceled => "This order was cancelled.",
+                _ => "This order has been received and stocked."
+            };
+        }
+
+        private static string FriendlyAlertSeverity(
+            PortfolioAlertSeverity severity)
+        {
+            return severity switch
+            {
+                PortfolioAlertSeverity.Critical => "Urgent",
+                PortfolioAlertSeverity.Warning => "Warning",
+                _ => "Heads-up"
+            };
+        }
+
+        private static string AlertTitle(PortfolioOperatingAlertSnapshot alert)
+        {
+            return alert.problemTypeId switch
+            {
+                "maintenance-pressure" => "Store condition is slipping",
+                "product-availability" => "Products are running out",
+                "purchasing-authority" => "Manager cannot order stock",
+                "spending-limit" => "Manager needs a larger budget",
+                "service-standard" => "Customer service is below target",
+                _ => "Store needs a decision"
+            };
+        }
+
+        private static string PlayerFacingText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "Ready.";
+            }
+            if (text.StartsWith(
+                    "Receive every unit in ",
+                    StringComparison.Ordinal) &&
+                text.EndsWith(
+                    " before leaving this detailed location.",
+                    StringComparison.Ordinal))
+            {
+                return "Receive every product in the delivered stock order before leaving this store.";
+            }
+
+            return text
+                .Replace("Live operation reconciled:", "Store totals updated:")
+                .Replace("COGS", "product costs")
+                .Replace(
+                    "Complete the hands-on first shift before delegating.",
+                    "Finish your first day in the store before ending it from the phone.")
+                .Replace(
+                    "Leave the active detailed location before advancing delegated simulation.",
+                    "Leave the active store before ending the day.")
+                .Replace(
+                    "Prove one delegated operating day before signing a second lease.",
+                    "Finish one day with staff running the first store before signing a second lease.")
+                .Replace(
+                    "The selected location is not an occupied business in this portfolio.",
+                    "That store is not open in your company.")
+                .Replace(
+                    "A valid persistent portfolio location is required.",
+                    "Choose one of your open stores.")
+                .Replace(" for the next operating day.", " for tomorrow.")
+                .Replace(
+                    " scheduled to operate while you are absent.",
+                    " scheduled for tomorrow.")
+                .Replace("scheduled payroll", "staff pay")
+                .Replace("base operating costs", "other operating costs")
+                .Replace("protected reserve", "minimum cash reserve")
+                .Replace("the owner's operating standard", "the target you set")
+                .Replace("the configured standard", "the target you set")
+                .Replace("Inventory reached its reorder point", "Stock is running low")
+                .Replace("purchasing authority", "permission to buy stock")
+                .Replace("The delegated spending limit", "The manager's spending limit")
+                .Replace("configured reorder", "stock order")
+                .Replace("maintenance response", "repair")
+                .Replace("intervene as owner", "handle it yourself")
+                .Replace("inventory staffing focus", "stocking focus")
+                .Replace("detailed location", "store")
+                .Replace("detailed operation", "in-store work")
+                .Replace("Company progression", "Company information")
+                .Replace("Company procurement", "Stock ordering")
+                .Replace("Purchase order location", "Store")
+                .Replace(
+                    "Current inventory already meets the configured reorder target.",
+                    "This store already has enough stock for its current setting.");
         }
 
         private static string FormatCents(long cents)
@@ -1782,6 +2276,7 @@ namespace Margins
                    bindingList == null || resetBindings == null ||
                    settingsBack == null || settingsApply == null ||
                    managementSummary == null || managementStatus == null ||
+                   managementPageTitle == null || managementPageHelp == null ||
                    managementContent == null ||
                    managementOverviewTab == null ||
                    managementTeamTab == null ||

@@ -234,6 +234,13 @@ namespace Margins.Tests
                 Is.True,
                 error);
             yield return null;
+            Assert.That(
+                root.Q<Button>("management-promote-employee-elena-ruiz"),
+                Is.Null,
+                "Staff development actions should remain behind progressive disclosure.");
+            Submit(root.Q<Button>(
+                "management-staff-details-employee-elena-ruiz"));
+            yield return null;
             Button promote = root.Q<Button>(
                 "management-promote-employee-elena-ruiz");
             Assert.That(promote, Is.Not.Null);
@@ -297,6 +304,11 @@ namespace Margins.Tests
                 "alert-location-mile-7-market-maintenance-pressure-999";
             Button acknowledge = root.Q<Button>($"management-ack-{alertId}");
             Assert.That(acknowledge, Is.Not.Null);
+            Assert.That(acknowledge.text, Is.EqualTo("Mark as seen"));
+            string alertText = AllText(root.Q("management-content"));
+            Assert.That(alertText, Does.Contain("Store condition is slipping"));
+            Assert.That(alertText, Does.Not.Contain("maintenance-pressure"));
+            Assert.That(alertText, Does.Not.Contain("OPEN EXCEPTIONS"));
             Submit(acknowledge);
             yield return null;
             Assert.That(
@@ -317,6 +329,10 @@ namespace Margins.Tests
             Assert.That(
                 portfolio.Progression.Locations.Single().maintenanceCondition,
                 Is.GreaterThan(conditionBeforeRecovery));
+            Assert.That(
+                root.Q<Button>("management-toggle-resolved-alerts"),
+                Is.Not.Null,
+                "Resolved alerts should remain available without filling the default alert view.");
 
             Submit(root.Q<Button>("management-overview-tab"));
             yield return null;
@@ -356,6 +372,165 @@ namespace Margins.Tests
             Assert.That(
                 root.Q("management-location-report-location-riverbend-market"),
                 Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator OwnerPhoneGuidesStoreClosureAndRevealsDetailsOnRequest()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+
+            CompleteManagementFirstShift(portfolio);
+            Object.FindAnyObjectByType<StoreCustomerFlowController>().enabled = false;
+            Object.FindAnyObjectByType<InStoreEmployeeWorkController>().enabled = false;
+            player.SetGameplayMode(false);
+            portfolio.enabled = false;
+            yield return null;
+            yield return null;
+
+            VisualElement root = presenter.Root;
+            Assert.That(root.Q<Label>("management-page-title").text,
+                Is.EqualTo("Today"));
+            Assert.That(root.Q<Button>("management-overview-tab").text,
+                Is.EqualTo("Home"));
+            Assert.That(root.Q<Button>("management-locations-tab").text,
+                Is.EqualTo("Stores"));
+            Assert.That(root.Q<Button>("management-team-tab").text,
+                Is.EqualTo("Staff"));
+            Assert.That(root.Q<Button>("management-policy-tab").text,
+                Is.EqualTo("Operations"));
+
+            Button endDay = root.Q<Button>("management-advance-overnight");
+            Assert.That(endDay.text, Is.EqualTo("End Day 1"));
+            Assert.That(endDay.enabledInHierarchy, Is.False);
+            string blocker = root.Q<Label>("management-end-day-blocker").text;
+            Assert.That(blocker, Does.Contain("leave the active store").IgnoreCase);
+            AssertPlayerFacingLanguage(root);
+
+            Submit(root.Q<Button>("management-leave-location"));
+            yield return null;
+            Assert.That(portfolio.HasActiveDetailedSimulation, Is.False);
+            HireCoreTeam(portfolio);
+            yield return null;
+
+            endDay = root.Q<Button>("management-advance-overnight");
+            Assert.That(endDay.enabledInHierarchy, Is.True);
+            int priorDay = portfolio.Progression.CurrentDay;
+            Submit(endDay);
+            yield return null;
+            Assert.That(portfolio.Progression.CurrentDay, Is.EqualTo(priorDay + 1));
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Contain("complete").IgnoreCase);
+
+            Submit(root.Q<Button>("management-reports-tab"));
+            yield return null;
+            const string firstLocationId =
+                PortfolioProgressionRules.FirstLocationId;
+            Assert.That(
+                root.Q($"management-location-report-detail-{firstLocationId}"),
+                Is.Null);
+            Submit(root.Q<Button>(
+                $"management-report-details-{firstLocationId}"));
+            yield return null;
+            VisualElement reportDetail = root.Q(
+                $"management-location-report-detail-{firstLocationId}");
+            Assert.That(reportDetail, Is.Not.Null);
+            Assert.That(AllText(reportDetail), Does.Contain("Product costs"));
+            AssertPlayerFacingLanguage(root);
+
+            Submit(root.Q<Button>("management-policy-tab"));
+            yield return null;
+            Assert.That(root.Q<Button>("management-service-decrease"), Is.Null);
+            Submit(root.Q<Button>("management-toggle-standards"));
+            yield return null;
+            Assert.That(root.Q<Button>("management-service-decrease"), Is.Not.Null);
+
+            Submit(root.Q<Button>("management-team-tab"));
+            yield return null;
+            Assert.That(
+                root.Q<Button>("management-train-employee-elena-ruiz"),
+                Is.Null);
+            Submit(root.Q<Button>(
+                "management-staff-details-employee-elena-ruiz"));
+            yield return null;
+            Assert.That(
+                root.Q<Button>("management-train-employee-elena-ruiz"),
+                Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator OwnerPhoneLeasesAndSwitchesStoresDirectly()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+
+            CompleteManagementFirstShift(portfolio);
+            Object.FindAnyObjectByType<StoreCustomerFlowController>().enabled = false;
+            Object.FindAnyObjectByType<InStoreEmployeeWorkController>().enabled = false;
+            player.SetGameplayMode(false);
+            portfolio.enabled = false;
+            yield return null;
+            yield return null;
+
+            VisualElement root = presenter.Root;
+            Submit(root.Q<Button>("management-leave-location"));
+            yield return null;
+            HireCoreTeam(portfolio);
+            Assert.That(
+                portfolio.TryAdvanceOvernight(out string overnightError),
+                Is.True,
+                overnightError);
+            yield return null;
+            Submit(root.Q<Button>("management-locations-tab"));
+            yield return null;
+            Submit(root.Q<Button>(
+                "management-lease-location-riverbend-market"));
+            yield return null;
+            Assert.That(portfolio.Progression.Locations.Count, Is.EqualTo(2));
+
+            Button riverbend = root.Q<Button>(
+                "management-visit-location-riverbend-market");
+            Assert.That(riverbend.text, Does.StartWith("Go to Riverbend"));
+            Submit(riverbend);
+            yield return null;
+            yield return null;
+            Assert.That(portfolio.ActiveDetailedSimulationLocationId,
+                Is.EqualTo("location-riverbend-market"));
+            Assert.That(player.IsGameplayMode, Is.True);
+
+            Press(keyboard.tabKey);
+            yield return null;
+            Release(keyboard.tabKey);
+            yield return null;
+            Assert.That(
+                root.Q<Label>(
+                    "management-location-state-location-riverbend-market").text,
+                Is.EqualTo("YOU'RE HERE"));
+            Button mileSeven = root.Q<Button>(
+                "management-visit-location-mile-7-market");
+            Assert.That(mileSeven.text, Does.StartWith("Go to Mile 7"));
+            Submit(mileSeven);
+            yield return null;
+            yield return null;
+            Assert.That(portfolio.ActiveDetailedSimulationLocationId,
+                Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
+            Assert.That(player.IsGameplayMode, Is.True);
         }
 
         [UnityTest]
@@ -566,6 +741,55 @@ namespace Margins.Tests
                 Is.True,
                 error);
             Assert.That(portfolio.Progression.FirstShiftCompleted, Is.True);
+        }
+
+        private static void HireCoreTeam(
+            PortfolioProgressionController portfolio)
+        {
+            foreach (string employeeId in new[]
+                     {
+                         "employee-elena-ruiz",
+                         "employee-marcus-reed",
+                         "employee-priya-shah"
+                     })
+            {
+                Assert.That(
+                    portfolio.TryHireCandidate(
+                        employeeId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        out string error),
+                    Is.True,
+                    error);
+            }
+        }
+
+        private static string AllText(VisualElement element)
+        {
+            return string.Join(
+                " ",
+                element.Query<TextElement>().ToList()
+                    .Select(value => value.text));
+        }
+
+        private static void AssertPlayerFacingLanguage(VisualElement root)
+        {
+            string text = AllText(root.Q("management-view"));
+            foreach (string backendTerm in new[]
+                     {
+                         "detailed simulation",
+                         "aggregate portfolio",
+                         "procurement",
+                         "COGS",
+                         "due tick",
+                         "problemTypeId",
+                         "vertical-slice"
+                     })
+            {
+                Assert.That(
+                    text,
+                    Does.Not.Contain(backendTerm).IgnoreCase,
+                    $"Player-facing management copy exposed backend term '{backendTerm}'.");
+            }
         }
 
         private static void Submit(Button button)
