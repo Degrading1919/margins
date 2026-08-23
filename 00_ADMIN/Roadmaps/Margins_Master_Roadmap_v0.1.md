@@ -2,86 +2,110 @@
 
 ## Status and authority
 
-- **Status:** Active planning baseline; progress synchronized August 6, 2026
+- **Status:** Active planning baseline; evidence-based reforecast proposed August 23, 2026
 - **Originally prepared:** July 27, 2026
-- **Last progress sync:** August 6, 2026
-- **Authority:** This roadmap sequences approved direction but does not outrank `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md` or approve unresolved features, technology, spending, dates, or scope changes.
-- **Approval:** The project owner must approve every material rebaseline.
-- **Schedule meaning:** All dates remain planning ranges, not release promises.
-- **Progress meaning:** A checked item is implemented or documented on merged `main`. An unchecked item remains incomplete or only partially implemented. A completed implementation item does not automatically pass its player-experience or milestone acceptance gate.
+- **Last progress sync:** August 23, 2026
+- **Last schedule reforecast:** August 23, 2026
+- **Authority:** This roadmap sequences approved direction but does not outrank `00_ADMIN/Decisions/Margins_Foundational_Decisions_v1.0.md` or later approved decisions.
+- **Approval:** The project owner approves material roadmap baselines, milestone acceptance, scope changes, spending, and release timing.
+- **Schedule meaning:** Dates are planning ranges based on observed throughput. They are not release promises.
+- **Progress meaning:** A checked item is implemented or documented on merged `main`. Open or unmerged PR work is identified separately and is not counted as completed.
 
-## Progress snapshot
+## Current progress snapshot
 
 | Stage | Current status | Evidence summary |
 |---|---|---|
 | 0 — Foundation and governance | **Complete** | Foundational decisions, synchronized pre-production direction, roles, skills, and source-of-truth hierarchy are merged. |
-| 1 — Technical requirements and shortlist | **Complete as amended** | Unity was selected by owner decision; the multi-engine execution plan was superseded by Amendment 001. |
-| 2 — Risk prototypes and engine selection | **Complete as amended** | Unity technical baseline and bootstrap standard are approved; the original multi-engine comparison is no longer authorized work. |
-| 3 — Production skeleton and pipelines | **Functionally complete** | Unity project, state boundaries, validation, tests, builds, persistence, graybox store, and evidence conventions are merged. Asset intake remains iterative. |
-| 4 — First-store hands-on loop | **Core implementation complete; acceptance gate pending continued playtesting** | Movement, receiving, stocking, checkout, cleaning, fixtures, store state, save/load, prompts, and error handling are merged. |
-| 5 — Store simulation, customers, employees, and economy | **In progress; major backend systems merged** | Autonomous customers, employees, manager work, demand, pricing, competition, payroll, reports, and persistence exist. Several depth and recovery items remain. |
-| 6 — Delegation, off-site simulation, second location, and reporting | **In progress; major backend systems merged** | Delegated simulation, policies, two locations, portfolio reports, and persistence exist. Travel, communication, schedules, and complete detailed-return flow remain. |
-| 7 — Presentation integration | **Preparation in progress** | Art direction, identity brief, asset budgets, provenance template, and Tripo prompting skill are merged; production content integration remains. |
-| 8–12 | **Not started as milestone phases** | Later hardening, external validation, commercial production, 1.0, and release work remain future stages. |
+| 1 — Technical requirements and shortlist | **Complete as amended** | Unity was selected by owner decision; the multi-engine execution plan was superseded. |
+| 2 — Risk prototypes and engine selection | **Complete as amended** | Unity 6.5 baseline, packages, tests, persistence proof, and Windows build path are established. |
+| 3 — Production skeleton and pipelines | **Functionally complete; production-content pipeline still maturing** | Runtime/data/test/save/build foundations, reusable business-operation boundaries, procedural commercial contracts, and procedural graybox generation are merged. |
+| 4 — First-store hands-on loop | **Core implementation complete; playtest refinement remains** | Receiving, stocking, exact-item checkout, cleaning, Build Mode, store operation, physical movement/navigation, persistence, procurement, merchandising, and durable settings/UI foundations are merged. |
+| 5 — Store simulation, customers, employees, and economy | **Substantially implemented; closeout and tuning remain** | Customers, employees, managers, demand, pricing, product mix, procurement, rent/payroll/operating costs, satisfaction/reputation inputs, reports, alerts, schedules, and persistence are implemented. |
+| 6 — Delegation, off-site simulation, location travel, and reporting | **Core backend and location handoff implemented; detailed generated-store expansion in review** | Delegated simulation, policies, schedules, portfolio/property state, detailed/aggregate reconciliation, generated persistent locations, and player Visit/Return flow are merged. PR #38 is in review for full detailed generated convenience-store simulation. |
+| 7 — Vertical-slice content and presentation integration | **Active production integration** | Art direction, asset ceilings, provenance structure, UI Toolkit foundation, Tripo workflow, source character work, a textured production prop, and procedural placeholder/content infrastructure exist; broad replacement of graybox content remains. |
+| 8 — Internal vertical-slice hardening and acceptance | **Formal milestone not started; continuous regression work already active** | Every major implementation increment is already carrying EditMode/PlayMode regression suites and Windows builds, but full-loop tuning, profiling, accessibility, provenance audit, and formal owner acceptance remain. |
+| 9–12 | **Not started as milestone phases** | External validation, commercial gate, broader 1.0 production, release-candidate work, and launch remain future stages. |
 
-## Merged progress evidence used for this sync
+## Evidence used for the August 23 reforecast
 
-- PR #11 — approved Unity foundation baseline and completed amended Stages 1 and 2;
-- PR #12 — implemented the Unity foundation spike with tests and a Windows build;
-- PR #20 — integrated the first-store interaction loop, fixture placement, persistence, and validation evidence;
-- PR #21 — documented the Mile 7 art, UI, and player-experience direction;
-- PR #22 — locked approved 3D asset budgets and provenance requirements;
-- PR #23 — added autonomous first-store customers using physical stock and authoritative checkout;
-- PR #24 — added the repository-local Tripo 3D prompting skill;
-- PR #25 — connected employees to the live store and extracted shared business-operation boundaries.
+### Repository throughput
 
-This synchronization records progress only. It does not approve a second business, final art, a new release date, or a revised full-project hour forecast.
+The repository was created on **July 27, 2026 at 00:04 UTC**. By the August 23 reforecast point:
+
+- `main` is **211 commits** ahead of the initial repository commit;
+- **29 pull requests have been merged**;
+- the project has moved from repository bootstrap to a tested Unity game foundation, physical first-store loop, autonomous customers, employees, procurement, merchandising, procedural commercial generation, persistent multi-location portfolio state, and generated-location travel;
+- PR #38 is active but unmerged and is therefore treated as in-flight evidence rather than completed scope.
+
+Commit and PR counts are throughput indicators, not effort estimates. Documentation commits, implementation commits, fixes, and merge commits do not carry equal production value.
+
+### Calendar milestone calibration
+
+Measured from repository creation:
+
+| Milestone | Observed completion |
+|---|---|
+| Unity selected | **12 hours 27 minutes** after repository creation |
+| Unity foundation baseline approved | **1 day 3 hours 43 minutes** |
+| Runnable Unity foundation spike merged | **1 day 12 hours 13 minutes** |
+| Integrated first-store playable loop merged | **9 days 23 hours 57 minutes** |
+| Autonomous customers, live employees, and shared business-operation foundation merged | **10 days 23 hours 23 minutes** |
+| Persistent procurement merged | **11 days 14 hours 26 minutes** |
+| Physical player/NPC navigation merged | **11 days 23 hours 22 minutes** |
+| Durable UI Toolkit/settings foundation merged | **12 days 15 hours 4 minutes** |
+| Player-controlled merchandising/pricing merged | **18 days 19 hours 29 minutes** |
+| Procedural commercial graybox generation merged | **27 days 2 hours 51 minutes** |
+| Persistent delegated portfolio/property backend merged | **27 days 12 hours 45 minutes** |
+| Persistent generated-location Visit/Return flow merged | **27 days 14 hours 18 minutes** |
+
+PR #12 also recorded a particularly useful implementation measurement: approximately **38 minutes from implementation start to a runnable Windows build** for the bounded Unity foundation spike. That is evidence of exceptional agent-assisted implementation velocity for tightly scoped engineering work, not a general estimate for art, tuning, or release production.
+
+### Reforecast interpretation
+
+The original roadmap assumed approximately **2,000–3,400 direct human hours** to an internally accepted vertical slice and placed that milestone in 2028. Current evidence disproves that estimate for Margins' engineering and documentation workflow.
+
+The reforecast therefore uses two different velocity classes:
+
+1. **Agent-heavy engineering, data, tests, and documentation:** measured in hours to days for many major bounded increments.
+2. **Human-bottleneck work:** art direction and final asset acceptance, 3D cleanup/integration, tactile playtesting, UX judgment, balancing, onboarding, audio, accessibility, external testing, and commercial presentation. These remain the dominant schedule risk.
+
+The schedule must not apply engineering velocity directly to final art, polish, balancing, or market validation.
 
 ---
 
-## Roadmap purpose
-
-This roadmap provides a dependency-aware path from the synchronized pre-production foundation to:
-
-1. an engine and technical foundation selected through evidence;
-2. a durable internal vertical slice proving the convenience-store owner-operator-to-portfolio loop;
-3. a public demo or controlled playtest;
-4. an evidence-based decision on paid Early Access or continued private production; and
-5. a complete premium 1.0 release meeting the approved minimum scope.
-
-The roadmap uses rolling-wave planning:
-
-- near-term work is described in the most detail;
-- work through the internal vertical slice is milestone-level but actionable;
-- work beyond public validation remains directional until earlier evidence exists.
-
-## Planning assumptions
-
-The planning baseline assumes:
-
-- PC-only development;
-- less than **$1,000** in total pre-revenue development spending unless the project owner approves a change;
-- approximately **20–30 direct human development hours per week**;
-- extensive agentic AI assistance for research, documentation, decomposition, code, data, testing, validation, and repetitive content work;
-- the project owner remains the decision-maker, integrator, playtester, and final acceptor;
-- no committed outside team, contractor capacity, publisher support, or external funding.
-
-The original 2,000–3,400-hour vertical-slice estimate and 2028 planning dates were produced before measured Unity and agent-assisted implementation velocity existed. They remain historical planning ranges until a separate owner-approved reforecast is completed.
-
----
-
-## Historical timeline scenarios — reforecast required
+## August 23, 2026 evidence-based timeline reforecast
 
 | Outcome | Aggressive case | Planning case | Conservative case |
 |---|---|---|---|
-| Engine and technical baseline | October 2026 | November–December 2026 | Q1 2027 |
-| First complete hands-on store loop | Q2 2027 | Q3 2027 | Q1 2028 |
-| Internal vertical slice | Q4 2027–Q1 2028 | Q2–Q3 2028 | H1 2029 |
-| Public demo or controlled playtest | Q2 2028 | Q4 2028–Q1 2029 | H2 2029 |
-| Possible paid Early Access | Q1 2029 | H2 2029 | 2030 or later |
-| Premium 1.0 | H2 2030 | 2031 | 2032–2034 |
+| Close remaining Stage 5/6 functional gaps and validate generated-location detailed play | **late Aug–early Sep 2026** | **Sep 2026** | **Oct 2026** |
+| Presentation-integrated vertical-slice candidate | **late Sep–Oct 2026** | **Oct–Nov 2026** | **Jan 2027** |
+| Internally accepted vertical slice | **Oct 2026** | **Nov–Dec 2026** | **Feb–Mar 2027** |
+| Public demo or controlled playtest | **Nov–Dec 2026** | **Jan–Mar 2027** | **Q2 2027** |
+| Commercial production / Early Access decision gate | **Q1 2027** | **Q2 2027** | **H2 2027** |
+| Possible paid Early Access, only if approved | **Q1–Q2 2027** | **Q3–Q4 2027** | **2028 or no Early Access** |
+| Premium 1.0 | **Q4 2027** | **Q2–Q3 2028** | **H1–H2 2029** |
 
-The engine baseline and much of the first-store implementation were completed substantially earlier than these scenarios predicted. Do not silently extrapolate that acceleration to final art, balancing, debugging, content production, external testing, or release work.
+### Confidence by horizon
+
+- **Stage 5/6 closeout:** high confidence because most required architecture and runtime systems already exist and are under active automated regression coverage.
+- **Internal vertical slice:** medium confidence. Presentation throughput, owner playtesting, onboarding, tuning, and final-asset integration now dominate the critical path.
+- **External validation:** medium-low confidence because test format, tester availability, feedback severity, and required iteration are not yet measured.
+- **1.0:** low confidence. The second business is intentionally unselected until vertical-slice validation, and production-scale city, property-development presentation, art/content volume, localization, accessibility, launch, and market feedback remain incompletely measured.
+
+### Remaining direct-human planning range to internal vertical-slice acceptance
+
+Actual direct human hours have not been consistently logged across the repository, so calendar throughput is better measured than labor throughput. For planning only, the remaining Stage 5–8 work is provisionally bounded at approximately **120–300 direct human hours**, concentrated in:
+
+- owner playtesting and bug disposition;
+- production asset creation, cleanup, integration, and acceptance;
+- presentation/UI/audio/onboarding work;
+- tuning, profiling, accessibility, and final vertical-slice QA.
+
+This range must be replaced with measured production-art and playtest throughput after Stage 7 has produced a coherent identity slice.
+
+### Superseded historical schedule
+
+The original roadmap forecast late-2026 engine selection, a Q3-2027 hands-on store loop, a Q2–Q3-2028 internal vertical slice, and approximately 2031 for 1.0. Those dates are retained only as historical estimation evidence and no longer govern planning.
 
 ---
 
@@ -91,18 +115,13 @@ The engine baseline and much of the first-store implementation were completed su
 
 **Status:** Complete, subject to normal maintenance
 
-### Completed work
-
 - [x] Approved foundational decisions
-- [x] Three-gate decisions and roles audit
-- [x] Synchronized project brief, pillars, scope, technical direction, content/commercial strategy, economy/progression direction, and art/audio/presentation direction
-- [x] Canonical roles and activation prompts
-- [x] Repository structure and role-versus-skill model
+- [x] Synchronized project brief, pillars, scope, technical, economy, content, and art direction
+- [x] Canonical assistant roles and operating standard
+- [x] Repository structure and source-of-truth hierarchy
 - [x] Repository-local workflow skills and skill catalog
 
-### Gate 0
-
-**Passed:** repository foundation is sufficiently aligned for technical and vertical-slice execution.
+**Gate 0:** Passed.
 
 ---
 
@@ -110,265 +129,225 @@ The engine baseline and much of the first-store implementation were completed su
 
 **Status:** Complete as amended by `Margins_Roadmap_Amendment_001_Unity_Selection_v0.1.md`
 
-The original multi-engine shortlist and comparison program was superseded when the project owner selected Unity.
+- [x] Define engine-evaluation criteria and constraints
+- [x] Bound candidate research
+- [x] Reject disproportionate multi-engine execution work
+- [x] Record the project owner's Unity selection
 
-### Required work
-
-- [x] Define engine-evaluation criteria and weighting
-- [x] Identify a bounded candidate shortlist
-- [x] Define prototype acceptance tests
-- [x] Define target development-machine and provisional player-hardware assumptions
-- [x] Identify licensing, deployment, asset, source-control, debugging, and build constraints
-- [x] Evaluate AI-agent workflow compatibility
-- [x] Define minimum engine-selection evidence
-- [x] Create the technical risk package
-- [x] Record the owner’s Unity decision and disposition of rejected execution paths
-
-### Gate 1
-
-**Passed through owner decision and Amendment 001.**
+**Gate 1:** Passed through owner decision and Amendment 001.
 
 ---
 
-## Stage 2 — Risk prototypes and engine selection
+## Stage 2 — Unity foundation and executable proof
 
-**Status:** Complete as amended
+**Status:** Complete
 
-The original requirement for equivalent Unreal Engine, Unity, and Godot implementation prototypes is not authorized. The approved replacement was a bounded Unity baseline followed by a Unity foundation spike.
-
-### Amended required work
-
-- [x] Record Unity as the approved engine
-- [x] Approve Unity 6000.5.5f1 and the initial package baseline
-- [x] Define repository, serialization, input, navigation, testing, render-pipeline, and Windows-build conventions
-- [x] Implement first-person movement and look
-- [x] Implement one data-defined product
-- [x] Implement pickup, rotation, shelf snapping, and placement feedback
-- [x] Implement versioned placement save/load validation
-- [x] Implement one placeholder navigation agent
-- [x] Run focused EditMode and PlayMode tests
-- [x] Produce and launch a Windows x64 build
+- [x] Approve Unity 6000.5.5f1 and initial package baseline
+- [x] Establish URP, Input System, AI Navigation, Unity Test Framework, source-control, and Windows-build conventions
+- [x] Implement first-person movement/look
+- [x] Implement data-defined product pickup, rotation, shelf snapping, and feedback
+- [x] Implement versioned placement persistence proof
+- [x] Implement navigation proof
+- [x] Run EditMode/PlayMode tests and a Windows build
 - [x] Confirm no project-blocking Unity limitation
 
-### Gate 2
-
-**Passed:** Unity is the production engine and the foundation spike was merged.
+**Gate 2:** Passed.
 
 ---
 
-## Stage 3 — Production skeleton, data contracts, and pipelines
+## Stage 3 — Production skeleton, contracts, and reusable foundations
 
-**Status:** Functionally complete; asset-pipeline refinement continues
+**Status:** Functionally complete; production asset pipeline refinement continues
 
-### Required work
+### Completed
 
-- [x] Establish engine-specific repository structure
-- [x] Define module and state-ownership boundaries
-- [x] Establish coding, data, test, and naming conventions
-- [x] Define product, fixture, employee, customer, location, operation, and business-state contracts
-- [x] Create schema validation and error reporting
-- [x] Establish save-versioning and compatibility conventions
-- [x] Establish reproducible automated tests and Windows build workflow
-- [ ] Complete the production asset intake, normalization, provenance, and Unity import pipeline for representative final assets
-- [x] Create a graybox test store and test block
-- [x] Create milestone evidence and defect-recording conventions
-- [x] Extract reusable business-operation recipes, station capacity, task progress, employee performance, and aggregate simulation profiles
+- [x] Engine-specific repository structure and assemblies
+- [x] State-ownership and reconciliation boundaries
+- [x] Product, fixture, checkout, inventory, employee, customer, location, operation, property, and portfolio contracts
+- [x] Validation, save-versioning, migration, test, and build conventions
+- [x] Reusable business-operation recipes, station capacity, task progress, employee-performance, and aggregate simulation profiles
+- [x] Approved six-inch fixture grid and structural dimensional conventions
+- [x] Approved architectural asset interface, building archetype, footprint/unit, and procedural interior rules
+- [x] Procedural asset category/business recipe contract
+- [x] Deterministic procedural commercial graybox generator for approved initial archetype implementations
+- [x] Persistent generator identity/seed/version/signature integrated into portfolio state
+- [x] Graybox test store and generated-location test coverage
 
-### Exit evidence
+### Remaining pipeline evidence
 
-- [x] Clean Unity project build
-- [x] Representative validated data loads correctly
-- [x] Graybox store saves and reloads
-- [x] Automated checks run reproducibly
-- [ ] One representative production-quality asset completes the full provenance-to-runtime pipeline and owner acceptance
-- [x] Architecture and decision records exist for major adopted choices
+- [ ] Complete a repeatable production-asset intake path with provenance, source asset, normalized export, Unity import, collider/material review, and owner acceptance
+- [ ] Demonstrate that path across enough asset classes to remove graybox replacement as a schedule unknown
 
-### Gate 3
+Current repository evidence includes source character work in `04_CONTENT_PRODUCTION` and a textured safety-bollard asset integrated into Unity, so production asset work has begun; this does not by itself close the complete asset-pipeline gate.
 
-**Functionally passed for vertical-slice implementation.** Final-asset pipeline acceptance remains a Stage 7 dependency rather than a blocker to continued systems work.
+**Gate 3:** Functionally passed for continued implementation. Production-content throughput remains a Stage 7 schedule dependency.
 
 ---
 
 ## Stage 4 — First-store hands-on operating loop
 
-**Status:** Core implementation complete; continued playtesting and bug fixing remain
+**Status:** Core implementation complete; owner-experience refinement remains
 
-### Required work
+### Completed implementation
 
-- [x] Player movement and interaction
-- [ ] Guided leasing and initial store preparation in simplified form
-- [x] Receiving deliveries and handling boxes
-- [x] Stocking snapped products onto valid fixtures
-- [x] Product and physical inventory state
-- [x] Checkout and exact-item scanning
-- [x] Cleaning and basic maintenance
-- [x] Grid-based fixture and equipment placement
-- [x] Opening and closing the store
-- [ ] Accelerated operational time and seamless overnight progression in minimum viable form
-- [x] Save and reload of player, layout, inventory, customers, employees, and store state
-- [x] Basic feedback, prompts, validation, and error recovery
-- [x] Autonomous customers that take real shelf units, queue, pay, abandon, and leave
+- [x] Player movement, sprint, jump, look, targeting, and interaction
+- [x] Receiving deliveries and handling/opening boxes
+- [x] Physical product inventory and stocking
+- [x] Exact-item checkout and completed-transaction ledger
+- [x] Cleaning and basic maintenance interaction
+- [x] Property-wide Build Mode with six-inch fixture grid, movement, rotation, collision, and save migration
+- [x] Opening/closing behavior and customer drain before final close
+- [x] Persistent procurement and recurring deliveries
+- [x] Player-controlled shelf merchandising and retail pricing
+- [x] Physical customer/employee navigation and fixture repathing
+- [x] Durable UI Toolkit menu/settings/rebinding foundation
+- [x] Save/load across first-store gameplay state without revenue replay
 
-### Exit evidence
+### Remaining Stage 4 work
 
-A player can currently:
+- [ ] Guided leasing and startup preparation in the minimum vertical-slice form
+- [ ] Minimum accelerated operational time / overnight progression where needed by the approved pacing model
+- [ ] Owner playtest refinement of movement, Build Mode, targeting, queueing, stocking, checkout, closing, and settings feel
+- [ ] Resolve regressions discovered by those playtests
 
-- [x] Enter the graybox first store
-- [x] Place and move essential fixtures
-- [x] Receive products
-- [x] Stock shelves
-- [x] Open the store
-- [x] Serve autonomous customers by scanning their exact physical items
-- [x] Clean the store
-- [x] Close the store after active customers resolve
-- [x] Save, exit, reload, and continue without replaying revenue
-
-### Gate 4
-
-**Implementation evidence exists.** The subjective hands-on acceptance gate remains open for continued owner playtesting, interaction refinement, and bug fixing; it does not require holding completed implementation PRs open.
+**Gate 4:** Implementation proof exists. Final subjective acceptance remains open until the owner accepts the hands-on loop after continued playtesting.
 
 ---
 
 ## Stage 5 — Store simulation, customers, employees, and economy
 
-**Status:** In progress; major backend systems are merged
+**Status:** Substantially implemented; closeout, recovery design, and tuning remain
 
-### Required work
+### Completed or materially proven
 
-- [x] Aggregate local demand model
-- [x] Instantiated nearby customers representing live demand
-- [ ] Complete satisfaction, reputation, pricing, product-mix, and service-quality effects across detailed and aggregate play
-- [x] Understandable local competition input in aggregate simulation
-- [ ] Complete revenue, inventory cost, rent, payroll, debt, and operating-expense depth
-- [ ] Expand visible failure pressure and designed recovery actions
-- [x] Persistent employee records
-- [ ] Complete hiring, scheduling, task assignment, reliability, skill, and satisfaction depth
-- [x] At least two worker roles
-- [x] Employee execution of tasks the player learned physically
-- [x] Basic manager role and bounded influence on detailed and aggregate work
-- [x] Actionable store and portfolio reporting with identified primary causes
-- [x] Scenario tests for economy, employees, inventory, checkout, abandonment, reporting, and persistence
-- [x] Shared employee-performance rules used by both detailed and aggregate simulation
+- [x] Aggregate demand and instantiated local customers
+- [x] Physical shelf-unit reservations, queueing, abandonment, exact-item sales, and no-stock handling
+- [x] Player-controlled prices and price-willingness effects
+- [x] Product-mix, availability, service-capacity, standards, satisfaction, and reputation inputs in delegated simulation
+- [x] Detailed/aggregate product-mix and satisfaction parity tests
+- [x] Local competition input
+- [x] Persistent employees with cashier, stock-clerk, and manager work
+- [x] Shared skill, reliability, focus, and manager-competence performance model
+- [x] Employee schedules and location assignments in portfolio state
+- [x] Rent, payroll, procurement, merchandise cost, base operating cost, maintenance pressure, sales, COGS, and profit reporting
+- [x] Deterministic operating alerts and bounded maintenance recovery actions
+- [x] Actionable location/portfolio reporting with causal inputs
+- [x] Extensive automated regression coverage for customers, employees, inventory, economy, persistence, and reports
 
-### Exit evidence
+### Remaining
 
-- [x] Outcomes can be traced to price, demand, stock, staffing, capacity, manager quality, or competition in the current aggregate model
-- [x] Cashier and stock-clerk roles perform meaningful live-store tasks
-- [x] Manager work affects standards and employee performance
-- [x] Employee state persists correctly
-- [ ] The player can recover from a defined set of operating failures through clear in-world or management actions
-- [x] Reports explain a primary cause rather than only totals
-- [ ] Detailed customer satisfaction and product-mix consequences are fully integrated and validated
+- [ ] Final vertical-slice tuning of demand, pricing, product mix, service quality, satisfaction, reputation, wages, costs, and failure thresholds
+- [ ] Complete the player-facing recovery loop for the failure cases chosen for the vertical slice
+- [ ] Complete any employee satisfaction/development behavior required by the accepted vertical-slice experience
+- [ ] Add startup debt or other financing only to the depth required by approved vertical-slice scope; do not expand into the later corporate-finance system
+- [ ] Owner playtest the causes and recoveries rather than relying only on deterministic tests
 
-### Gate 5
-
-**Not yet passed.** The first location has a coherent operating backbone, but failure recovery, detailed satisfaction, product mix, scheduling, and economy depth remain incomplete.
+**Gate 5:** Expected to close during the September 2026 planning window if playtesting does not reveal a foundational economy or employee-design problem.
 
 ---
 
-## Stage 6 — Delegation, off-site simulation, second location, and portfolio reporting
+## Stage 6 — Delegation, off-site simulation, generated locations, and portfolio reporting
 
-**Status:** In progress; major backend systems are merged
+**Status:** Core backend and physical handoff implemented; player-facing management depth and full generated-store detail are the remaining near-term work
 
-### Required work
+### Completed on merged `main`
 
-- [x] Manager appointment and basic authority
-- [ ] Complete remote prices, schedules, budgets, policies, and purchasing controls
-- [ ] Manager communication, alerts, and exceptions
-- [x] Aggregate off-site business simulation
-- [x] Detailed and aggregate financial reconciliation without duplicate sales or inventory
-- [x] Second convenience-store location options with different market conditions
-- [x] Local market differences and competition inputs
-- [x] Combined location and portfolio reporting
-- [ ] Travel between locations through the approved traversal boundary
-- [ ] Physical intervention at either location where remote control is insufficient
-- [x] Persistence across company, employees, policies, reports, and two-location state
-- [x] Reusable simulation profiles that avoid convenience-store literals in shared aggregate rules
+- [x] Manager appointment and bounded authority
+- [x] Delegated aggregate simulation
+- [x] Location policies for purchasing, pricing/reorder behavior, operating standards, maintenance authority, and spending limits
+- [x] Employee schedules and assignments
+- [x] Deterministic alerts/exceptions and acknowledgement state
+- [x] Detailed/aggregate financial and inventory reconciliation without replay
+- [x] Persistent company, brand, business-location, property, and commercial-unit identity graph
+- [x] Leased/owned tenure, property acquisition, unit improvements, vacant units, and multiple-brand/multi-property structural support
+- [x] Removal of the hard two-location portfolio count cap
+- [x] Deterministic persistent procedural-location materialization
+- [x] Player-facing management Visit/Return flow into generated locations
+- [x] Physical checkout in a generated location using existing authoritative first-store systems
+- [x] Leave → aggregate operation → deterministic return → additional physical sale without duplicate cash or inventory
+- [x] Consolidated location/portfolio reports and persistence
 
-### Exit evidence
+### In review, not yet counted as complete
 
-The current backend supports:
+PR #38 proposes full detailed simulation in generated convenience stores, including generated-location customers, employee work, physical deliveries/stocking, cleaning, runtime NavMesh, operating controls, and isolation across multiple generated stores. Until merged, these remain in-flight evidence.
 
-- [x] Operating the first store personally
-- [x] Hiring, training, promoting, focusing, and assigning employees
-- [x] Appointing a manager
-- [x] Setting pricing and reorder policies
-- [x] Opening a second location
-- [x] Advancing delegated operating days
-- [x] Applying manager quality and employee focus to aggregate results
-- [x] Comparing locations through reports
-- [ ] Traveling to and physically operating both locations through a coherent detailed-state transition
-- [x] Saving and restoring the two-location portfolio state
+### Remaining after the current generated-store work
 
-### Gate 6
+- [ ] Complete player-facing management UI for schedules, delegation standards, alerts/exceptions, and remaining policy/budget controls
+- [ ] Define and implement the approved minimum travel presentation beyond the current immediate management transition only if needed for vertical-slice acceptance
+- [ ] Resolve safe save/load behavior while physically visiting a generated location or explicitly keep the current leave-before-save restriction for the slice
+- [ ] Owner-playtest physical intervention, location switching, reporting, and detailed/aggregate continuity
 
-**Not yet passed.** The portfolio backend is substantially proven, but physical travel, detailed return at both locations, management communications, schedules, budgets, and complete intervention flow remain.
+**Gate 6:** Planning target is September 2026. The backend is no longer the principal vertical-slice schedule risk.
 
 ---
 
 ## Stage 7 — Vertical-slice content and presentation integration
 
-**Status:** Preparation in progress; production integration remains
+**Status:** Active production integration; now the principal critical-path risk
 
-### Completed preparation
+### Foundation already complete
 
-- [x] Approved Stylized Contemporary Americana direction
-- [x] Mile 7 identity-slice and art/UI review documents
-- [x] Approved 3D asset technical ceilings and collider rules
-- [x] Asset provenance ledger template
-- [x] Tripo 3D prompting skill with fact-verification requirements
-- [x] Player-experience direction for targeting, physical deliveries, item scanning, seamless operation, and non-blocking reports
+- [x] Stylized Contemporary Americana direction
+- [x] Mile 7 identity-slice and art/UI review
+- [x] Approved 3D asset ceilings and collider rules
+- [x] Asset provenance ledger structure
+- [x] Tripo 3D prompting workflow
+- [x] Durable UI Toolkit runtime foundation
+- [x] Approved procedural architectural dimensions, interfaces, archetypes, and business asset categories
+- [x] Initial production source character work in repository
+- [x] Initial textured environmental prop integrated into Unity
+- [x] Procedural placeholder asset library and generated commercial-layout infrastructure
 
-### Required integration work
+### Required vertical-slice integration
 
-- [ ] One compact authored commercial block
-- [ ] Two visually and economically distinct convenience-store locations
-- [ ] Original implementation of approved visual-reference responsibilities
-- [ ] Modular store, fixture, product, prop, employee, customer, signage, and environment assets
-- [ ] Fictional brands and packaging sufficient for the slice
-- [ ] Lighting, color, atmosphere, silhouettes, and readability
-- [ ] Minimum viable character animation and interaction feedback
-- [ ] Initial ambience and functional audio integrated with production presentation
-- [ ] Onboarding and guided-startup presentation
-- [ ] Production UI across store operation, management, alerts, and reports
-- [ ] Completed asset provenance, licensing, attribution, and AI-involvement records for integrated assets
+- [ ] Replace identity-critical graybox architecture and fixtures with approved production assets
+- [ ] Complete two visually and economically distinct convenience-store locations using the same business foundation
+- [ ] Integrate representative customer and employee character assets, animation, and readable interaction feedback
+- [ ] Build fictional convenience-store brands, products, packaging, signs, and merchandising sufficient for the slice
+- [ ] Establish lighting, color, atmosphere, silhouettes, and day/time presentation appropriate to the approved visual direction
+- [ ] Integrate initial ambience, functional audio, and feedback audio
+- [ ] Complete guided startup/onboarding presentation
+- [ ] Complete production UI for store operation, management, schedules/policies/alerts, and reports
+- [ ] Complete provenance, licensing, attribution, and AI-involvement records for shipped vertical-slice assets
+- [ ] Measure production-asset throughput and use it to replace the provisional Stage 7 estimate
 
-### Gate 7
+**Gate 7:** A coherent identity slice must make Margins look and feel like a game rather than a systems-heavy graybox while preserving the proven runtime foundation.
 
-**Not yet passed:** the current build remains a systems-heavy prototype and has not reached presentation coherence.
+**Planning window:** October–November 2026; this is the largest source of variance in the internal vertical-slice forecast.
 
 ---
 
 ## Stage 8 — Internal vertical-slice hardening and acceptance
 
-**Status:** Not started as a milestone phase
+**Status:** Formal milestone not started; continuous regression discipline is already active
 
 ### Required work
 
-- [ ] Full-loop internal playthroughs
-- [ ] Defect triage and regression coverage
+- [ ] At least three complete internal playthroughs through stable multi-location delegation
+- [ ] Defect triage and regression coverage for discovered failures
 - [ ] Save corruption, restore, transition, and migration testing at vertical-slice scale
-- [ ] Detailed-versus-aggregate parity testing
+- [ ] Detailed/aggregate parity testing at accepted tuning values
 - [ ] Economy and progression tuning
-- [ ] Onboarding, controls, feedback, and report usability testing
+- [ ] Onboarding, controls, feedback, management UI, and report usability testing
 - [ ] Navigation, performance, memory, and load-time profiling
 - [ ] Accessibility-risk review and minimum requirements
-- [ ] Scope audit against approved commitments
-- [ ] Asset-provenance and licensing audit
+- [ ] Scope audit against approved vertical-slice commitments
+- [ ] Asset provenance/licensing audit
 - [ ] Known-limitations and deferred-work record
 
-### Proposed acceptance evidence
+### Acceptance evidence
 
-- [ ] At least three complete internal playthroughs through stable two-location delegation
 - [ ] No unresolved blocker involving save integrity, portfolio correctness, or core progression
 - [ ] Major failures have reproducible cases and dispositions
-- [ ] A new tester can understand the operating loop and major causes of success or failure
-- [ ] The owner confirms the hands-on, delegation, and portfolio layers are enjoyable enough to continue
-- [ ] Every approved vertical-slice commitment is demonstrated or returned for owner disposition
+- [ ] A new tester can understand the operating loop and major causes of success/failure
+- [ ] Detailed and aggregate operation reconcile across the accepted location flow
+- [ ] The owner confirms hands-on operation, delegation, expansion, and reporting are enjoyable enough to proceed
+- [ ] Every approved vertical-slice commitment is demonstrated or explicitly returned for owner disposition
 
-### Gate 8
+**Gate 8:** Internal Vertical Slice Accepted.
 
-**Internal Vertical Slice Accepted:** the project owner formally accepts, revises, or rejects the vertical slice based on evidence.
+**Planning window:** November–December 2026, with February–March 2027 retained as the conservative case if presentation or full-loop playtesting exposes major rework.
 
 ---
 
@@ -376,20 +355,18 @@ The current backend supports:
 
 **Status:** Not started
 
-### Required work
-
 - [ ] Choose controlled playtest versus public demo
 - [ ] Define target player profiles and questions
 - [ ] Harden distribution, crash reporting, feedback capture, and privacy practices
-- [ ] Improve onboarding and accessibility from observed failures
-- [ ] Prepare only required storefront and marketing material
+- [ ] Improve onboarding/accessibility from observed failures
+- [ ] Prepare only required storefront/marketing material
 - [ ] Collect behavioral, qualitative, defect, and retention evidence
-- [ ] Distinguish polish complaints from foundational design problems
-- [ ] Update risks, forecasts, and commercial assumptions
+- [ ] Separate polish complaints from foundational design problems
+- [ ] Reforecast commercial scope and schedule from external evidence
 
-### Gate 9
+**Gate 9 — Public Validation:** decide among continued private development, another test cycle, paid Early Access, redesign, or stop.
 
-**Public Validation:** decide among continued private development, another test cycle, paid Early Access, redesign, or project stop.
+**Planning window:** January–March 2027.
 
 ---
 
@@ -397,71 +374,64 @@ The current backend supports:
 
 **Status:** Not started
 
-### Decision options
+Decision options remain:
 
 1. enter paid Early Access;
 2. remain private and continue toward a larger release build;
-3. conduct another public validation cycle;
-4. reduce or restructure 1.0 scope through a new owner decision;
+3. conduct another validation cycle;
+4. reduce or restructure 1.0 scope through owner decision;
 5. pause or stop development.
 
-### Required evidence
+Required evidence includes product appeal, stability, content-production throughput, support burden, budget/runway, second-business and property forecast, pricing/storefront/legal/disclosure needs, and a revised schedule.
 
-- [ ] Product appeal and differentiation
-- [ ] Technical stability
-- [ ] Content-production throughput
-- [ ] Support burden
-- [ ] Budget and runway
-- [ ] Forecast for the second business and property systems
-- [ ] Pricing, storefront, legal, disclosure, marketing, and community requirements
-- [ ] Revised schedule scenarios
+**Gate 10 — Commercial Baseline Approved.**
 
-### Gate 10
-
-**Commercial Baseline Approved:** no paid product or public release commitment occurs without an approved decision record.
+**Planning window:** Q2 2027.
 
 ---
 
 ## Stage 11 — 1.0 production
 
-**Status:** Not started
+**Status:** Not started as a milestone phase; several reusable foundations already exist
 
-### Required approved minimum
+### Approved minimum
 
 - [ ] At least two complete business categories
 - [ ] Property ownership and development
 - [ ] Core holding-company progression
 - [ ] Premium single-player release of coherent quality
 
-### Directional workstreams
+### Foundation already available before Stage 11 begins
+
+The current repository has pulled forward several later foundations that the original roadmap assumed would be built much later:
+
+- reusable business-operation recipes and simulation profiles;
+- category/capability-based procedural business asset placement;
+- procedural commercial building/unit generation foundations;
+- persistent company/brand/location/property/unit identity graph;
+- property acquisition and unit-improvement state;
+- multi-location detailed/aggregate reconciliation;
+- portfolio reporting and generated-location materialization.
+
+These foundations reduce expected engineering cost but do not count as a finished second business, final property-development gameplay, final city, or release content.
+
+### Remaining directional work
 
 - [ ] Select the second business only after vertical-slice evidence
-- [ ] Implement the selected business through the shared operation foundation
+- [ ] Implement the selected business through the shared operation and procedural-content foundations
 - [ ] Deepen convenience-retail progression where evidence supports it
-- [ ] Implement property purchase, renovation, subdivision, and approved development depth
-- [ ] Implement company, brand, headquarters, and portfolio progression
-- [ ] Expand the city through handcrafted modular districts as required
-- [ ] Deepen economy, financing, administration, recovery, competitors, and endgame only when approved
+- [ ] Implement player-facing property purchase, renovation, subdivision, and approved development depth
+- [ ] Complete holding-company, brand, headquarters, and portfolio progression
+- [ ] Expand the city and commercial-property presentation to release scope
+- [ ] Deepen financing, competitors, recovery, administration, and endgame only where approved
 - [ ] Complete UX, accessibility, art, audio, performance, onboarding, localization, and release-quality work
-- [ ] Continuously validate detailed/aggregate parity, save migration, and content contracts
+- [ ] Continuously validate save migration and detailed/aggregate parity
 
-### Explicitly unassigned
+Explicitly unassigned until separately approved: drivable vehicles, detailed M&A milestone, public markets/IPO, public mod support, a third business category, multiplayer, full persistent city residents, unrestricted mixed-use/multi-story construction, and post-1.0 promises.
 
-The following remain outside the committed roadmap until separately approved:
+**Gate 11 — 1.0 Scope and Content Lock.**
 
-- drivable vehicles;
-- detailed mergers and acquisitions milestone;
-- public markets or IPOs;
-- public mod support or Workshop integration;
-- a third business category;
-- multiplayer;
-- full persistent city residents;
-- mixed-use or unrestricted multi-story construction;
-- post-1.0 expansion or sequel scope.
-
-### Gate 11
-
-**1.0 Scope and Content Lock:** approve final business, property, holding-company, city, content, accessibility, presentation, and launch requirements before release-candidate work.
+**Planning release window:** Q2–Q3 2028; aggressive Q4 2027; conservative H1–H2 2029.
 
 ---
 
@@ -469,59 +439,59 @@ The following remain outside the committed roadmap until separately approved:
 
 **Status:** Not started
 
-### Required work
-
-- [ ] Feature and content freeze
-- [ ] Save migration and backward-compatibility validation
+- [ ] Feature/content freeze
+- [ ] Save migration/backward-compatibility validation
 - [ ] Regression, performance, hardware, accessibility, onboarding, and balance testing
-- [ ] Licensing, provenance, attribution, AI disclosure, and storefront compliance review
+- [ ] Licensing/provenance/attribution/AI-disclosure/storefront compliance review
 - [ ] Pricing, marketing, support, patch, backup, and release-process preparation
 - [ ] Release-candidate signoff
 - [ ] Launch monitoring and bounded stabilization patches
 
-### Gate 12
-
-**Release Acceptance:** only the project owner approves the final build, price, storefront, date, and publication.
+**Gate 12 — Release Acceptance:** only the project owner approves the final build, price, storefront, date, and publication.
 
 ---
 
-# First execution-wave progress
+# Current execution wave — August through November 2026
 
-The original first 90-day plan was completed or overtaken much faster than forecast. The checklist below records its current disposition without creating a new schedule.
+The original 90-day plan has been overtaken. The next execution wave is now organized around the actual remaining critical path.
 
-## Original Weeks 1–2
+## August 23–September 13 — close the functional vertical slice
 
-- [x] Activate Technical Architect and Producer/Roadmap responsibilities
-- [x] Write the engine-evaluation specification
-- [x] Define weighted criteria and non-negotiable requirements
-- [x] Establish the technical risk package
-- [x] Define prototype acceptance tests
-- [x] Shortlist viable candidates
-- [x] Decide that the multi-engine implementation comparison was disproportionate
+Priority order:
 
-## Original Weeks 3–6
+1. review/merge or revise PR #38 without treating unmerged work as complete;
+2. close remaining Stage 5/6 management, recovery, save/travel, and pacing gaps;
+3. perform owner playtests across first store, delegated operation, generated-location visit/return, and multi-location reconciliation;
+4. fix high-value interaction and state-continuity defects immediately;
+5. keep full EditMode/PlayMode suites and Windows builds green.
 
-- [x] Establish the Unity project and approved package baseline
-- [x] Implement the tactile stocking, snapping, and scanning foundation
-- [ ] Complete representative production-asset import and presentation validation
-- [x] Test navigation inside a graybox/furnished store path
-- [x] Record editor, test, build, and agent-workflow evidence
-- [x] Implement data loading and validation foundations
+Exit target: the owner-operator-to-portfolio loop is functionally complete in graybox form, with no major system still awaiting invention.
 
-## Original Weeks 7–10
+## September 14–October 31 — presentation and content conversion
 
-- [x] Implement save/restore
-- [x] Implement detailed-to-aggregate reconciliation
-- [x] Implement two-location reporting and delegated simulation
-- [x] Resolve engine selection through owner decision rather than unnecessary comparison work
+Priority order:
 
-## Original Weeks 11–13
+1. prove the full production-asset intake/provenance path;
+2. replace identity-critical store/environment/fixture/product assets;
+3. integrate representative production characters and animation;
+4. complete store-management/report UI needed by the slice;
+5. establish lighting, audio, fictional branding, packaging, and onboarding;
+6. measure actual asset throughput and reforecast Stage 7 when enough samples exist.
 
-- [x] Complete the engine decision record
-- [x] Select and implement the technical baseline
-- [x] Create the engine-specific production structure
-- [ ] Complete a measured reforecast of Stages 3–8
-- [ ] Approve the next bounded execution wave after current gameplay and presentation review
+Exit target: a presentation-integrated vertical-slice candidate suitable for full-loop internal testing.
+
+## November–December — hardening and internal acceptance
+
+Priority order:
+
+1. complete repeated full-loop playthroughs;
+2. fix blockers and high-severity regressions;
+3. tune economy, pacing, staffing, demand, and failure recovery;
+4. profile representative hardware and heavy scenes;
+5. complete accessibility and provenance checks;
+6. decide whether the build is ready for controlled/public validation.
+
+Exit target: Gate 8 owner acceptance or an evidence-backed list of changes required before acceptance.
 
 ---
 
@@ -531,95 +501,91 @@ The original first 90-day plan was completed or overtaken much faster than forec
 
 The project owner retains direct control of:
 
-- approval and rejection of decisions;
+- approval/rejection of decisions;
 - tactile-feel judgment and playtesting;
-- engine and architecture adoption;
-- scope exceptions;
-- spending and licensing risk;
+- scope exceptions and spending;
 - final asset acceptance;
 - milestone and release acceptance.
 
-## Agent responsibilities
+## Agent-heavy work
 
-Agents should be used aggressively for:
+Agents should continue to carry most:
 
 - repository research and traceability;
-- implementation planning and decomposition;
-- bounded code scaffolding and refactoring;
-- schemas, validators, fixtures, and tests;
+- implementation and focused refactoring;
+- schemas, validators, fixtures, tests, and migrations;
 - documentation and evidence records;
 - data authoring and consistency checks;
-- asset inventories and provenance records;
-- defect reproduction and regression generation;
+- defect reproduction/regression generation;
 - repetitive content preparation under approved constraints.
 
-## Human-in-the-loop work
+## Human-bottleneck work
 
-Agent production should be followed by direct human inspection and testing for:
+Schedule conservatively around:
 
-- gameplay implementation;
-- simulation formulas;
-- save and migration code;
-- economy tuning;
-- navigation and AI behavior;
-- UI flows;
-- shaders, lighting, and assets;
-- generated content;
-- public-facing text or media.
+- playtesting and subjective feel;
+- final visual judgment;
+- 3D cleanup and asset acceptance;
+- economy/pacing tuning;
+- UX/onboarding decisions;
+- external tester coordination and interpretation;
+- commercial/release decisions.
 
-No quantity of generated output substitutes for integration evidence or owner judgment.
+These bottlenecks, rather than raw coding throughput, now govern the critical-path forecast.
 
 ---
 
 # Current critical path
 
-The completed portion of the original critical path is:
+Completed critical-path work:
 
-**Requirements → Unity decision → technical baseline → production skeleton → core hands-on store loop → customers and live employees → delegated aggregate simulation → two-location portfolio backend**
+**Repository foundation → Unity decision → executable Unity foundation → hands-on store loop → customers/employees → procurement/merchandising → physical navigation → reusable operations → procedural commercial generation → persistent portfolio/property backend → generated-location Visit/Return**
 
-The current critical path is:
+Current critical path:
 
-**Playtest and fix core interactions → complete remaining Stage 5/6 gameplay gaps → integrate production presentation → harden the full vertical slice → internal acceptance**
+**Finish full generated-location detailed operation → close Stage 5/6 playtest gaps → production asset/content integration → onboarding/UI/audio/presentation → full-loop hardening/tuning → internal acceptance → external validation**
 
-The following may run in parallel when they do not destabilize that path:
+Parallel work that may continue without destabilizing that path:
 
-- modular asset production and intake validation;
-- character and animation pipeline work;
-- fictional-brand exploration;
+- modular asset generation/cleanup and provenance preparation;
+- character/animation production;
+- fictional-brand/product-content production;
+- procedural architecture and asset-library expansion under approved contracts;
 - accessibility research;
-- content inventories;
-- sound-reference and audio implementation;
-- business and market research;
-- tool automation.
+- sound-reference and audio preparation;
+- tool automation and validation.
 
-Final content production should not outpace stable system and data contracts.
+Do not let speculative later-business, driving, M&A, or broad city systems displace vertical-slice presentation and acceptance work.
 
 ---
 
 # Reforecast and change-control rules
 
-Reforecast the roadmap at minimum after:
+The August 23 reforecast closes the previously overdue reforecast points for:
 
-1. engine selection — **completed; reforecast not yet recorded**;
-2. production-foundation acceptance — **functionally completed; reforecast not yet recorded**;
-3. first complete hands-on loop — **implementation completed; acceptance and reforecast pending**;
-4. store-simulation acceptance;
-5. owner-operator-to-portfolio proof;
-6. internal vertical-slice acceptance;
-7. external validation;
-8. second-business selection;
-9. 1.0 scope lock.
+1. engine selection;
+2. production-foundation acceptance;
+3. first complete hands-on loop;
+4. early store/delegation/portfolio implementation velocity.
 
-A reforecast must record:
+Reforecast again after:
 
-- actual direct human hours where available;
-- agent contribution and review burden;
-- completed evidence;
-- unresolved defects and technical debt;
-- new dependencies;
-- scope added, removed, or deferred;
+1. PR #38 / full generated-location detailed-operation disposition;
+2. Stage 7 has enough production assets to measure sustained asset throughput;
+3. internal vertical-slice acceptance;
+4. first external validation cycle;
+5. second-business selection;
+6. 1.0 scope lock.
+
+Each future reforecast should record:
+
+- calendar duration and actual direct human hours where available;
+- agent contribution and human review burden;
+- completed evidence and unresolved defects;
+- content/asset throughput;
+- dependencies added or retired;
 - budget spent and remaining;
 - revised aggressive, planning, and conservative dates;
-- owner approval.
+- project-owner approval.
 
-Schedule pressure alone does not permit silent removal of approved requirements or silent addition of unapproved systems.
+Schedule pressure never permits silent removal of approved requirements or silent addition of unapproved scope.
