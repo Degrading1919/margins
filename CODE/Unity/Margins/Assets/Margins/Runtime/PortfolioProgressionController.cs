@@ -988,8 +988,22 @@ namespace Margins
             PortfolioProgressionSnapshot portfolioSnapshot,
             out string error)
         {
+            return TryValidateDetailedProcurementReconciliation(
+                PortfolioProgressionRules.FirstLocationId,
+                firstStoreSnapshot,
+                portfolioSnapshot,
+                out error);
+        }
+
+        public bool TryValidateDetailedProcurementReconciliation(
+            string locationId,
+            FirstStoreSnapshot detailedStoreSnapshot,
+            PortfolioProgressionSnapshot portfolioSnapshot,
+            out string error)
+        {
             error = null;
-            if (firstStoreSnapshot?.inventory == null ||
+            if (!FirstStoreIdentifier.IsValid(locationId) ||
+                detailedStoreSnapshot?.inventory == null ||
                 !PortfolioProgression.TryRestore(
                     portfolioSnapshot,
                     out PortfolioProgression restored,
@@ -999,13 +1013,19 @@ namespace Margins
                 return false;
             }
 
-            PortfolioLocationSnapshot firstLocation = restored.Locations
-                .First(location => string.Equals(
+            PortfolioLocationSnapshot detailedLocation = restored.Locations
+                .FirstOrDefault(location => string.Equals(
                     location.locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    locationId,
                     StringComparison.Ordinal));
+            if (detailedLocation == null)
+            {
+                error =
+                    "Detailed procurement reconciliation references an unavailable portfolio location.";
+                return false;
+            }
             if (!HasCurrentDetailedBaseline(
-                    firstLocation,
+                    detailedLocation,
                     restored.CurrentDay))
             {
                 error = null;
@@ -1017,7 +1037,7 @@ namespace Margins
                     !value.IsTerminal &&
                     string.Equals(
                         value.locationId,
-                        firstLocation.locationId,
+                        detailedLocation.locationId,
                         StringComparison.Ordinal));
             if (order == null ||
                 (order.status != PurchaseOrderStatus.Delivered &&
@@ -1027,7 +1047,7 @@ namespace Margins
                 return true;
             }
 
-            InventoryLocationSnapshot delivery = firstStoreSnapshot.inventory.locations?.FirstOrDefault(
+            InventoryLocationSnapshot delivery = detailedStoreSnapshot.inventory.locations?.FirstOrDefault(
                 location => string.Equals(
                     location.locationId,
                     firstStoreDeliveryBox.InventoryLocationId,
@@ -1073,9 +1093,23 @@ namespace Margins
             PortfolioProgressionSnapshot portfolioSnapshot,
             out string error)
         {
+            return TryValidateDetailedMerchandisingReconciliation(
+                PortfolioProgressionRules.FirstLocationId,
+                firstStoreSnapshot,
+                portfolioSnapshot,
+                out error);
+        }
+
+        public bool TryValidateDetailedMerchandisingReconciliation(
+            string locationId,
+            FirstStoreSnapshot detailedStoreSnapshot,
+            PortfolioProgressionSnapshot portfolioSnapshot,
+            out string error)
+        {
             error = null;
-            if (firstStoreSnapshot?.inventory?.locations == null ||
-                firstStoreSnapshot.physicalProductUnits == null ||
+            if (!FirstStoreIdentifier.IsValid(locationId) ||
+                detailedStoreSnapshot?.inventory?.locations == null ||
+                detailedStoreSnapshot.physicalProductUnits == null ||
                 !PortfolioProgression.TryRestore(
                     portfolioSnapshot,
                     out PortfolioProgression restored,
@@ -1086,31 +1120,43 @@ namespace Margins
                 return false;
             }
 
-            PortfolioLocationSnapshot location = restored.Locations.First(value =>
+            PortfolioLocationSnapshot location = restored.Locations.FirstOrDefault(value =>
                 string.Equals(
                     value.locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    locationId,
                     StringComparison.Ordinal));
-            Dictionary<string, ShelfMerchandiseAssignmentSnapshot> assignments =
-                location.shelfMerchandiseAssignments.ToDictionary(
-                    value => value.shelfFixtureId,
-                    StringComparer.Ordinal);
+            if (location == null)
+            {
+                error =
+                    "Detailed merchandising reconciliation references an unavailable portfolio location.";
+                return false;
+            }
+            FirstStoreMerchandisingComponent merchandising =
+                firstStore?.Checkout?.Merchandising;
+            if (merchandising == null)
+            {
+                error =
+                    "Detailed merchandising reconciliation has no shared shelf-mapping authority.";
+                return false;
+            }
             foreach (PhysicalProductUnitSnapshot unit in
-                     firstStoreSnapshot.physicalProductUnits)
+                     detailedStoreSnapshot.physicalProductUnits)
             {
                 if (unit == null || string.IsNullOrWhiteSpace(unit.shelfFixtureId))
                 {
                     continue;
                 }
-                if (!assignments.TryGetValue(
+                if (!merchandising.TryResolveDetailedShelfAssignment(
+                        location,
                         unit.shelfFixtureId,
-                        out ShelfMerchandiseAssignmentSnapshot assignment) ||
+                        out string assignedProductId,
+                        out string detailedInventoryLocationId) ||
                     !string.Equals(
-                        assignment.inventoryLocationId,
+                        detailedInventoryLocationId,
                         unit.inventoryLocationId,
                         StringComparison.Ordinal) ||
                     !string.Equals(
-                        assignment.assignedProductId,
+                        assignedProductId,
                         unit.productId,
                         StringComparison.Ordinal))
                 {
@@ -1120,30 +1166,42 @@ namespace Margins
                 }
             }
 
-            foreach (ShelfMerchandiseAssignmentSnapshot assignment in
-                     assignments.Values)
+            foreach (InventoryLocationSnapshot inventory in
+                     detailedStoreSnapshot.inventory.locations.Where(value =>
+                         value?.kind == InventoryLocationKind.Shelf &&
+                         value.quantities?.Any(quantity =>
+                             quantity.quantityUnits > 0) == true))
             {
-                InventoryLocationSnapshot inventory =
-                    firstStoreSnapshot.inventory.locations.FirstOrDefault(value =>
-                        string.Equals(
-                            value.locationId,
-                            assignment.inventoryLocationId,
+                PhysicalProductUnitSnapshot shelved =
+                    detailedStoreSnapshot.physicalProductUnits.FirstOrDefault(
+                        unit => unit != null && string.Equals(
+                            unit.inventoryLocationId,
+                            inventory.locationId,
                             StringComparison.Ordinal));
-                if (inventory?.quantities == null)
+                if (shelved == null ||
+                    !merchandising.TryResolveDetailedShelfAssignment(
+                        location,
+                        shelved.shelfFixtureId,
+                        out string assignedProductId,
+                        out string detailedInventoryLocationId) ||
+                    !string.Equals(
+                        detailedInventoryLocationId,
+                        inventory.locationId,
+                        StringComparison.Ordinal))
                 {
                     error =
-                        $"Saved shelf inventory '{assignment.inventoryLocationId}' is missing.";
+                        $"Saved shelf inventory '{inventory.locationId}' has no persistent merchandise assignment.";
                     return false;
                 }
                 if (inventory.quantities.Any(value =>
                         value.quantityUnits > 0 &&
                         !string.Equals(
                             value.productId,
-                            assignment.assignedProductId,
+                            assignedProductId,
                             StringComparison.Ordinal)))
                 {
                     error =
-                        $"Saved inventory at '{assignment.inventoryLocationId}' contradicts its merchandise assignment.";
+                        $"Saved inventory at '{inventory.locationId}' contradicts its merchandise assignment.";
                     return false;
                 }
             }

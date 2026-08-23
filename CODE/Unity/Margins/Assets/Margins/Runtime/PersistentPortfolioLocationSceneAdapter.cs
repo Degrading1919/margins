@@ -41,8 +41,7 @@ namespace Margins
 
         private FirstStoreSnapshot firstStoreSnapshot;
         private string activeLocationId;
-        private Vector3 firstStorePlayerPosition;
-        private Quaternion firstStorePlayerRotation;
+        private FirstStorePlayerTransformSnapshot firstStorePlayerTransform;
         private bool hasFirstStorePlayerPose;
         private bool customerFlowWasEnabled;
         private bool employeeWorkWasEnabled;
@@ -327,6 +326,221 @@ namespace Margins
             return true;
         }
 
+        public bool TryCapturePersistenceState(
+            out FirstStoreSnapshot parkedFirstStore,
+            out PersistentGeneratedLocationDiskSnapshot generatedLocation,
+            out string error)
+        {
+            parkedFirstStore = null;
+            generatedLocation = null;
+            if (!HasActiveGeneratedLocation)
+            {
+                error =
+                    "Generated-location persistence capture requires an active generated location.";
+                return false;
+            }
+
+            if (cleaningTool.IsCarried)
+            {
+                error = "Set down the cleaning tool before saving.";
+                return false;
+            }
+            if (storePersistence.TryGetDiskSaveBlocker(out error) ||
+                !portfolio.TrySynchronizeDetailedProcurement(out error) ||
+                !TrySynchronizeActiveLocation(out error) ||
+                !storePersistence.TryCapture(
+                    out FirstStoreSnapshot activeDetailedStore,
+                    out error))
+            {
+                return false;
+            }
+            if (firstStoreSnapshot == null || !capturedFirstStoreAdapters ||
+                !storePersistence.TryValidateSnapshot(
+                    firstStoreSnapshot,
+                    out error))
+            {
+                error ??=
+                    "The parked first-store state is unavailable for generated-location persistence.";
+                return false;
+            }
+
+            parkedFirstStore = CloneSnapshot(firstStoreSnapshot);
+            generatedLocation = new PersistentGeneratedLocationDiskSnapshot
+            {
+                locationId = activeLocationId,
+                detailedStore = CloneSnapshot(activeDetailedStore),
+                firstStoreReturnTransform = firstStorePlayerTransform,
+                customerFlowEnabled = customerFlowWasEnabled,
+                employeeWorkEnabled = employeeWorkWasEnabled
+            };
+            error = null;
+            return true;
+        }
+
+        public bool TryResetForPersistenceRestore(out string error)
+        {
+            error = null;
+            if (!HasActiveGeneratedLocation)
+            {
+                activeLocationId = null;
+                return true;
+            }
+
+            if (!locations.TryLeaveActiveLocation(out error))
+            {
+                return false;
+            }
+
+            TeardownGeneratedDetailedRig();
+            activeLocationId = null;
+            localInventoryBaseline.Clear();
+            portfolioInventoryBaseline.Clear();
+            if (!TryRestoreFirstStoreRig(out error))
+            {
+                return false;
+            }
+
+            player.SetGameplayMode(false);
+            return true;
+        }
+
+        public bool TryRestorePersistenceState(
+            PersistentGeneratedLocationDiskSnapshot savedLocation,
+            out string error)
+        {
+            if (!TryValidateConfiguration(out error) ||
+                savedLocation == null ||
+                !FirstStoreIdentifier.IsValid(savedLocation.locationId) ||
+                string.Equals(
+                    savedLocation.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal) ||
+                savedLocation.detailedStore == null ||
+                !storePersistence.TryValidateSnapshot(
+                    savedLocation.detailedStore,
+                    out error) ||
+                !player.TryPreflightApplyTransformSnapshot(
+                    savedLocation.firstStoreReturnTransform,
+                    out error))
+            {
+                error ??=
+                    "A valid generated detailed-location persistence snapshot is required.";
+                return false;
+            }
+            if (HasActiveGeneratedLocation)
+            {
+                error =
+                    "Reset the current generated location before restoring another detailed location.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot company =
+                portfolio.Progression.CreateSnapshot();
+            if (!string.Equals(
+                    company.company.activeDetailedLocationId,
+                    savedLocation.locationId,
+                    StringComparison.Ordinal))
+            {
+                error =
+                    "The saved generated location does not match the portfolio's active detailed location.";
+                return false;
+            }
+            PortfolioLocationSnapshot location = company.locations
+                .FirstOrDefault(value => string.Equals(
+                    value.locationId,
+                    savedLocation.locationId,
+                    StringComparison.Ordinal));
+            if (location == null)
+            {
+                error =
+                    "The saved generated location is not an occupied portfolio business.";
+                return false;
+            }
+
+            if (!TryCaptureFirstStoreRigState(out error) ||
+                !locations.TryMaterializeLocation(
+                    savedLocation.locationId,
+                    out error))
+            {
+                return RollBackToFirstStore(error, out error);
+            }
+
+            firstStorePlayerTransform =
+                savedLocation.firstStoreReturnTransform;
+            hasFirstStorePlayerPose = true;
+            customerFlowWasEnabled = savedLocation.customerFlowEnabled;
+            employeeWorkWasEnabled = savedLocation.employeeWorkEnabled;
+            activeLocationId = savedLocation.locationId;
+            customerFlow.enabled = false;
+            employeeWork.enabled = false;
+
+            bool alreadyChargedToday = location.hasLastReport &&
+                                       location.lastReport != null &&
+                                       location.lastReport.day ==
+                                       portfolio.Progression.CurrentDay;
+            if (!merchandising.TryBindDetailedLocation(
+                    savedLocation.locationId,
+                    out error) ||
+                !portfolio.TryConfigureDetailedOperatingCosts(
+                    savedLocation.locationId,
+                    detailedStore,
+                    alreadyChargedToday,
+                    out error) ||
+                !TryActivateGeneratedDetailedRig(
+                    savedLocation.locationId,
+                    false,
+                    out error) ||
+                !storePersistence.TryRestore(
+                    savedLocation.detailedStore,
+                    out error))
+            {
+                return RollBackToFirstStore(error, out error);
+            }
+
+            portfolioInventoryBaseline.Clear();
+            portfolioInventoryBaseline.AddRange(
+                location.productInventory
+                    .Select(PortfolioOperationsRules.Clone));
+            if (!TryCreateLocalProductInventory(
+                    out List<PortfolioProductInventorySnapshot> local,
+                    out error))
+            {
+                return RollBackToFirstStore(error, out error);
+            }
+            localInventoryBaseline.Clear();
+            foreach (PortfolioProductInventorySnapshot product in local)
+            {
+                localInventoryBaseline.Add(
+                    product.productId,
+                    product.quantityUnits);
+            }
+
+            if (!portfolio.TryEstablishDetailedLocationBaseline(
+                    savedLocation.locationId,
+                    detailedStore,
+                    portfolioInventoryBaseline,
+                    CreateCurrentDetailedMetrics(),
+                    out error) ||
+                (!alreadyChargedToday &&
+                 !portfolio.TryConfigureDetailedOperatingCosts(
+                     savedLocation.locationId,
+                     detailedStore,
+                     true,
+                     out error)) ||
+                !TryActivateGeneratedDetailedRig(
+                    savedLocation.locationId,
+                    true,
+                    out error))
+            {
+                return RollBackToFirstStore(error, out error);
+            }
+
+            CreateGeneratedInteractionViews();
+            player.SetGameplayMode(true);
+            error = null;
+            return true;
+        }
+
         public bool TryLeaveToManagement(out string error)
         {
             if (HasActiveGeneratedLocation)
@@ -603,26 +817,10 @@ namespace Margins
                 error = blocker;
                 return false;
             }
-            if (!storePersistence.TryCapture(out firstStoreSnapshot, out error))
+            if (!TryCaptureFirstStoreRigState(out error))
             {
                 return false;
             }
-
-            firstStorePlayerPosition = player.transform.position;
-            firstStorePlayerRotation = player.transform.rotation;
-            hasFirstStorePlayerPose = true;
-            firstStoreOperatingExpensesCents =
-                detailedStore.IncludedOperatingExpensesCents;
-            firstStorePayrollCents = detailedStore.LivePayrollCents;
-            customerFlowWasEnabled = customerFlow != null && customerFlow.enabled;
-            employeeWorkWasEnabled = employeeWork != null && employeeWork.enabled;
-            firstStoreCustomerBindings = customerFlow.CaptureLocationBindings();
-            firstStoreEmployeeBindings = employeeWork.CaptureLocationBindings();
-            if (!TryCaptureFirstStoreTransformStates(out error))
-            {
-                return false;
-            }
-            capturedFirstStoreAdapters = true;
 
             string active = portfolio.Progression.CreateSnapshot().company
                 .activeDetailedLocationId;
@@ -638,6 +836,31 @@ namespace Margins
             }
 
             activeLocationId = null;
+            return true;
+        }
+
+        private bool TryCaptureFirstStoreRigState(out string error)
+        {
+            if (!storePersistence.TryCapture(out firstStoreSnapshot, out error))
+            {
+                return false;
+            }
+
+            firstStorePlayerTransform = player.CaptureTransformSnapshot();
+            hasFirstStorePlayerPose = true;
+            firstStoreOperatingExpensesCents =
+                detailedStore.IncludedOperatingExpensesCents;
+            firstStorePayrollCents = detailedStore.LivePayrollCents;
+            customerFlowWasEnabled = customerFlow != null && customerFlow.enabled;
+            employeeWorkWasEnabled = employeeWork != null && employeeWork.enabled;
+            firstStoreCustomerBindings = customerFlow.CaptureLocationBindings();
+            firstStoreEmployeeBindings = employeeWork.CaptureLocationBindings();
+            if (!TryCaptureFirstStoreTransformStates(out error))
+            {
+                return false;
+            }
+            capturedFirstStoreAdapters = true;
+            error = null;
             return true;
         }
 
@@ -735,9 +958,12 @@ namespace Margins
 
             if (hasFirstStorePlayerPose)
             {
-                TeleportPlayer(
-                    firstStorePlayerPosition,
-                    firstStorePlayerRotation);
+                if (!player.TryApplyTransformSnapshot(
+                        firstStorePlayerTransform,
+                        out error))
+                {
+                    return false;
+                }
             }
             player.SetGameplayMode(!openManagement);
             error = null;
@@ -801,9 +1027,9 @@ namespace Margins
             {
                 if (hasFirstStorePlayerPose)
                 {
-                    TeleportPlayer(
-                        firstStorePlayerPosition,
-                        firstStorePlayerRotation);
+                    player.TryApplyTransformSnapshot(
+                        firstStorePlayerTransform,
+                        out _);
                 }
                 player.SetGameplayMode(false);
                 error = failure;
@@ -863,6 +1089,17 @@ namespace Margins
 
         private bool TryActivateGeneratedDetailedRig(
             string locationId,
+            out string error)
+        {
+            return TryActivateGeneratedDetailedRig(
+                locationId,
+                false,
+                out error);
+        }
+
+        private bool TryActivateGeneratedDetailedRig(
+            string locationId,
+            bool allowRestoredCustomers,
             out string error)
         {
             error = null;
@@ -962,9 +1199,14 @@ namespace Margins
                 activeBindings.DeliveryDropPoint,
                 activeBindings.BrowsePoints[0],
                 activeBindings.ManagerWorkPoint);
-            if (!customerFlow.TryBindDetailedLocation(
+            bool customerBound = allowRestoredCustomers
+                ? customerFlow.TryBindDetailedLocationAfterRestore(
                     customerBindings,
-                    out error) ||
+                    out error)
+                : customerFlow.TryBindDetailedLocation(
+                    customerBindings,
+                    out error);
+            if (!customerBound ||
                 !employeeWork.TryBindDetailedLocation(
                     locationId,
                     employeeBindings,
@@ -1069,6 +1311,10 @@ namespace Margins
 
             try
             {
+                if (activeNavigationSurface.navMeshData != null)
+                {
+                    activeNavigationSurface.RemoveData();
+                }
                 activeNavigationSurface.BuildNavMesh();
             }
             catch (Exception exception)
@@ -1590,6 +1836,15 @@ namespace Margins
             {
                 character.enabled = true;
             }
+        }
+
+        private static FirstStoreSnapshot CloneSnapshot(
+            FirstStoreSnapshot source)
+        {
+            return source == null
+                ? null
+                : JsonUtility.FromJson<FirstStoreSnapshot>(
+                    JsonUtility.ToJson(source));
         }
     }
 }
