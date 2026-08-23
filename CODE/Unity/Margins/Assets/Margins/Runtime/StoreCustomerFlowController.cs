@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Margins
@@ -52,6 +53,11 @@ namespace Margins
         private RuntimeCustomer checkoutCustomer;
         private int nextCustomerOrdinal = 1;
         private float secondsUntilNextArrival;
+        private int lifetimeCustomerVisits;
+        private int lifetimeCustomersServed;
+        private int lifetimeCustomersAbandoned;
+        private int lifetimeRequestedProductUnits;
+        private int lifetimeUnavailableProductUnits;
         private bool started;
 
         public int ActiveCustomerCount => customers.Count;
@@ -74,6 +80,13 @@ namespace Margins
             }
         }
         public bool HasActiveCheckout => checkoutCustomer != null;
+        public int LifetimeCustomerVisits => lifetimeCustomerVisits;
+        public int LifetimeCustomersServed => lifetimeCustomersServed;
+        public int LifetimeCustomersAbandoned => lifetimeCustomersAbandoned;
+        public int LifetimeRequestedProductUnits =>
+            lifetimeRequestedProductUnits;
+        public int LifetimeUnavailableProductUnits =>
+            lifetimeUnavailableProductUnits;
         public int ActiveCheckoutItemCount =>
             checkoutCustomer?.ReservedPhysicalUnitIds.Count ?? 0;
         public int ActiveCheckoutScannedCount =>
@@ -86,6 +99,20 @@ namespace Margins
         public StoreOperatingController StoreOperating => storeOperating;
         public CheckoutStationComponent Checkout => checkout;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
+
+        public DetailedOperationMetricsSnapshot CreateDetailedOperationMetrics(
+            bool standardsTaskComplete)
+        {
+            return new DetailedOperationMetricsSnapshot
+            {
+                customerVisits = lifetimeCustomerVisits,
+                customersServed = lifetimeCustomersServed,
+                customersAbandoned = lifetimeCustomersAbandoned,
+                requestedProductUnits = lifetimeRequestedProductUnits,
+                unavailableProductUnits = lifetimeUnavailableProductUnits,
+                standardsTaskComplete = standardsTaskComplete
+            };
+        }
 
         public bool CanStartCheckout
         {
@@ -235,6 +262,10 @@ namespace Margins
                 StoreCustomerState.Entering,
                 entrancePoint.position);
             ChooseRequestedProducts(customer);
+            lifetimeCustomerVisits++;
+            lifetimeRequestedProductUnits = checked(
+                lifetimeRequestedProductUnits +
+                customer.RequestedProductIds.Count);
             customer.PhaseSeconds = shoppingSeconds;
             customers.Add(customer);
             UpdateCustomerLabel(customer, "SHOPPING");
@@ -490,6 +521,7 @@ namespace Margins
             customer.ScannedPhysicalUnitIds.Clear();
             customer.State = StoreCustomerState.Leaving;
             customer.WasAbandoned = false;
+            lifetimeCustomersServed++;
             if (!CheckoutQueue.TryCompleteReservation(
                     customer.CustomerId,
                     out BusinessStationQueueFailure queueFailure))
@@ -559,7 +591,12 @@ namespace Margins
             snapshot = new StoreCustomerFlowSnapshot(
                 nextCustomerOrdinal,
                 Mathf.Max(0f, secondsUntilNextArrival),
-                captured);
+                captured,
+                lifetimeCustomerVisits,
+                lifetimeCustomersServed,
+                lifetimeCustomersAbandoned,
+                lifetimeRequestedProductUnits,
+                lifetimeUnavailableProductUnits);
             error = null;
             return true;
         }
@@ -580,6 +617,16 @@ namespace Margins
                 !IsFiniteNonnegative(snapshot.secondsUntilNextArrival) ||
                 snapshot.customers == null ||
                 snapshot.customers.Count > maximumActiveCustomers ||
+                snapshot.lifetimeCustomerVisits < 0 ||
+                snapshot.lifetimeCustomersServed < 0 ||
+                snapshot.lifetimeCustomersAbandoned < 0 ||
+                snapshot.lifetimeRequestedProductUnits < 0 ||
+                snapshot.lifetimeUnavailableProductUnits < 0 ||
+                (long)snapshot.lifetimeCustomersServed +
+                snapshot.lifetimeCustomersAbandoned >
+                snapshot.lifetimeCustomerVisits ||
+                snapshot.lifetimeUnavailableProductUnits >
+                snapshot.lifetimeRequestedProductUnits ||
                 physicalUnitSnapshots == null || operatingSnapshot == null)
             {
                 error = "Customer-flow snapshot header is invalid.";
@@ -713,6 +760,18 @@ namespace Margins
             ResetTransientStateForRestore();
             nextCustomerOrdinal = snapshot.nextCustomerOrdinal;
             secondsUntilNextArrival = snapshot.secondsUntilNextArrival;
+            lifetimeCustomerVisits = Math.Max(
+                snapshot.lifetimeCustomerVisits,
+                snapshot.customers.Count);
+            lifetimeCustomersServed = snapshot.lifetimeCustomersServed;
+            lifetimeCustomersAbandoned =
+                snapshot.lifetimeCustomersAbandoned;
+            lifetimeRequestedProductUnits = Math.Max(
+                snapshot.lifetimeRequestedProductUnits,
+                snapshot.customers.Sum(customer =>
+                    customer.requestedProductIds?.Count ?? 0));
+            lifetimeUnavailableProductUnits =
+                snapshot.lifetimeUnavailableProductUnits;
             foreach (StoreCustomerSnapshot source in snapshot.customers)
             {
                 RuntimeCustomer customer = CreateRuntimeCustomer(
@@ -903,6 +962,7 @@ namespace Margins
                         productId,
                         out MerchandiseOffer offer))
                 {
+                    lifetimeUnavailableProductUnits++;
                     continue;
                 }
 
@@ -921,6 +981,7 @@ namespace Margins
                         offer.InventoryLocationId,
                         out ProductItem item))
                 {
+                    lifetimeUnavailableProductUnits++;
                     continue;
                 }
 
@@ -941,6 +1002,7 @@ namespace Margins
             {
                 customer.State = StoreCustomerState.Leaving;
                 customer.WasAbandoned = true;
+                lifetimeCustomersAbandoned++;
                 UpdateCustomerLabel(
                     customer,
                     priceRejected ? "PRICE TOO HIGH" : "NO STOCK");
@@ -999,6 +1061,7 @@ namespace Margins
             customer.ScannedPhysicalUnitIds.Clear();
             customer.State = StoreCustomerState.Leaving;
             customer.WasAbandoned = true;
+            lifetimeCustomersAbandoned++;
             UpdateCustomerLabel(customer, "LEFT LINE");
         }
 
@@ -1013,6 +1076,11 @@ namespace Margins
             for (int index = customers.Count - 1; index >= 0; index--)
             {
                 RuntimeCustomer customer = customers[index];
+                if (customer.State != StoreCustomerState.Leaving &&
+                    !customer.WasAbandoned)
+                {
+                    lifetimeCustomersAbandoned++;
+                }
                 foreach (string unitId in customer.ReservedPhysicalUnitIds)
                 {
                     if (physicalUnits.TryGetUnit(

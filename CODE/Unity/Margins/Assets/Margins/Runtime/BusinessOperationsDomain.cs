@@ -582,31 +582,96 @@ namespace Margins
             string profileId,
             BusinessUnitEconomyProfile unitEconomy,
             BusinessWorkCapacityProfile customerServiceCapacity,
-            BusinessWorkCapacityProfile resourceFlowCapacity)
+            BusinessWorkCapacityProfile resourceFlowCapacity,
+            BusinessWorkCapacityProfile standardsCapacity,
+            BusinessOperatingCostProfile operatingCosts,
+            int preferredProductMixCount)
         {
             if (!StableIdentifier.IsValid(profileId) ||
                 unitEconomy == null ||
                 customerServiceCapacity == null ||
                 resourceFlowCapacity == null ||
+                standardsCapacity == null ||
+                operatingCosts == null ||
                 customerServiceCapacity.WorkCategory !=
                     BusinessWorkCategory.CustomerService ||
                 resourceFlowCapacity.WorkCategory !=
-                    BusinessWorkCategory.ResourceFlow)
+                    BusinessWorkCategory.ResourceFlow ||
+                standardsCapacity.WorkCategory !=
+                    BusinessWorkCategory.Standards ||
+                preferredProductMixCount <= 0)
             {
                 throw new ArgumentException(
-                    "Simulation profiles require stable ids and service and resource-flow capacities.");
+                    "Simulation profiles require stable ids, all shared work capacities, operating costs, and a positive product-mix target.");
             }
 
             ProfileId = profileId;
             UnitEconomy = unitEconomy;
             CustomerServiceCapacity = customerServiceCapacity;
             ResourceFlowCapacity = resourceFlowCapacity;
+            StandardsCapacity = standardsCapacity;
+            OperatingCosts = operatingCosts;
+            PreferredProductMixCount = preferredProductMixCount;
         }
 
         public string ProfileId { get; }
         public BusinessUnitEconomyProfile UnitEconomy { get; }
         public BusinessWorkCapacityProfile CustomerServiceCapacity { get; }
         public BusinessWorkCapacityProfile ResourceFlowCapacity { get; }
+        public BusinessWorkCapacityProfile StandardsCapacity { get; }
+        public BusinessOperatingCostProfile OperatingCosts { get; }
+        public int PreferredProductMixCount { get; }
+    }
+
+    /// <summary>
+    /// Provisional, data-like operating and maintenance values shared by both
+    /// detailed reconciliation and aggregate operation. These values are
+    /// configuration, not final balance.
+    /// </summary>
+    public sealed class BusinessOperatingCostProfile
+    {
+        public BusinessOperatingCostProfile(
+            long baseOperatingCostCents,
+            long routineMaintenanceCostCents,
+            long preventiveMaintenanceCostCents,
+            long emergencyMaintenanceCostCents,
+            int dailyWearUnits,
+            int routineRecoveryUnits,
+            int preventiveRecoveryUnits,
+            int emergencyRecoveryUnits)
+        {
+            if (baseOperatingCostCents < 0 ||
+                routineMaintenanceCostCents < 0 ||
+                preventiveMaintenanceCostCents < routineMaintenanceCostCents ||
+                emergencyMaintenanceCostCents < preventiveMaintenanceCostCents ||
+                dailyWearUnits < 0 ||
+                routineRecoveryUnits < 0 ||
+                preventiveRecoveryUnits < routineRecoveryUnits ||
+                emergencyRecoveryUnits < preventiveRecoveryUnits)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(baseOperatingCostCents),
+                    "Operating costs and maintenance pressure must be nonnegative and ordered by intervention depth.");
+            }
+
+            BaseOperatingCostCents = baseOperatingCostCents;
+            RoutineMaintenanceCostCents = routineMaintenanceCostCents;
+            PreventiveMaintenanceCostCents = preventiveMaintenanceCostCents;
+            EmergencyMaintenanceCostCents = emergencyMaintenanceCostCents;
+            DailyWearUnits = dailyWearUnits;
+            RoutineRecoveryUnits = routineRecoveryUnits;
+            PreventiveRecoveryUnits = preventiveRecoveryUnits;
+            EmergencyRecoveryUnits = emergencyRecoveryUnits;
+        }
+
+        public long BaseOperatingCostCents { get; }
+        public long RoutineMaintenanceCostCents { get; }
+        public long PreventiveMaintenanceCostCents { get; }
+        public long EmergencyMaintenanceCostCents { get; }
+        public int DailyWearUnits { get; }
+        public int RoutineRecoveryUnits { get; }
+        public int PreventiveRecoveryUnits { get; }
+        public int EmergencyRecoveryUnits { get; }
     }
 
     /// <summary>
@@ -812,7 +877,25 @@ namespace Margins
                 1,
                 50,
                 100,
-                55));
+                55),
+            new BusinessWorkCapacityProfile(
+                BusinessWorkCategory.Standards,
+                110,
+                2,
+                1,
+                40,
+                90,
+                50),
+            new BusinessOperatingCostProfile(
+                baseOperatingCostCents: 3_000,
+                routineMaintenanceCostCents: 2_000,
+                preventiveMaintenanceCostCents: 3_500,
+                emergencyMaintenanceCostCents: 12_000,
+                dailyWearUnits: 6,
+                routineRecoveryUnits: 8,
+                preventiveRecoveryUnits: 14,
+                emergencyRecoveryUnits: 40),
+            preferredProductMixCount: 2);
 
         private static BusinessOperationRecipe CreateRecipe(
             string operationId,

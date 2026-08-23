@@ -76,7 +76,8 @@ namespace Margins
     public sealed class FirstStoreDiskPersistenceController : MonoBehaviour
     {
         public const int LegacyFileVersion = 1;
-        public const int CurrentFileVersion = 2;
+        public const int PriorFileVersion = 2;
+        public const int CurrentFileVersion = 3;
 
         [SerializeField] private FirstStorePersistenceMapperComponent persistenceMapper;
         [SerializeField] private FirstPersonController firstPersonController;
@@ -393,10 +394,11 @@ namespace Margins
             }
 
             if (saveData.version != CurrentFileVersion &&
+                saveData.version != PriorFileVersion &&
                 saveData.version != LegacyFileVersion)
             {
                 return Reject(
-                    $"{rejectionPrefix}: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion} or {CurrentFileVersion}.");
+                    $"{rejectionPrefix}: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion}, {PriorFileVersion}, or {CurrentFileVersion}.");
             }
 
             if (saveData.firstStore == null ||
@@ -424,8 +426,9 @@ namespace Margins
                     migratedLegacyPortfolio = true;
                 }
                 else if (saveData.portfolio == null ||
-                         !portfolioProgression.TryValidateSnapshot(
+                         !PortfolioProgression.TryRestore(
                              saveData.portfolio,
+                             out PortfolioProgression restoredPortfolio,
                              out error))
                 {
                     return Reject(
@@ -433,15 +436,20 @@ namespace Margins
                 }
                 else
                 {
-                    acceptedPortfolio = saveData.portfolio;
+                    acceptedPortfolio = restoredPortfolio.CreateSnapshot();
                 }
 
                 StoreOperatingSnapshot savedOperating =
                     saveData.firstStore.storeOperating;
+                PortfolioDetailedReconciliationSnapshot reconciliation =
+                    acceptedPortfolio.locations?.Find(location => string.Equals(
+                        location.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal))?.detailedReconciliation;
                 if (savedOperating?.hasResult == true &&
                     (!acceptedPortfolio.firstShiftCompleted ||
                      !string.Equals(
-                         acceptedPortfolio.processedDetailedSessionId,
+                         reconciliation?.sessionId,
                          savedOperating.sessionId,
                          StringComparison.Ordinal)))
                 {

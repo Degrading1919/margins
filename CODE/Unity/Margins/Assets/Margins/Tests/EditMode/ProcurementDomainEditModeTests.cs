@@ -314,9 +314,12 @@ namespace Margins.Tests.EditMode
 
             PortfolioProgressionSnapshot constrained = ready.CreateSnapshot();
             const long OrderTotalCents = 7_100;
+            long unconstrainedCash = constrained.cashCents;
             constrained.cashCents =
                 PortfolioProgressionRules.MinimumCashReserveCents +
                 OrderTotalCents - 1;
+            constrained.lifetimeCorporateCostsCents +=
+                unconstrainedCash - constrained.cashCents;
             Assert.That(
                 PortfolioProgression.TryRestore(
                     constrained,
@@ -338,6 +341,7 @@ namespace Margins.Tests.EditMode
             Assert.That(progression.PurchaseOrders, Is.Empty);
 
             constrained.cashCents++;
+            constrained.lifetimeCorporateCostsCents--;
             Assert.That(
                 PortfolioProgression.TryRestore(
                     constrained,

@@ -3,12 +3,13 @@
 ## Status
 
 - **Status:** Owner-authorized temporary vertical-slice implementation
-- **Implementation marker:** Disk, portfolio, and procurement implementation with
-  focused EditMode/PlayMode verification; integrated suites and build are recorded
-  with the implementing pull request
-- **File-envelope version:** `2`
-- **First-store snapshot version:** `3`
-- **Portfolio snapshot version:** `2`
+- **Implementation marker:** Disk, portfolio/property, delegation, detailed-to-
+  aggregate reconciliation, and procurement implementation with focused
+  EditMode/PlayMode verification; integrated suites and build are recorded with
+  the implementing pull request
+- **File-envelope version:** `3`
+- **First-store snapshot version:** `4`
+- **Portfolio snapshot version:** `4`
 - **Procurement snapshot version:** `1`
 - **Disposition:** Reversible first-store validation implementation only; it is not
   approval of the eventual production save architecture, migration policy, or slots
@@ -45,7 +46,9 @@ this contract does not choose its migration or compatibility policy.
 
 The file envelope contains the first-store snapshot, player transform, and
 portfolio snapshot. The portfolio snapshot remains the authority for company
-cash, locations, employees, policies, aggregate inventory, and procurement.
+cash, company/brand/property/unit/location identity, employees, schedules,
+delegation policies, product-level aggregate inventory, procurement, operating
+reports, alerts, and per-location detailed/aggregate reconciliation.
 
 The first-store snapshot contains:
 
@@ -64,7 +67,33 @@ The first-store snapshot contains:
   cost of goods sold, included operating expenses, contribution after COGS, units,
   and transaction count;
 - one bounded cleaning-task snapshot;
+- active customer flow, deterministic arrival state, and cumulative customer
+  visits, service, abandonment, requested units, and unavailable units used by
+  detailed-operation reporting;
 - player world position, body yaw, and camera pitch.
+
+The portfolio snapshot contains:
+
+- one player company with separate brand, commercial-property, commercial-unit,
+  and business-location identities;
+- leased or owned property tenure, acquisition history, unit occupancy, and
+  persistent unit improvements;
+- generator version, seed, archetype, authored footprint dimensions, selected
+  commercial unit, canonical layout signature, revision, and stable-ID player
+  modifications for each generated unit;
+- employees with stable location assignments, roles, performance, task focus,
+  wages, and same-day weekly schedules;
+- per-location pricing, reorder, manager-authority, spending-limit,
+  maintenance, and operating-standard policies;
+- product-level quantities and captured unit costs that reconcile to each
+  location's aggregate inventory total;
+- customer satisfaction, service quality, availability, product mix,
+  maintenance condition, failure pressure, and recoverable operating alerts;
+- per-location cumulative money, inventory, staffing, operation, and report
+  totals; and
+- a per-location detailed-session baseline and cumulative reconciliation record
+  so repeated synchronization and later detailed sessions cannot repost prior
+  money, inventory, customers, or progress.
 
 The nested procurement snapshot contains:
 
@@ -102,6 +131,21 @@ The nested procurement snapshot contains:
 - `closed_with_result_pending` requires totals that reconcile to the ledger and
   its captured sale-time unit costs.
 - Unsupported versions reject the snapshot without partial mutation.
+- Legacy first-store versions `2` and `3`, file-envelope versions `1` and `2`,
+  and portfolio versions `1` through `3` normalize deterministically to the
+  current temporary contract before validation and live-state mutation.
+- Every business location references exactly one known brand, property, and
+  occupied commercial unit. Property, unit, and business-location identifiers
+  remain distinct and unique.
+- At most one business location is physically detailed at a time. Its generated
+  layout signature must match the deterministic result of its persisted
+  generator inputs before player modifications are replayed.
+- Product-level inventory exactly reconciles to the location total; detailed
+  sessions post only changes since their captured start baselines.
+- Employee schedules, location assignments, manager authority, spending limits,
+  and operating standards must validate before a delegated day advances.
+- Owned properties accrue no new rent after acquisition; historical rent remains
+  part of immutable prior reports and lifetime totals.
 - A location has at most one nonterminal purchase order.
 - Order and event IDs are unique, deterministic, and never reused. Status must
   agree with every present or absent lifecycle event.
@@ -123,8 +167,11 @@ The nested procurement snapshot contains:
 ## Restoration order
 
 1. Validate the file envelope and nested snapshot versions.
-2. Validate the portfolio, procurement clock, purchase orders, lifecycle events,
-   company cash, locations, employees, and reports without mutation.
+2. Normalize supported legacy snapshots, then validate the company/brand/
+   property/unit/location graph, generated-layout identity, improvements,
+   employees, schedules, delegation policies, product inventory, reconciliation
+   baselines, reports, alerts, procurement clock, purchase orders, lifecycle
+   events, and company cash without mutation.
 3. Validate detailed purchase-order quantities against the first-store physical
    delivery location before accepting either snapshot.
 4. Restore fixture layout and derived occupancy.
@@ -139,7 +186,8 @@ The nested procurement snapshot contains:
     inventory without mutating the scene.
 11. Validate player position, body yaw, and camera pitch.
 12. Apply the accepted portfolio, reconcile distinct Unity physical-unit objects,
-    and apply the validated player transform only after every validation succeeds.
+    restore cumulative customer-flow observations, and apply the validated player
+    transform only after every validation succeeds.
 
 ## Deferred decisions
 

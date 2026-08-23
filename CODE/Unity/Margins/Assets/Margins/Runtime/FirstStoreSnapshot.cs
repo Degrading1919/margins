@@ -63,7 +63,8 @@ namespace Margins
     public sealed class FirstStoreSnapshot : IEquatable<FirstStoreSnapshot>
     {
         public const int LegacyVersion = 2;
-        public const int CurrentVersion = 3;
+        public const int PriorVersion = 3;
+        public const int CurrentVersion = 4;
 
         public int version = CurrentVersion;
         public int fixtureGridWidth;
@@ -314,10 +315,11 @@ namespace Margins
             }
 
             if (snapshot.version != FirstStoreSnapshot.CurrentVersion &&
+                snapshot.version != FirstStoreSnapshot.PriorVersion &&
                 snapshot.version != FirstStoreSnapshot.LegacyVersion)
             {
                 error =
-                    $"Unsupported first-store snapshot version {snapshot.version}; expected {FirstStoreSnapshot.LegacyVersion} or {FirstStoreSnapshot.CurrentVersion}.";
+                    $"Unsupported first-store snapshot version {snapshot.version}; expected {FirstStoreSnapshot.LegacyVersion}, {FirstStoreSnapshot.PriorVersion}, or {FirstStoreSnapshot.CurrentVersion}.";
                 return false;
             }
 

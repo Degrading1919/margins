@@ -166,7 +166,10 @@ namespace Margins
                     .Where(employee => string.Equals(
                         employee.assignedLocationId,
                         PortfolioProgressionRules.FirstLocationId,
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal) &&
+                        PortfolioOperationsRules.IsScheduled(
+                            employee.schedule,
+                            progression.CurrentDay))
                     .Sum(employee => employee.dailyWageCents);
             }
             catch (OverflowException)
@@ -239,20 +242,27 @@ namespace Margins
             if (!TryGetDetailedInventory(
                     firstStoreInventory.Inventory?.CreateSnapshot(),
                     firstStore.Checkout.ProductUnitCostsCents,
-                    out int remainingInventoryUnits,
-                    out long inventoryAssetValueCents,
-                    out error))
+                     out int remainingInventoryUnits,
+                     out long inventoryAssetValueCents,
+                     out List<PortfolioProductInventorySnapshot>
+                         productInventory,
+                     out error))
             {
                 return false;
             }
 
             bool success = progression.TryReconcileDetailedOperation(
+                PortfolioProgressionRules.FirstLocationId,
                 firstStore.StableSessionId,
                 totals,
                 remainingInventoryUnits,
                 inventoryAssetValueCents,
+                productInventory,
                 MerchandisingRules.AggregateCompletedSales(
                     firstStore.Checkout.CompletedTransactions),
+                firstStore.CustomerFlow?.CreateDetailedOperationMetrics(
+                    firstStore.CleaningTask == null ||
+                    firstStore.CleaningTask.IsComplete),
                 out bool unchanged,
                 out error);
             if (success && !unchanged && totals.transactionCount > 0)
@@ -891,20 +901,41 @@ namespace Margins
                 if (!TryGetDetailedInventory(
                         firstStoreSnapshot.inventory,
                         firstStore.Checkout.ProductUnitCostsCents,
-                        out int remainingInventoryUnits,
-                        out long inventoryAssetValueCents,
-                        out error))
+                         out int remainingInventoryUnits,
+                         out long inventoryAssetValueCents,
+                         out List<PortfolioProductInventorySnapshot>
+                             productInventory,
+                         out error))
                 {
                     migrated = null;
                     return false;
                 }
+                StoreCustomerFlowSnapshot flow = firstStoreSnapshot.customerFlow;
+                DetailedOperationMetricsSnapshot metrics = flow == null
+                    ? null
+                    : new DetailedOperationMetricsSnapshot
+                    {
+                        customerVisits = flow.lifetimeCustomerVisits,
+                        customersServed = flow.lifetimeCustomersServed,
+                        customersAbandoned =
+                            flow.lifetimeCustomersAbandoned,
+                        requestedProductUnits =
+                            flow.lifetimeRequestedProductUnits,
+                        unavailableProductUnits =
+                            flow.lifetimeUnavailableProductUnits,
+                        standardsTaskComplete =
+                            firstStoreSnapshot.cleaningTask?.IsComplete ?? true
+                    };
                 if (!migration.TryReconcileDetailedOperation(
+                        PortfolioProgressionRules.FirstLocationId,
                         operating.sessionId,
                         migratedTotals,
                         remainingInventoryUnits,
                         inventoryAssetValueCents,
+                        productInventory,
                         MerchandisingRules.AggregateCompletedSales(
                             firstStoreSnapshot.transactionLedger?.transactions),
+                        metrics,
                         out _,
                         out error))
                 {
@@ -923,16 +954,20 @@ namespace Margins
             System.Collections.Generic.IReadOnlyDictionary<string, int> unitCostsCents,
             out int totalUnits,
             out long inventoryAssetValueCents,
+            out List<PortfolioProductInventorySnapshot> productInventory,
             out string error)
         {
             totalUnits = 0;
             inventoryAssetValueCents = 0;
+            productInventory = null;
             if (inventory?.locations == null || unitCostsCents == null)
             {
                 error = "Detailed first-store inventory is missing.";
                 return false;
             }
 
+            Dictionary<string, int> quantityByProduct = unitCostsCents.Keys
+                .ToDictionary(value => value, _ => 0, StringComparer.Ordinal);
             try
             {
                 foreach (InventoryLocationSnapshot location in inventory.locations)
@@ -959,6 +994,9 @@ namespace Margins
                             return false;
                         }
                         totalUnits = checked(totalUnits + quantity.quantityUnits);
+                        quantityByProduct[quantity.productId] = checked(
+                            quantityByProduct[quantity.productId] +
+                            quantity.quantityUnits);
                         inventoryAssetValueCents = checked(
                             inventoryAssetValueCents +
                             (long)quantity.quantityUnits * unitCostCents);
@@ -971,6 +1009,15 @@ namespace Margins
                 return false;
             }
 
+            productInventory = quantityByProduct
+                .OrderBy(value => value.Key, StringComparer.Ordinal)
+                .Select(value => new PortfolioProductInventorySnapshot
+                {
+                    productId = value.Key,
+                    quantityUnits = value.Value,
+                    unitCostCents = unitCostsCents[value.Key]
+                })
+                .ToList();
             error = null;
             return true;
         }

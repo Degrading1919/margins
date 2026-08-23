@@ -352,6 +352,18 @@ namespace Margins.Tests
                 error);
             Assert.That(queuedSnapshot.customerFlow, Is.Not.Null);
             Assert.That(queuedSnapshot.customerFlow.customers.Count, Is.EqualTo(3));
+            Assert.That(
+                queuedSnapshot.customerFlow.lifetimeCustomerVisits,
+                Is.EqualTo(3));
+            Assert.That(
+                queuedSnapshot.customerFlow.lifetimeCustomersServed,
+                Is.Zero);
+            Assert.That(
+                queuedSnapshot.customerFlow.lifetimeCustomersAbandoned,
+                Is.Zero);
+            Assert.That(
+                queuedSnapshot.customerFlow.lifetimeRequestedProductUnits,
+                Is.GreaterThanOrEqualTo(3));
             string reservedUnitId = queuedSnapshot.customerFlow.customers
                 .SelectMany(customer => customer.reservedPhysicalUnitIds)
                 .First();
@@ -400,6 +412,15 @@ namespace Margins.Tests
             Assert.That(flow.ActiveCustomerCount, Is.EqualTo(3));
             Assert.That(flow.QueuedCustomerCount, Is.EqualTo(3));
             Assert.That(flow.CanStartCheckout, Is.True);
+            DetailedOperationMetricsSnapshot restoredMetrics =
+                flow.CreateDetailedOperationMetrics(true);
+            Assert.That(restoredMetrics.customerVisits, Is.EqualTo(3));
+            Assert.That(restoredMetrics.customersServed, Is.Zero);
+            Assert.That(
+                restoredMetrics.requestedProductUnits,
+                Is.EqualTo(
+                    queuedSnapshot.customerFlow
+                        .lifetimeRequestedProductUnits));
             Assert.That(TotalShelfQuantity(checkout), Is.EqualTo(4));
             Assert.That(checkout.CompletedTransactionCount, Is.Zero);
             foreach (StoreCustomerSnapshot restoredCustomer in
@@ -447,6 +468,9 @@ namespace Margins.Tests
             Assert.That(flow.TryCompleteCheckout(out error), Is.True, error);
             yield return null;
             Assert.That(checkout.CompletedTransactionCount, Is.EqualTo(1));
+            Assert.That(
+                flow.CreateDetailedOperationMetrics(true).customersServed,
+                Is.EqualTo(1));
             Assert.That(
                 checkout.CompletedTransactions.Any(transaction =>
                     string.Equals(

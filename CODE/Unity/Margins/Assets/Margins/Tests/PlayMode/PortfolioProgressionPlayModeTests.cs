@@ -64,7 +64,9 @@ namespace Margins.Tests
             PortfolioProgressionSnapshot snapshot =
                 portfolio.Progression.CreateSnapshot();
             Assert.That(snapshot.firstShiftCompleted, Is.False);
-            Assert.That(snapshot.detailedOperationInitialized, Is.True);
+            Assert.That(
+                snapshot.locations[0].detailedReconciliation.initialized,
+                Is.True);
             Assert.That(
                 snapshot.cashCents,
                 Is.EqualTo(
@@ -94,7 +96,10 @@ namespace Margins.Tests
             Assert.That(portfolio.Progression.FirstShiftCompleted, Is.True);
             Assert.That(portfolio.Progression.CashCents, Is.EqualTo(expectedCash));
             Assert.That(
-                portfolio.Progression.CreateSnapshot().processedDetailedSessionId,
+                portfolio.Progression.CreateSnapshot()
+                    .locations[0]
+                    .detailedReconciliation
+                    .sessionId,
                 Is.EqualTo(store.StableSessionId));
 
             Assert.That(
