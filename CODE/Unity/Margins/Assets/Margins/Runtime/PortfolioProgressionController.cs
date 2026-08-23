@@ -828,6 +828,16 @@ namespace Margins
                 progression.CreateSnapshot();
             DeliveryContainerSnapshot previousContainer =
                 firstStoreDeliveryBox.Container.CreateSnapshot();
+            List<PortfolioProductInventorySnapshot>
+                previousGeneratedInventoryBaseline = null;
+            if (locationSceneAdapter?.HasActiveGeneratedLocation == true &&
+                !locationSceneAdapter.TryCaptureDetailedDeliveryInventoryBaseline(
+                    order.locationId,
+                    out previousGeneratedInventoryBaseline,
+                    out error))
+            {
+                return false;
+            }
             if (!firstStoreInventory.TryApplyRestoredInventory(
                     candidateInventory,
                     out error) ||
@@ -842,13 +852,15 @@ namespace Margins
                      order.locationId,
                      generatedLocationOverflow,
                      out error)) ||
-                !TrySynchronizeDetailedShift(out error))
+                !TrySynchronizeMaterializedDetailedDelivery(out error))
             {
                 string materializationError = error;
                 if (!TryRollbackDetailedDelivery(
+                        order.locationId,
                         previousInventory,
                         previousContainer,
                         previousPortfolio,
+                        previousGeneratedInventoryBaseline,
                         out string rollbackError))
                 {
                     throw new InvalidOperationException(
@@ -868,38 +880,80 @@ namespace Margins
             return true;
         }
 
+        private bool TrySynchronizeMaterializedDetailedDelivery(
+            out string error)
+        {
+            return locationSceneAdapter?.HasActiveGeneratedLocation == true
+                ? locationSceneAdapter.TrySynchronizeActiveLocation(out error)
+                : TrySynchronizeDetailedShift(out error);
+        }
+
         private bool TryRollbackDetailedDelivery(
+            string locationId,
             FirstStoreInventorySnapshot inventorySnapshot,
             DeliveryContainerSnapshot containerSnapshot,
             PortfolioProgressionSnapshot portfolioSnapshot,
+            IReadOnlyList<PortfolioProductInventorySnapshot>
+                generatedInventoryBaseline,
             out string error)
         {
+            List<string> rollbackErrors = new();
+            FirstStoreInventory restoredInventory = null;
             if (!FirstStoreInventory.TryRestore(
                     inventorySnapshot,
-                    out FirstStoreInventory restoredInventory,
-                    out error) ||
+                    out restoredInventory,
+                    out string inventoryError) ||
                 !firstStoreInventory.TryApplyRestoredInventory(
                     restoredInventory,
-                    out error) ||
+                    out inventoryError))
+            {
+                rollbackErrors.Add($"inventory: {inventoryError}");
+            }
+
+            DeliveryContainer restoredContainer = null;
+            string containerError = null;
+            if (restoredInventory == null ||
                 !DeliveryContainer.TryRestore(
                     restoredInventory,
                     containerSnapshot,
-                    out DeliveryContainer restoredContainer,
-                    out error) ||
+                    out restoredContainer,
+                    out containerError) ||
                 !firstStoreDeliveryBox.TryApplyRestoredContainer(
                     restoredContainer,
-                    out error) ||
-                !PortfolioProgression.TryRestore(
-                    portfolioSnapshot,
-                    out PortfolioProgression restoredPortfolio,
-                    out error))
+                    out containerError))
             {
-                return false;
+                rollbackErrors.Add(
+                    $"delivery container: {containerError ?? "restored inventory is unavailable"}");
             }
 
-            progression = restoredPortfolio;
-            error = null;
-            return true;
+            if (!PortfolioProgression.TryRestore(
+                    portfolioSnapshot,
+                    out PortfolioProgression restoredPortfolio,
+                    out string portfolioError))
+            {
+                rollbackErrors.Add($"portfolio: {portfolioError}");
+            }
+            else
+            {
+                progression = restoredPortfolio;
+            }
+
+            string generatedInventoryError = null;
+            if (generatedInventoryBaseline != null &&
+                (locationSceneAdapter == null ||
+                 !locationSceneAdapter.TryRestoreDetailedDeliveryInventoryBaseline(
+                     locationId,
+                     generatedInventoryBaseline,
+                     out generatedInventoryError)))
+            {
+                rollbackErrors.Add(
+                    $"generated location inventory: {generatedInventoryError ?? "location adapter is unavailable"}");
+            }
+
+            error = rollbackErrors.Count == 0
+                ? null
+                : string.Join("; ", rollbackErrors);
+            return rollbackErrors.Count == 0;
         }
 
         public bool TryCaptureSnapshot(

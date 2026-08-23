@@ -456,6 +456,231 @@ namespace Margins.Tests.PlayMode
                 error);
         }
 
+        [UnityTest]
+        public IEnumerator FailedOverflowMaterializationRollsBackAndRetriesExactlyOnce()
+        {
+            SceneContext context = null;
+            yield return LoadContext(value => context = value);
+            PrepareRiverbendPortfolio(context);
+
+            Assert.That(
+                context.Portfolio.TryAdvanceDelegatedDay(out string error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot pendingOrder = context.Portfolio.Progression
+                .PurchaseOrders.Single(value =>
+                    value.locationId == RiverbendLocationId &&
+                    !value.IsTerminal);
+            int deliveryCapacity = context.Inventory.Inventory.CreateSnapshot()
+                .locations.Single(value =>
+                    value.locationId == context.Delivery.InventoryLocationId)
+                .capacityUnits;
+            Assert.That(
+                pendingOrder.lines.All(value =>
+                    ConvenienceStoreProcurement.IsDetailedResource(
+                        value.resourceId)),
+                Is.True,
+                "The detailed overflow regression requires product-specific procurement lines.");
+            Assert.That(
+                pendingOrder.OrderedQuantityUnits,
+                Is.GreaterThan(deliveryCapacity),
+                "The regression must stage units beyond the physical receiving container.");
+            Assert.That(
+                context.Portfolio.Progression.TryAdvanceProcurementTicks(
+                    ConvenienceStoreProcurement.FulfillmentDelayTicks,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot fulfilledOrder = context.Portfolio.Progression
+                .PurchaseOrders.Single(value =>
+                    value.orderId == pendingOrder.orderId);
+            Assert.That(
+                fulfilledOrder.status,
+                Is.EqualTo(PurchaseOrderStatus.Fulfilled));
+
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
+                    out error),
+                Is.True,
+                error);
+            FirstStoreInventorySnapshot inventoryBeforeFailure =
+                context.Inventory.Inventory.CreateSnapshot();
+            DeliveryContainerSnapshot containerBeforeFailure =
+                GetProperty<DeliveryContainer>(
+                    context.Delivery,
+                    "Container").CreateSnapshot();
+            PortfolioProgressionSnapshot portfolioBeforeFailure =
+                context.Portfolio.Progression.CreateSnapshot();
+            List<PortfolioProductInventorySnapshot> baselineBeforeFailure =
+                CapturePortfolioInventoryBaseline(context.Adapter);
+            Dictionary<string, int> localBaselineBeforeFailure =
+                CaptureLocalInventoryBaseline(context.Adapter);
+
+            Dictionary<string, int> localBaseline = GetField<
+                Dictionary<string, int>>(
+                context.Adapter,
+                "localInventoryBaseline");
+            localBaseline[fulfilledOrder.lines[0].resourceId] = 10_000;
+            Assert.That(
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.False);
+            StringAssert.Contains("below its persistent reserve", error);
+
+            Assert.That(
+                context.Inventory.Inventory.CreateSnapshot(),
+                Is.EqualTo(inventoryBeforeFailure),
+                "Failed materialization must restore detailed inventory.");
+            Assert.That(
+                GetProperty<DeliveryContainer>(
+                    context.Delivery,
+                    "Container").CreateSnapshot(),
+                Is.EqualTo(containerBeforeFailure),
+                "Failed materialization must restore the physical container.");
+            Assert.That(
+                JsonUtility.ToJson(
+                    context.Portfolio.Progression.CreateSnapshot()),
+                Is.EqualTo(JsonUtility.ToJson(portfolioBeforeFailure)),
+                "Failed materialization must restore procurement and financial state.");
+            AssertProductInventoryEqual(
+                baselineBeforeFailure,
+                CapturePortfolioInventoryBaseline(context.Adapter),
+                "Failed materialization must restore generated-location overflow state.");
+
+            RestoreLocalInventoryBaseline(
+                context.Adapter,
+                localBaselineBeforeFailure);
+            Assert.That(
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot afterRetry =
+                context.Portfolio.Progression.CreateSnapshot();
+            PurchaseOrderSnapshot partiallyReceived = afterRetry.procurement
+                .orders.Single(value => value.orderId == fulfilledOrder.orderId);
+            int physicalDeliveryUnits = RemainingDeliveryUnits(context);
+            Assert.That(
+                partiallyReceived.status,
+                Is.EqualTo(PurchaseOrderStatus.PartiallyReceived));
+            Assert.That(
+                partiallyReceived.ReceivedQuantityUnits,
+                Is.EqualTo(
+                    fulfilledOrder.OrderedQuantityUnits -
+                    physicalDeliveryUnits));
+            Assert.That(physicalDeliveryUnits, Is.EqualTo(deliveryCapacity));
+
+            PortfolioLocationSnapshot beforeLocation = Location(
+                portfolioBeforeFailure,
+                RiverbendLocationId);
+            PortfolioLocationSnapshot afterLocation = Location(
+                afterRetry,
+                RiverbendLocationId);
+            Assert.That(
+                afterLocation.inventoryUnits,
+                Is.EqualTo(
+                    beforeLocation.inventoryUnits +
+                    fulfilledOrder.OrderedQuantityUnits));
+            foreach (PurchaseOrderLineSnapshot line in fulfilledOrder.lines)
+            {
+                Assert.That(
+                    afterLocation.productInventory.Single(value =>
+                        value.productId == line.resourceId).quantityUnits,
+                    Is.EqualTo(
+                        beforeLocation.productInventory.Single(value =>
+                            value.productId == line.resourceId).quantityUnits +
+                        line.orderedQuantityUnits));
+            }
+            Assert.That(afterRetry.cashCents,
+                Is.EqualTo(portfolioBeforeFailure.cashCents));
+            Assert.That(afterLocation.lifetimeInventoryPurchaseCents,
+                Is.EqualTo(beforeLocation.lifetimeInventoryPurchaseCents));
+            Assert.That(afterLocation.lifetimeDeliveryFeesCents,
+                Is.EqualTo(beforeLocation.lifetimeDeliveryFeesCents));
+            Assert.That(afterLocation.lifetimeCashChangeCents,
+                Is.EqualTo(beforeLocation.lifetimeCashChangeCents));
+            Assert.That(afterLocation.lifetimeOperatingProfitCents,
+                Is.EqualTo(beforeLocation.lifetimeOperatingProfitCents));
+
+            string successfulState = JsonUtility.ToJson(afterRetry);
+            Assert.That(
+                context.Portfolio.TrySynchronizeDetailedProcurement(out error),
+                Is.True,
+                error);
+            Assert.That(
+                JsonUtility.ToJson(
+                    context.Portfolio.Progression.CreateSnapshot()),
+                Is.EqualTo(successfulState),
+                "Repeating detailed procurement sync must not duplicate inventory, receipts, or money.");
+        }
+
+        [UnityTest]
+        public IEnumerator PointThreeMeterAgentTraversesAuthoredAndGeneratedStores()
+        {
+            SceneContext context = null;
+            yield return LoadContext(value => context = value);
+
+            NavMeshBuildSettings settings = NavMesh.GetSettingsByID(0);
+            Assert.That(settings.agentTypeID, Is.EqualTo(0));
+            Assert.That(
+                settings.agentRadius,
+                Is.EqualTo(0.3f).Within(0.0001f),
+                "The default Humanoid NavMesh bake must match the established detailed actor radius.");
+            StoreCustomerFlowLocationBindings customerBindings =
+                context.CustomerFlow.CaptureLocationBindings();
+            InStoreEmployeeLocationBindings employeeBindings =
+                context.EmployeeWork.CaptureLocationBindings();
+            Transform exteriorArrival = GameObject.Find(
+                "Customer Exterior Arrival Boundary")?.transform;
+            Assert.That(exteriorArrival, Is.Not.Null);
+            AssertCompleteNavigationRoutes(
+                exteriorArrival,
+                new[]
+                    {
+                        customerBindings.EntrancePoint,
+                        customerBindings.CheckoutCustomerPoint,
+                        employeeBindings.CashierWorkPoint,
+                        employeeBindings.DeliveryWorkPoint,
+                        employeeBindings.DeliveryDropPoint,
+                        employeeBindings.ShelfWorkPoint,
+                        employeeBindings.ManagerWorkPoint,
+                        customerBindings.ExitPoint
+                    }
+                    .Concat(customerBindings.BrowsePoints)
+                    .Concat(customerBindings.QueuePoints),
+                "authored first store");
+            AssertConfiguredDetailedAgentRadii(settings.agentRadius);
+
+            PrepareRiverbendPortfolio(context);
+            Assert.That(
+                context.Adapter.TryEnterLocation(
+                    RiverbendLocationId,
+                    out string error),
+                Is.True,
+                error);
+            yield return null;
+
+            Assert.That(
+                context.Adapter.TryValidateActiveNavigation(out error),
+                Is.True,
+                error);
+            GeneratedDetailedLocationBindings generated =
+                context.Adapter.ActiveBindings;
+            Assert.That(generated, Is.Not.Null);
+            GeneratedOpening entrance = context.Locations.ActiveBuilding
+                .LastResult.Openings.Single(value =>
+                    value.Kind == ProceduralOpeningKind.PrimaryEntrance);
+            Assert.That(
+                entrance.WidthMeters,
+                Is.GreaterThan(settings.agentRadius * 2f),
+                "The approved 3 ft opening must provide physical width for the configured detailed actor.");
+            AssertCompleteNavigationRoutes(
+                generated.EntrancePoint,
+                generated.RequiredNavigationPoints,
+                "generated store");
+            AssertConfiguredDetailedAgentRadii(settings.agentRadius);
+        }
+
         private static IEnumerator LoadContext(Action<SceneContext> assign)
         {
             yield return SceneManager.LoadSceneAsync(
@@ -859,6 +1084,125 @@ namespace Margins.Tests.PlayMode
                 message);
         }
 
+        private static List<PortfolioProductInventorySnapshot>
+            CapturePortfolioInventoryBaseline(
+                PersistentPortfolioLocationSceneAdapter adapter)
+        {
+            return GetField<List<PortfolioProductInventorySnapshot>>(
+                    adapter,
+                    "portfolioInventoryBaseline")
+                .Select(PortfolioOperationsRules.Clone)
+                .ToList();
+        }
+
+        private static Dictionary<string, int> CaptureLocalInventoryBaseline(
+            PersistentPortfolioLocationSceneAdapter adapter)
+        {
+            return new Dictionary<string, int>(
+                GetField<Dictionary<string, int>>(
+                    adapter,
+                    "localInventoryBaseline"),
+                StringComparer.Ordinal);
+        }
+
+        private static void RestoreLocalInventoryBaseline(
+            PersistentPortfolioLocationSceneAdapter adapter,
+            IReadOnlyDictionary<string, int> snapshot)
+        {
+            Dictionary<string, int> baseline = GetField<
+                Dictionary<string, int>>(
+                adapter,
+                "localInventoryBaseline");
+            baseline.Clear();
+            foreach (KeyValuePair<string, int> pair in snapshot)
+            {
+                baseline.Add(pair.Key, pair.Value);
+            }
+        }
+
+        private static void AssertProductInventoryEqual(
+            IEnumerable<PortfolioProductInventorySnapshot> expected,
+            IEnumerable<PortfolioProductInventorySnapshot> actual,
+            string message)
+        {
+            Assert.That(
+                actual
+                    .OrderBy(value => value.productId, StringComparer.Ordinal)
+                    .Select(value =>
+                        (value.productId,
+                         value.quantityUnits,
+                         value.unitCostCents)),
+                Is.EqualTo(expected
+                    .OrderBy(value => value.productId, StringComparer.Ordinal)
+                    .Select(value =>
+                        (value.productId,
+                         value.quantityUnits,
+                         value.unitCostCents))),
+                message);
+        }
+
+        private static void AssertCompleteNavigationRoutes(
+            Transform origin,
+            IEnumerable<Transform> targets,
+            string locationLabel)
+        {
+            Assert.That(origin, Is.Not.Null, locationLabel);
+            Assert.That(
+                NavMesh.SamplePosition(
+                    origin.position,
+                    out NavMeshHit originHit,
+                    1.5f,
+                    NavMesh.AllAreas),
+                Is.True,
+                $"{locationLabel} origin has no NavMesh.");
+            foreach (Transform target in targets
+                         .Where(value => value != null)
+                         .Distinct())
+            {
+                Assert.That(
+                    NavMesh.SamplePosition(
+                        target.position,
+                        out NavMeshHit targetHit,
+                        1.5f,
+                        NavMesh.AllAreas),
+                    Is.True,
+                    $"{locationLabel} target '{target.name}' has no NavMesh.");
+                NavMeshPath path = new();
+                Assert.That(
+                    NavMesh.CalculatePath(
+                        originHit.position,
+                        targetHit.position,
+                        NavMesh.AllAreas,
+                        path),
+                    Is.True,
+                    $"{locationLabel} target '{target.name}' rejected path calculation.");
+                Assert.That(
+                    path.status,
+                    Is.EqualTo(NavMeshPathStatus.PathComplete),
+                    $"{locationLabel} target '{target.name}' is not traversable.");
+            }
+        }
+
+        private static void AssertConfiguredDetailedAgentRadii(
+            float expectedRadius)
+        {
+            LocalNavigationAgent[] agents = Object
+                .FindObjectsByType<LocalNavigationAgent>(
+                    FindObjectsInactive.Include)
+                .Where(value => value.name.StartsWith(
+                    "Detailed ",
+                    StringComparison.Ordinal))
+                .ToArray();
+            Assert.That(agents, Has.Length.GreaterThanOrEqualTo(3));
+            foreach (LocalNavigationAgent agent in agents)
+            {
+                Assert.That(
+                    agent.Agent.radius,
+                    Is.EqualTo(expectedRadius).Within(0.0001f),
+                    agent.name);
+            }
+        }
+
         private static void AssertPlayerInsideSelectedUnit(
             FirstPersonController player,
             ProceduralCommercialBuilding building)
@@ -981,6 +1325,26 @@ namespace Margins.Tests.PlayMode
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, fieldName);
             field.SetValue(target, value);
+        }
+
+        private static T GetField<T>(object target, string fieldName)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName);
+            return (T)field.GetValue(target);
+        }
+
+        private static T GetProperty<T>(object target, string propertyName)
+        {
+            PropertyInfo property = target.GetType().GetProperty(
+                propertyName,
+                BindingFlags.Instance |
+                BindingFlags.Public |
+                BindingFlags.NonPublic);
+            Assert.That(property, Is.Not.Null, propertyName);
+            return (T)property.GetValue(target);
         }
     }
 }

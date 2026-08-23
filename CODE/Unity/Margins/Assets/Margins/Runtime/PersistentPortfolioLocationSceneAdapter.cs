@@ -473,6 +473,71 @@ namespace Margins
             return true;
         }
 
+        internal bool TryCaptureDetailedDeliveryInventoryBaseline(
+            string locationId,
+            out List<PortfolioProductInventorySnapshot> snapshot,
+            out string error)
+        {
+            snapshot = null;
+            if (!HasActiveGeneratedLocation ||
+                !string.Equals(
+                    activeLocationId,
+                    locationId,
+                    StringComparison.Ordinal))
+            {
+                error =
+                    "Detailed delivery inventory capture requires the matching active generated location.";
+                return false;
+            }
+
+            snapshot = portfolioInventoryBaseline
+                .Select(PortfolioOperationsRules.Clone)
+                .ToList();
+            error = null;
+            return true;
+        }
+
+        internal bool TryRestoreDetailedDeliveryInventoryBaseline(
+            string locationId,
+            IReadOnlyList<PortfolioProductInventorySnapshot> snapshot,
+            out string error)
+        {
+            if (!HasActiveGeneratedLocation ||
+                !string.Equals(
+                    activeLocationId,
+                    locationId,
+                    StringComparison.Ordinal) ||
+                snapshot == null)
+            {
+                error =
+                    "Detailed delivery inventory rollback requires the matching active generated location and captured baseline.";
+                return false;
+            }
+
+            List<PortfolioProductInventorySnapshot> candidate = snapshot
+                .Select(PortfolioOperationsRules.Clone)
+                .ToList();
+            HashSet<string> productIds = new(StringComparer.Ordinal);
+            if (candidate.Any(value =>
+                    value == null ||
+                    !StableIdentifier.IsValid(value.productId) ||
+                    value.quantityUnits < 0 ||
+                    value.unitCostCents < 0 ||
+                    !productIds.Add(value.productId)) ||
+                !productIds.SetEquals(portfolioInventoryBaseline.Select(value =>
+                    value.productId)))
+            {
+                error =
+                    "Captured detailed delivery inventory baseline is invalid or no longer matches the active merchandise catalog.";
+                return false;
+            }
+
+            portfolioInventoryBaseline.Clear();
+            portfolioInventoryBaseline.AddRange(candidate);
+            error = null;
+            return true;
+        }
+
         private bool TryEnterFirstStore(out string error)
         {
             if (HasActiveGeneratedLocation)
