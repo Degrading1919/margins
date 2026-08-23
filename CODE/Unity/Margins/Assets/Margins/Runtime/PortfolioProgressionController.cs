@@ -43,6 +43,8 @@ namespace Margins
         [SerializeField] private StoreOperatingController firstStore;
         [SerializeField] private FirstStoreInventoryComponent firstStoreInventory;
         [SerializeField] private DeliveryBoxComponent firstStoreDeliveryBox;
+        [SerializeField] private PersistentPortfolioLocationSceneAdapter
+            locationSceneAdapter;
         [SerializeField, Min(0.25f)] private float procurementTickSeconds = 5f;
 
         private PortfolioProgression progression;
@@ -75,6 +77,8 @@ namespace Margins
             !firstPersonController.IsGameplayMode;
         public string LastAction => lastAction;
         public string SelectedLocationId => selectedLocationId;
+        public PersistentPortfolioLocationSceneAdapter LocationSceneAdapter =>
+            locationSceneAdapter;
 
         private void Awake()
         {
@@ -159,13 +163,20 @@ namespace Margins
                 return false;
             }
 
+            string locationId = progression.CreateSnapshot().company
+                .activeDetailedLocationId;
+            if (string.IsNullOrWhiteSpace(locationId))
+            {
+                locationId = PortfolioProgressionRules.FirstLocationId;
+            }
+
             long payrollCents;
             try
             {
                 payrollCents = progression.Employees
                     .Where(employee => string.Equals(
                         employee.assignedLocationId,
-                        PortfolioProgressionRules.FirstLocationId,
+                        locationId,
                         StringComparison.Ordinal) &&
                         PortfolioOperationsRules.IsScheduled(
                             employee.schedule,
@@ -216,6 +227,18 @@ namespace Margins
             {
                 error = "Portfolio progression or first-store state is unavailable.";
                 return false;
+            }
+
+            string activeLocationId = progression.CreateSnapshot().company
+                .activeDetailedLocationId;
+            if (!string.IsNullOrWhiteSpace(activeLocationId) &&
+                !string.Equals(
+                    activeLocationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
+            {
+                error = null;
+                return true;
             }
 
             PortfolioLocationSnapshot firstLocation = progression.Locations.FirstOrDefault(
@@ -300,9 +323,155 @@ namespace Margins
             return success;
         }
 
+        public bool TryEstablishDetailedLocationBaseline(
+            string locationId,
+            StoreOperatingController detailedStore,
+            IReadOnlyList<PortfolioProductInventorySnapshot> productInventory,
+            DetailedOperationMetricsSnapshot metrics,
+            out string error)
+        {
+            if (!TryGetDetailedLocationState(
+                    locationId,
+                    detailedStore,
+                    productInventory,
+                    out StoreSessionTotals totals,
+                    out int inventoryUnits,
+                    out long inventoryValueCents,
+                    out error))
+            {
+                return false;
+            }
+
+            return progression.TryEstablishDetailedOperationBaseline(
+                locationId,
+                detailedStore.StableSessionId,
+                totals,
+                inventoryUnits,
+                inventoryValueCents,
+                productInventory,
+                metrics,
+                out error);
+        }
+
+        public bool TrySynchronizeDetailedLocation(
+            string locationId,
+            StoreOperatingController detailedStore,
+            IReadOnlyList<PortfolioProductInventorySnapshot> productInventory,
+            DetailedOperationMetricsSnapshot metrics,
+            out bool unchanged,
+            out string error)
+        {
+            unchanged = false;
+            if (!TryGetDetailedLocationState(
+                    locationId,
+                    detailedStore,
+                    productInventory,
+                    out StoreSessionTotals totals,
+                    out int inventoryUnits,
+                    out long inventoryValueCents,
+                    out error))
+            {
+                return false;
+            }
+
+            return progression.TryReconcileDetailedOperation(
+                locationId,
+                detailedStore.StableSessionId,
+                totals,
+                inventoryUnits,
+                inventoryValueCents,
+                productInventory,
+                MerchandisingRules.AggregateCompletedSales(
+                    detailedStore.Checkout.CompletedTransactions),
+                metrics,
+                out unchanged,
+                out error);
+        }
+
+        public bool TryConfigureDetailedOperatingCosts(
+            string locationId,
+            StoreOperatingController detailedStore,
+            bool includeCurrentDayCosts,
+            out string error)
+        {
+            error = null;
+            if (progression == null || detailedStore == null)
+            {
+                error = "Detailed location operating costs are unavailable.";
+                return false;
+            }
+
+            PortfolioProgressionSnapshot snapshot = progression.CreateSnapshot();
+            PortfolioLocationSnapshot location = snapshot.locations
+                .FirstOrDefault(value => string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            PortfolioCommercialPropertySnapshot property = snapshot.company
+                .properties.FirstOrDefault(value => string.Equals(
+                    value.propertyId,
+                    location?.propertyId,
+                    StringComparison.Ordinal));
+            if (location == null || property == null)
+            {
+                error = "The detailed location has no persistent property relationship.";
+                return false;
+            }
+
+            long payrollCents;
+            try
+            {
+                payrollCents = includeCurrentDayCosts
+                    ? snapshot.employees
+                        .Where(employee => string.Equals(
+                                               employee.assignedLocationId,
+                                               locationId,
+                                               StringComparison.Ordinal) &&
+                                           PortfolioOperationsRules.IsScheduled(
+                                               employee.schedule,
+                                               snapshot.currentDay))
+                        .Sum(employee => employee.dailyWageCents)
+                    : 0;
+            }
+            catch (OverflowException)
+            {
+                error = "Detailed scheduled payroll exceeds supported cent storage.";
+                return false;
+            }
+
+            long rentCents = includeCurrentDayCosts &&
+                             property.tenure == PortfolioPropertyTenure.Leased
+                ? location.dailyRentCents
+                : 0;
+            if (rentCents > int.MaxValue ||
+                !detailedStore.TrySetIncludedOperatingExpensesCents(
+                    (int)rentCents,
+                    out error) ||
+                !detailedStore.TrySetLivePayrollCents(payrollCents, out error))
+            {
+                error ??= "Detailed operating costs exceed supported cent storage.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
         public bool TrySynchronizeDetailedProcurement(out string error)
         {
             if (progression == null || !progression.FirstShiftCompleted)
+            {
+                error = null;
+                return true;
+            }
+
+            string activeLocationId = progression.CreateSnapshot().company
+                .activeDetailedLocationId;
+            if (!string.IsNullOrWhiteSpace(activeLocationId) &&
+                !string.Equals(
+                    activeLocationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
             {
                 error = null;
                 return true;
@@ -983,6 +1152,72 @@ namespace Margins
             return true;
         }
 
+        private bool TryGetDetailedLocationState(
+            string locationId,
+            StoreOperatingController detailedStore,
+            IReadOnlyList<PortfolioProductInventorySnapshot> productInventory,
+            out StoreSessionTotals totals,
+            out int inventoryUnits,
+            out long inventoryValueCents,
+            out string error)
+        {
+            totals = detailedStore?.CurrentTotals;
+            inventoryUnits = 0;
+            inventoryValueCents = 0;
+            if (progression == null ||
+                !FirstStoreIdentifier.IsValid(locationId) ||
+                detailedStore?.Checkout == null || totals == null ||
+                productInventory == null)
+            {
+                error =
+                    "A valid detailed location, operating store, totals, and product inventory are required.";
+                return false;
+            }
+
+            IReadOnlyDictionary<string, int> unitCosts =
+                detailedStore.Checkout.ProductUnitCostsCents;
+            HashSet<string> seen = new(StringComparer.Ordinal);
+            try
+            {
+                foreach (PortfolioProductInventorySnapshot product in
+                         productInventory)
+                {
+                    if (product == null ||
+                        !seen.Add(product.productId) ||
+                        product.quantityUnits < 0 ||
+                        !unitCosts.TryGetValue(
+                            product.productId,
+                            out int unitCostCents) ||
+                        unitCostCents != product.unitCostCents)
+                    {
+                        error =
+                            "Detailed product inventory does not match the authoritative checkout catalog and costs.";
+                        return false;
+                    }
+                    inventoryUnits = checked(
+                        inventoryUnits + product.quantityUnits);
+                    inventoryValueCents = checked(
+                        inventoryValueCents +
+                        (long)product.quantityUnits * product.unitCostCents);
+                }
+            }
+            catch (OverflowException)
+            {
+                error = "Detailed product inventory totals overflowed storage.";
+                return false;
+            }
+
+            if (seen.Count != unitCosts.Count)
+            {
+                error =
+                    "Detailed product inventory is missing a configured checkout product.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
         private static bool RequiresDetailedReturnRebase(
             PortfolioLocationSnapshot location,
             int currentDay)
@@ -1107,19 +1342,13 @@ namespace Margins
                 return false;
             }
 
-            if (string.Equals(
+            FirstStoreMerchandisingComponent merchandising =
+                firstStore?.Checkout?.Merchandising;
+            if (merchandising != null && string.Equals(
                     locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    merchandising.LocationId,
                     StringComparison.Ordinal))
             {
-                FirstStoreMerchandisingComponent merchandising =
-                    firstStore?.Checkout?.Merchandising;
-                if (merchandising == null)
-                {
-                    error =
-                        "The loaded first store has no merchandising safety adapter.";
-                    return false;
-                }
                 return merchandising.TryApplyPricePreset(preset, out error);
             }
 
@@ -1159,6 +1388,42 @@ namespace Margins
             RecordResult(
                 success,
                 success ? $"Leased and stocked {LocationName(locationId)}." : error);
+            return success;
+        }
+
+        public bool TryVisitLocation(string locationId, out string error)
+        {
+            if (locationSceneAdapter == null)
+            {
+                error = "Persistent location travel is not configured in this scene.";
+                return false;
+            }
+
+            bool success = locationSceneAdapter.TryEnterLocation(
+                locationId,
+                out error);
+            RecordResult(
+                success,
+                success
+                    ? $"Entered {LocationName(locationId)} through the detailed location handoff."
+                    : error);
+            return success;
+        }
+
+        public bool TryLeaveVisitedLocation(out string error)
+        {
+            if (locationSceneAdapter == null)
+            {
+                error = "Persistent location travel is not configured in this scene.";
+                return false;
+            }
+
+            bool success = locationSceneAdapter.TryLeaveToManagement(out error);
+            RecordResult(
+                success,
+                success
+                    ? "Left detailed operation; aggregate portfolio state is authoritative."
+                    : error);
             return success;
         }
 
@@ -2439,6 +2704,21 @@ namespace Margins
                          true))
             {
                 TryPlaceManualPurchaseOrder(location.locationId, out _);
+            }
+
+            if (locationSceneAdapter != null &&
+                DrawHumanButton(
+                    new Rect(rect.x + 24f, rect.y + 568f,
+                        rect.width - 48f, 36f),
+                    string.Equals(
+                        location.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal)
+                        ? "Return to store"
+                        : "Visit generated location",
+                    true))
+            {
+                TryVisitLocation(location.locationId, out _);
             }
         }
 

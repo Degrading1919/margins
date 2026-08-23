@@ -28,6 +28,18 @@ namespace Margins
             (operatingController.State == StoreOperatingState.Open ||
              operatingController.State == StoreOperatingState.Closing);
 
+        public void Configure(
+            string targetId,
+            ProductDefinition product,
+            StagedCheckoutInteractionComponent checkoutInteraction,
+            StoreOperatingController store)
+        {
+            stableTargetId = targetId;
+            productDefinition = product;
+            stagedCheckout = checkoutInteraction;
+            operatingController = store;
+        }
+
         public FirstStoreWorldInteractionPrompt Prompt =>
             new(
                 "E",

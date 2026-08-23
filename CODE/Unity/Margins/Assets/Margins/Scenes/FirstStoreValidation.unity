@@ -8491,6 +8491,7 @@ MonoBehaviour:
   firstStore: {fileID: 2123028612}
   firstStoreInventory: {fileID: 1319953152}
   firstStoreDeliveryBox: {fileID: 287785512}
+  locationSceneAdapter: {fileID: 1955686706}
   procurementTickSeconds: 5
 --- !u!114 &794714431
 MonoBehaviour:
@@ -20960,6 +20961,79 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1362594659}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1955686705
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1955686708}
+  - component: {fileID: 1955686707}
+  - component: {fileID: 1955686706}
+  m_Layer: 0
+  m_Name: Persistent Portfolio Location Travel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1955686706
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1955686705}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1dba457ddb255c140a43038a2b4b33ea, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Margins.Runtime::Margins.PersistentPortfolioLocationSceneAdapter
+  portfolio: {fileID: 794714430}
+  locations: {fileID: 1955686707}
+  storePersistence: {fileID: 311586446}
+  detailedStore: {fileID: 2123028612}
+  detailedInventory: {fileID: 1319953152}
+  physicalUnits: {fileID: 598536368}
+  stocking: {fileID: 2012944953}
+  merchandising: {fileID: 794714433}
+  stagedCheckout: {fileID: 1595772827}
+  customerFlow: {fileID: 1579769789}
+  employeeWork: {fileID: 794714431}
+  player: {fileID: 33272900}
+--- !u!114 &1955686707
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1955686705}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 32017094d3ca4c75ae1a6381221211a1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Margins.Runtime::Margins.PersistentPortfolioLocationController
+  portfolio: {fileID: 794714430}
+  assetRegistry: {fileID: 11400000, guid: 52f5b4d1488d7ce439a543aeae9dbdad, type: 2}
+  businessRecipes:
+  - {fileID: 11400000, guid: 8396de163b6efe045b1bd08686df33ef, type: 2}
+--- !u!4 &1955686708
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1955686705}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 48, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1972277115
 GameObject:
   m_ObjectHideFlags: 0
@@ -22372,3 +22446,4 @@ SceneRoots:
   - {fileID: 1165048109}
   - {fileID: 1579769790}
   - {fileID: 733845200}
+  - {fileID: 1955686708}
