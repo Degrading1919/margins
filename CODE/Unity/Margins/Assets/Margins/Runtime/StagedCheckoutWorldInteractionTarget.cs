@@ -24,6 +24,19 @@ namespace Margins
             (fixturePlacement == null || requiredFixture == null ||
              fixturePlacement.IsPlaced(requiredFixture.StableFixtureInstanceId));
 
+        public void Configure(
+            string targetId,
+            StagedCheckoutInteractionComponent checkoutInteraction,
+            StoreOperatingController store)
+        {
+            stableTargetId = targetId;
+            stagedCheckout = checkoutInteraction;
+            operatingController = store;
+            fixturePlacement = null;
+            requiredFixture = null;
+            replayAcknowledged = false;
+        }
+
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get

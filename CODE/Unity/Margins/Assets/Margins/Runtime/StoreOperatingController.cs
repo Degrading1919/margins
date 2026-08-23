@@ -81,6 +81,32 @@ namespace Margins
             return true;
         }
 
+        public bool TrySetIncludedOperatingExpensesCents(
+            int operatingExpensesCents,
+            out string error)
+        {
+            if (operatingExpensesCents < 0)
+            {
+                error = "Included operating expenses cannot be negative.";
+                return false;
+            }
+
+            try
+            {
+                _ = checked((long)operatingExpensesCents + livePayrollCents);
+            }
+            catch (OverflowException)
+            {
+                error =
+                    "Included operating expenses exceed supported cent storage.";
+                return false;
+            }
+
+            includedOperatingExpensesCents = operatingExpensesCents;
+            error = null;
+            return true;
+        }
+
         private void Start()
         {
             if (!TryInitialize(out string error))

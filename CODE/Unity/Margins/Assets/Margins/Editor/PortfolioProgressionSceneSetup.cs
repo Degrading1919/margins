@@ -29,10 +29,33 @@ namespace Margins.Editor
                 UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
             FirstStoreValidationController validation =
                 controls.GetComponent<FirstStoreValidationController>();
+            FirstStorePersistenceMapperComponent persistenceMapper =
+                UnityEngine.Object.FindAnyObjectByType<
+                    FirstStorePersistenceMapperComponent>();
+            PhysicalProductUnitRegistry physicalUnits =
+                UnityEngine.Object.FindAnyObjectByType<
+                    PhysicalProductUnitRegistry>();
+            StockingController stocking =
+                UnityEngine.Object.FindAnyObjectByType<StockingController>();
+            FirstStoreMerchandisingComponent merchandising =
+                UnityEngine.Object.FindAnyObjectByType<
+                    FirstStoreMerchandisingComponent>();
+            StagedCheckoutInteractionComponent stagedCheckout =
+                UnityEngine.Object.FindAnyObjectByType<
+                    StagedCheckoutInteractionComponent>();
+            StoreCustomerFlowController customerFlow =
+                UnityEngine.Object.FindAnyObjectByType<
+                    StoreCustomerFlowController>();
+            InStoreEmployeeWorkController employeeWork =
+                UnityEngine.Object.FindAnyObjectByType<
+                    InStoreEmployeeWorkController>();
 
             if (player == null || store == null || inventory == null ||
                 delivery == null ||
-                disk == null || validation == null)
+                disk == null || validation == null ||
+                persistenceMapper == null || physicalUnits == null ||
+                stocking == null || merchandising == null ||
+                stagedCheckout == null)
             {
                 throw new InvalidOperationException(
                     "Portfolio scene setup requires the existing player, store, disk, and validation components.");
@@ -47,6 +70,56 @@ namespace Margins.Editor
             SetObject(portfolio, "firstStoreDeliveryBox", delivery);
             SetObject(disk, "portfolioProgression", portfolio);
             SetObject(validation, "portfolioProgression", portfolio);
+
+            ProceduralAssetRegistry registry =
+                AssetDatabase.LoadAssetAtPath<ProceduralAssetRegistry>(
+                    "Assets/Margins/Content/Procedural/Resources/ProceduralAssetRegistry.asset");
+            ProceduralBusinessRecipe recipe =
+                AssetDatabase.LoadAssetAtPath<ProceduralBusinessRecipe>(
+                    "Assets/Margins/Content/Procedural/Resources/Recipes/GrayboxConvenienceRecipe.asset");
+            if (registry == null || recipe == null)
+            {
+                throw new InvalidOperationException(
+                    "Persistent location travel requires the approved procedural registry and convenience recipe assets.");
+            }
+
+            GameObject travelObject = GameObject.Find(
+                "Persistent Portfolio Location Travel");
+            if (travelObject == null)
+            {
+                travelObject = new GameObject(
+                    "Persistent Portfolio Location Travel");
+            }
+            travelObject.transform.SetPositionAndRotation(
+                new Vector3(48f, 0f, 0f),
+                Quaternion.identity);
+            PersistentPortfolioLocationController materializer =
+                travelObject.GetComponent<
+                    PersistentPortfolioLocationController>() ??
+                travelObject.AddComponent<
+                    PersistentPortfolioLocationController>();
+            materializer.Configure(portfolio, registry, recipe);
+            PersistentPortfolioLocationSceneAdapter sceneAdapter =
+                travelObject.GetComponent<
+                    PersistentPortfolioLocationSceneAdapter>() ??
+                travelObject.AddComponent<
+                    PersistentPortfolioLocationSceneAdapter>();
+            sceneAdapter.Configure(
+                portfolio,
+                materializer,
+                persistenceMapper,
+                store,
+                inventory,
+                physicalUnits,
+                stocking,
+                merchandising,
+                stagedCheckout,
+                customerFlow,
+                employeeWork,
+                player);
+            SetObject(portfolio, "locationSceneAdapter", sceneAdapter);
+            EditorUtility.SetDirty(materializer);
+            EditorUtility.SetDirty(sceneAdapter);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);

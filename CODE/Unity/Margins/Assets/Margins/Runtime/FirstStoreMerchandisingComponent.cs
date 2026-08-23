@@ -28,6 +28,30 @@ namespace Margins
         public PortfolioProgressionController PortfolioProgression =>
             portfolioProgression;
 
+        public bool TryBindDetailedLocation(
+            string detailedLocationId,
+            out string error)
+        {
+            if (!FirstStoreIdentifier.IsValid(detailedLocationId))
+            {
+                error = "A valid portfolio location is required for detailed merchandising.";
+                return false;
+            }
+
+            string previous = locationId;
+            locationId = detailedLocationId;
+            standaloneLocation = null;
+            if (!TryValidateConfiguration(out error))
+            {
+                locationId = previous;
+                return false;
+            }
+
+            Changed?.Invoke();
+            error = null;
+            return true;
+        }
+
         public IReadOnlyList<ProductDefinition> ProductCatalog
         {
             get
@@ -103,23 +127,18 @@ namespace Margins
             foreach (ShelfMerchandiseAssignmentSnapshot assignment in
                      location.shelfMerchandiseAssignments)
             {
-                if (!stocking.TryGetAuthoredShelf(
-                        assignment.shelfFixtureId,
-                        out _,
-                        out string shelfLocationId,
-                        out _) ||
-                    !string.Equals(
-                        assignment.inventoryLocationId,
-                        shelfLocationId,
-                        StringComparison.Ordinal) ||
+                if (!TryMapPersistentAssignment(
+                        location,
+                        assignment,
+                        out StockingProductConfiguration physical) ||
                     (!string.IsNullOrWhiteSpace(assignment.assignedProductId) &&
                      !stocking.IsProductCompatibleWithShelf(
                          assignment.assignedProductId,
-                         assignment.shelfFixtureId,
+                         physical.ShelfFixture.StableFixtureId,
                          out error)))
                 {
                     error ??=
-                        $"Shelf '{assignment.shelfFixtureId}' does not match its authored physical stocking area.";
+                        $"Shelf '{assignment.shelfFixtureId}' has no deterministic authored detailed-store slot.";
                     return false;
                 }
             }
@@ -145,18 +164,13 @@ namespace Margins
             foreach (ShelfMerchandiseAssignmentSnapshot assignment in
                      location.shelfMerchandiseAssignments)
             {
-                if (!candidate.TryGetAuthoredShelf(
-                        assignment.shelfFixtureId,
-                        out _,
-                        out string shelfLocationId,
-                        out _) ||
-                    !string.Equals(
-                        assignment.inventoryLocationId,
-                        shelfLocationId,
-                        StringComparison.Ordinal))
+                if (!TryMapPersistentAssignment(
+                        location,
+                        assignment,
+                        out _))
                 {
                     error =
-                        $"Merchandising shelf '{assignment.shelfFixtureId}' has no matching physical stocking destination.";
+                        $"Merchandising shelf '{assignment.shelfFixtureId}' has no deterministic physical stocking destination.";
                     return false;
                 }
             }
@@ -200,11 +214,31 @@ namespace Margins
             out MerchandiseOffer offer)
         {
             offer = default;
-            return TryGetLocation(out PortfolioLocationSnapshot location, out _) &&
-                   MerchandisingRules.TryGetOfferForProduct(
-                       location,
-                       productId,
-                       out offer);
+            if (!TryGetLocation(out PortfolioLocationSnapshot location, out _) ||
+                !MerchandisingRules.TryGetOfferForProduct(
+                    location,
+                    productId,
+                    out MerchandiseOffer persistent) ||
+                !TryGetPersistentAssignment(
+                    location,
+                    persistent.ShelfFixtureId,
+                    out ShelfMerchandiseAssignmentSnapshot assignment) ||
+                !TryMapPersistentAssignment(
+                    location,
+                    assignment,
+                    out StockingProductConfiguration physical))
+            {
+                return false;
+            }
+
+            offer = new MerchandiseOffer(
+                persistent.ProductId,
+                physical.ShelfFixture.StableFixtureId,
+                physical.ShelfLocationId,
+                persistent.ReferencePriceCents,
+                persistent.SalePriceCents,
+                persistent.CustomDisplayLabel);
+            return true;
         }
 
         public bool TryGetOfferForShelf(
@@ -212,11 +246,29 @@ namespace Margins
             out MerchandiseOffer offer)
         {
             offer = default;
-            return TryGetLocation(out PortfolioLocationSnapshot location, out _) &&
-                   MerchandisingRules.TryGetOfferForShelf(
-                       location,
-                       shelfFixtureId,
-                       out offer);
+            if (!TryGetLocation(out PortfolioLocationSnapshot location, out _) ||
+                !TryMapAuthoredShelf(
+                    location,
+                    shelfFixtureId,
+                    out ShelfMerchandiseAssignmentSnapshot assignment,
+                    out StockingProductConfiguration physical) ||
+                string.IsNullOrWhiteSpace(assignment.assignedProductId) ||
+                !MerchandisingRules.TryGetOfferForProduct(
+                    location,
+                    assignment.assignedProductId,
+                    out MerchandiseOffer persistent))
+            {
+                return false;
+            }
+
+            offer = new MerchandiseOffer(
+                persistent.ProductId,
+                physical.ShelfFixture.StableFixtureId,
+                physical.ShelfLocationId,
+                persistent.ReferencePriceCents,
+                persistent.SalePriceCents,
+                persistent.CustomDisplayLabel);
+            return true;
         }
 
         public bool TryGetShelfAssignment(
@@ -231,13 +283,11 @@ namespace Margins
                 return false;
             }
 
-            ShelfMerchandiseAssignmentSnapshot assignment =
-                location.shelfMerchandiseAssignments.FirstOrDefault(value =>
-                    string.Equals(
-                        value.shelfFixtureId,
-                        shelfFixtureId,
-                        StringComparison.Ordinal));
-            if (assignment == null)
+            if (!TryMapAuthoredShelf(
+                    location,
+                    shelfFixtureId,
+                    out ShelfMerchandiseAssignmentSnapshot assignment,
+                    out _))
             {
                 return false;
             }
@@ -312,6 +362,17 @@ namespace Margins
                 return false;
             }
 
+            if (!TryGetLocation(out PortfolioLocationSnapshot location, out error) ||
+                !TryMapAuthoredShelf(
+                    location,
+                    shelfFixtureId,
+                    out ShelfMerchandiseAssignmentSnapshot persistentAssignment,
+                    out _))
+            {
+                error ??= "That shelf has no persistent portfolio assignment.";
+                return false;
+            }
+
             bool hasCustomerReservation =
                 customerFlow?.HasReservationAtShelfLocation(shelfLocationId) == true;
 
@@ -362,7 +423,7 @@ namespace Margins
             {
                 if (!portfolioProgression.Progression.TryUpdateShelfOffer(
                         locationId,
-                        shelfFixtureId,
+                        persistentAssignment.shelfFixtureId,
                         assignedProductId,
                         salePriceCents,
                         customDisplayLabel,
@@ -442,8 +503,12 @@ namespace Margins
                      location.shelfMerchandiseAssignments)
             {
                 if (changedProducts.Contains(assignment.assignedProductId) &&
+                    TryMapPersistentAssignment(
+                        location,
+                        assignment,
+                        out StockingProductConfiguration physical) &&
                     customerFlow.HasReservationAtShelfLocation(
-                        assignment.inventoryLocationId))
+                        physical.ShelfLocationId))
                 {
                     error =
                         "Wait for customers holding shelf products to finish or leave before applying a price preset.";
@@ -499,6 +564,134 @@ namespace Margins
             location = standaloneLocation;
             error = null;
             return true;
+        }
+
+        private bool TryMapPersistentAssignment(
+            PortfolioLocationSnapshot location,
+            ShelfMerchandiseAssignmentSnapshot assignment,
+            out StockingProductConfiguration physical)
+        {
+            physical = null;
+            if (location?.shelfMerchandiseAssignments == null ||
+                assignment == null || stocking == null)
+            {
+                return false;
+            }
+
+            List<StockingProductConfiguration> authored = AuthoredShelfSlots();
+            physical = authored.FirstOrDefault(value =>
+                string.Equals(
+                    value.ShelfFixture.StableFixtureId,
+                    assignment.shelfFixtureId,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    value.ShelfLocationId,
+                    assignment.inventoryLocationId,
+                    StringComparison.Ordinal));
+            if (physical != null)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(assignment.assignedProductId))
+            {
+                List<StockingProductConfiguration> productMatches = authored
+                    .Where(value => value.ProductDefinition != null &&
+                                    string.Equals(
+                                        value.ProductDefinition.StableProductId,
+                                        assignment.assignedProductId,
+                                        StringComparison.Ordinal))
+                    .ToList();
+                if (productMatches.Count == 1)
+                {
+                    physical = productMatches[0];
+                    return true;
+                }
+            }
+
+            List<ShelfMerchandiseAssignmentSnapshot> persistent = location
+                .shelfMerchandiseAssignments
+                .Where(value => value != null)
+                .OrderBy(value => value.shelfFixtureId, StringComparer.Ordinal)
+                .ToList();
+            int index = persistent.FindIndex(value => ReferenceEquals(
+                value,
+                assignment));
+            if (index < 0)
+            {
+                index = persistent.FindIndex(value => string.Equals(
+                    value.shelfFixtureId,
+                    assignment.shelfFixtureId,
+                    StringComparison.Ordinal));
+            }
+            if (index < 0 || index >= authored.Count)
+            {
+                return false;
+            }
+
+            physical = authored[index];
+            return true;
+        }
+
+        private bool TryMapAuthoredShelf(
+            PortfolioLocationSnapshot location,
+            string shelfFixtureId,
+            out ShelfMerchandiseAssignmentSnapshot assignment,
+            out StockingProductConfiguration physical)
+        {
+            assignment = null;
+            physical = null;
+            if (location?.shelfMerchandiseAssignments == null ||
+                !FirstStoreIdentifier.IsValid(shelfFixtureId))
+            {
+                return false;
+            }
+
+            foreach (ShelfMerchandiseAssignmentSnapshot candidate in
+                     location.shelfMerchandiseAssignments)
+            {
+                if (TryMapPersistentAssignment(
+                        location,
+                        candidate,
+                        out StockingProductConfiguration mapped) &&
+                    string.Equals(
+                        mapped.ShelfFixture.StableFixtureId,
+                        shelfFixtureId,
+                        StringComparison.Ordinal))
+                {
+                    assignment = candidate;
+                    physical = mapped;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool TryGetPersistentAssignment(
+            PortfolioLocationSnapshot location,
+            string persistentShelfFixtureId,
+            out ShelfMerchandiseAssignmentSnapshot assignment)
+        {
+            assignment = location?.shelfMerchandiseAssignments?
+                .FirstOrDefault(value => value != null && string.Equals(
+                    value.shelfFixtureId,
+                    persistentShelfFixtureId,
+                    StringComparison.Ordinal));
+            return assignment != null;
+        }
+
+        private List<StockingProductConfiguration> AuthoredShelfSlots()
+        {
+            return stocking.AuthoredProductMappings
+                .Where(value => value?.ShelfFixture != null)
+                .GroupBy(
+                    value => value.ShelfFixture.StableFixtureId,
+                    StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(
+                    value => value.ShelfFixture.StableFixtureId,
+                    StringComparer.Ordinal)
+                .ToList();
         }
 
         private bool TryEnsureStandaloneLocation(out string error)

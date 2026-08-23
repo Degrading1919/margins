@@ -203,6 +203,11 @@ namespace Margins
 
         public bool TryStartNewBusiness()
         {
+            if (TryGetGeneratedLocationPersistenceBlocker(out string blocker))
+            {
+                return Reject($"New business rejected: {blocker}");
+            }
+
             if (newBusinessTemplate == null &&
                 !TryCaptureNewBusinessTemplate(out string captureError))
             {
@@ -239,6 +244,12 @@ namespace Margins
                 !TryResolvePath(path, out string acceptedPath, out error))
             {
                 return Reject($"Save rejected: {error}");
+            }
+
+            if (TryGetGeneratedLocationPersistenceBlocker(
+                    out string travelBlocker))
+            {
+                return Reject($"Save rejected: {travelBlocker}");
             }
 
             if (portfolioProgression != null &&
@@ -308,6 +319,11 @@ namespace Margins
                 !TryResolvePath(path, out string acceptedPath, out error))
             {
                 return Reject($"Load rejected: {error}");
+            }
+
+            if (TryGetGeneratedLocationPersistenceBlocker(out string blocker))
+            {
+                return Reject($"Load rejected: {blocker}");
             }
 
             string json;
@@ -595,6 +611,22 @@ namespace Margins
 
             error = null;
             return true;
+        }
+
+        private bool TryGetGeneratedLocationPersistenceBlocker(
+            out string blocker)
+        {
+            PersistentPortfolioLocationSceneAdapter sceneAdapter =
+                portfolioProgression?.LocationSceneAdapter;
+            if (sceneAdapter?.HasActiveGeneratedLocation == true)
+            {
+                blocker =
+                    "Leave the generated location before saving, loading, or starting a new business.";
+                return true;
+            }
+
+            blocker = null;
+            return false;
         }
 
         private static bool TryWriteAcceptedFile(

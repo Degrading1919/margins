@@ -947,6 +947,169 @@ namespace Margins
             return TryCommit(candidate, out error);
         }
 
+        /// <summary>
+        /// Establishes a fresh reconciliation baseline when an existing Unity
+        /// detailed-store rig is rebound to a portfolio location. This does not
+        /// post money, inventory, customers, or progress; subsequent detailed
+        /// deltas remain authoritative through TryReconcileDetailedOperation.
+        /// </summary>
+        public bool TryEstablishDetailedOperationBaseline(
+            string locationId,
+            string sessionId,
+            StoreSessionTotals totals,
+            int detailedInventoryUnits,
+            long detailedInventoryAssetValueCents,
+            IReadOnlyList<PortfolioProductInventorySnapshot>
+                detailedProductInventory,
+            DetailedOperationMetricsSnapshot metrics,
+            out string error)
+        {
+            if (!FirstStoreIdentifier.IsValid(locationId) ||
+                !FirstStoreIdentifier.IsValid(sessionId) || totals == null ||
+                !totals.IsValid || detailedInventoryAssetValueCents < 0 ||
+                !TryGetLocation(
+                    state,
+                    locationId,
+                    out PortfolioLocationSnapshot current) ||
+                detailedInventoryUnits < 0 ||
+                detailedInventoryUnits > current.inventoryCapacityUnits)
+            {
+                error =
+                    "A valid active location, detailed session, totals, and inventory baseline are required.";
+                return false;
+            }
+
+            if (!string.Equals(
+                    state.company.activeDetailedLocationId,
+                    locationId,
+                    StringComparison.Ordinal))
+            {
+                error =
+                    "The selected portfolio location must be active before its detailed baseline is established.";
+                return false;
+            }
+
+            List<PortfolioProductInventorySnapshot> acceptedInventory =
+                detailedProductInventory?
+                    .Select(PortfolioOperationsRules.Clone)
+                    .ToList();
+            if (!PortfolioOperationsRules.TryValidateProductInventory(
+                    acceptedInventory,
+                    current.merchandisePrices,
+                    detailedInventoryUnits,
+                    out error) ||
+                CalculateProductInventoryValue(acceptedInventory) !=
+                detailedInventoryAssetValueCents)
+            {
+                error ??=
+                    "Detailed inventory value does not reconcile to its product baseline.";
+                return false;
+            }
+
+            DetailedOperationMetricsSnapshot acceptedMetrics = metrics == null
+                ? new DetailedOperationMetricsSnapshot
+                {
+                    customerVisits = totals.transactionCount,
+                    customersServed = totals.transactionCount,
+                    requestedProductUnits = totals.unitsSold,
+                    standardsTaskComplete = true
+                }
+                : new DetailedOperationMetricsSnapshot
+                {
+                    customerVisits = metrics.customerVisits,
+                    customersServed = metrics.customersServed,
+                    customersAbandoned = metrics.customersAbandoned,
+                    requestedProductUnits = metrics.requestedProductUnits,
+                    unavailableProductUnits = metrics.unavailableProductUnits,
+                    standardsTaskComplete = metrics.standardsTaskComplete
+                };
+            if (!acceptedMetrics.TryValidate(out error))
+            {
+                return false;
+            }
+
+            long scheduledPayroll;
+            try
+            {
+                scheduledPayroll = state.employees
+                    .Where(employee => string.Equals(
+                                           employee.assignedLocationId,
+                                           locationId,
+                                           StringComparison.Ordinal) &&
+                                       PortfolioOperationsRules.IsScheduled(
+                                           employee.schedule,
+                                           state.currentDay))
+                    .Sum(employee => employee.dailyWageCents);
+            }
+            catch (OverflowException)
+            {
+                error =
+                    "Detailed scheduled payroll overflowed integer-cent storage.";
+                return false;
+            }
+
+            long detailedPayrollCents = Math.Min(
+                scheduledPayroll,
+                totals.includedOperatingExpensesCents);
+            long afterPayroll = totals.includedOperatingExpensesCents -
+                                detailedPayrollCents;
+            long detailedRentCents = Math.Min(
+                EffectiveDailyRent(state.company, current),
+                afterPayroll);
+            long detailedOperatingCostCents = afterPayroll -
+                                              detailedRentCents;
+            GetProcurementTotals(
+                state.procurement,
+                locationId,
+                out long procurementPurchaseCents,
+                out long procurementDeliveryFeesCents,
+                out long deliveredProcurementInventoryCents);
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot location = candidate.locations.First(
+                value => string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            location.detailedReconciliation =
+                new PortfolioDetailedReconciliationSnapshot
+                {
+                    initialized = true,
+                    sessionId = sessionId,
+                    sessionStartedDay = candidate.currentDay,
+                    startingInventoryAssetValueCents =
+                        CalculateProductInventoryValue(
+                            location.productInventory),
+                    startingDeliveredProcurementInventoryCents =
+                        deliveredProcurementInventoryCents,
+                    startingProcurementPurchaseCents =
+                        procurementPurchaseCents,
+                    startingProcurementDeliveryFeesCents =
+                        procurementDeliveryFeesCents,
+                    startingCustomerSatisfaction =
+                        location.customerSatisfaction,
+                    startingMaintenanceCondition =
+                        location.maintenanceCondition,
+                    grossSalesCents = totals.grossSalesCents,
+                    costOfGoodsSoldCents =
+                        totals.costOfGoodsSoldCents,
+                    includedOperatingExpensesCents =
+                        totals.includedOperatingExpensesCents,
+                    payrollCents = detailedPayrollCents,
+                    rentCents = detailedRentCents,
+                    operatingCostCents = detailedOperatingCostCents,
+                    inventoryAcquiredCostCents = 0,
+                    unitsSold = totals.unitsSold,
+                    transactionCount = totals.transactionCount,
+                    metrics = acceptedMetrics,
+                    usesDetailedInventoryBaseline = true,
+                    detailedInventoryBaselineValueCents =
+                        detailedInventoryAssetValueCents,
+                    detailedProductInventoryBaseline = acceptedInventory
+                };
+            return TryCommit(candidate, out error);
+        }
+
         public bool TryReconcileDetailedOperation(
             string locationId,
             string sessionId,
@@ -1378,9 +1541,8 @@ namespace Margins
                 (location.reputation * 3 + location.customerSatisfaction) / 4,
                 0,
                 100);
-            if (newSession &&
-                (!location.hasLastReport ||
-                 location.lastReport.day != candidate.currentDay))
+            if (!location.hasLastReport ||
+                location.lastReport.day != candidate.currentDay)
             {
                 location.daysOperating++;
             }
