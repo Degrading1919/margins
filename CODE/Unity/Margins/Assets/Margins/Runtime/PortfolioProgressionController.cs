@@ -50,7 +50,7 @@ namespace Margins
         private PortfolioProgression progression;
         private DeskPage page;
         private string selectedLocationId = PortfolioProgressionRules.FirstLocationId;
-        private string lastAction = "Complete the hands-on first shift to unlock company management.";
+        private string lastAction = "Finish your first in-store sale to unlock the Owner Phone.";
         private bool lastActionSucceeded = true;
         private bool toolkitManagementAvailable;
         private bool hasOpenedDeskAfterFirstShift;
@@ -153,7 +153,7 @@ namespace Margins
             {
                 hasOpenedDeskAfterFirstShift = true;
                 Record(
-                    "Company management is now available from Tab without ending store operations.",
+                    "Owner Phone unlocked. Press Tab to check the business without leaving the store.",
                     true);
             }
 
@@ -587,7 +587,7 @@ namespace Margins
 
             if (!unchanged && updated.status == PurchaseOrderStatus.Completed)
             {
-                Record($"Received {updated.orderId}; its physical units are ready to stock.", true);
+                Record("The delivery is received and its products are ready to stock.", true);
             }
             return true;
         }
@@ -679,7 +679,7 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"Placed {order.orderId} for {LocationName(locationId)}; charged {FormatCents(order.totalCostCents)} once."
+                    ? $"Ordered stock for {LocationName(locationId)}. {FormatCents(order.totalCostCents)} was paid."
                     : error);
             return success;
         }
@@ -703,8 +703,8 @@ namespace Margins
                 success,
                 success
                     ? unchanged
-                        ? $"{orderId} was already canceled."
-                        : $"Canceled {orderId}; its payment was refunded once."
+                        ? "That stock order was already cancelled."
+                        : "Stock order cancelled. Its payment was refunded."
                     : error);
             return success;
         }
@@ -1591,8 +1591,8 @@ namespace Margins
                 string detailedLocationId =
                     locationSceneAdapter.ActiveLocationId;
                 blocker = string.IsNullOrWhiteSpace(detailedLocationId)
-                    ? "Leave the loaded first store before advancing overnight."
-                    : $"Leave {LocationName(detailedLocationId)} before advancing overnight.";
+                    ? "Leave the first store before ending the day."
+                    : $"Leave {LocationName(detailedLocationId)} before ending the day.";
                 return false;
             }
             if (progression == null)
@@ -1625,7 +1625,7 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"Advanced overnight to operating day {progression.CurrentDay}; all delegated location reports posted."
+                    ? $"Day {progression.CurrentDay - 1} is complete. New store results and alerts are ready."
                     : error);
             return success;
         }
@@ -1822,7 +1822,7 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"Emergency maintenance completed at {LocationName(locationId)}."
+                    ? $"Immediate repairs completed at {LocationName(locationId)}."
                     : error);
             return success;
         }
@@ -1837,7 +1837,9 @@ namespace Margins
             }
             RecordResult(
                 success,
-                success ? $"Leased and stocked {LocationName(locationId)}." : error);
+                success
+                    ? $"{LocationName(locationId)} is leased, stocked, and ready to manage."
+                    : error);
             return success;
         }
 
@@ -1845,7 +1847,7 @@ namespace Margins
         {
             if (locationSceneAdapter == null)
             {
-                error = "Persistent location travel is not configured in this scene.";
+                error = "Store visits are not available right now.";
                 return false;
             }
 
@@ -1855,7 +1857,7 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"Entered {LocationName(locationId)} through the detailed location handoff."
+                    ? $"You're now at {LocationName(locationId)}."
                     : error);
             return success;
         }
@@ -1864,7 +1866,7 @@ namespace Margins
         {
             if (locationSceneAdapter == null)
             {
-                error = "Persistent location travel is not configured in this scene.";
+                error = "Store visits are not available right now.";
                 return false;
             }
 
@@ -1872,7 +1874,7 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? "Left detailed operation; aggregate portfolio state is authoritative."
+                    ? "You left the store safely. You can end the day or go to another location."
                     : error);
             return success;
         }

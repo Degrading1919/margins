@@ -393,18 +393,33 @@
     flex-grow: 1;
     align-items: center;
     justify-content: center;
-    padding: 3% 5%;
+    padding: 2.5% 4%;
 }
 
 .management-shell {
-    width: 1320px;
-    max-width: 94%;
-    height: 900px;
-    max-height: 94%;
-    padding: 30px 34px 24px 34px;
+    width: 1120px;
+    max-width: 96%;
+    height: 880px;
+    max-height: 95%;
+    padding: 22px 30px 22px 30px;
     background-color: rgba(13, 20, 22, 0.98);
-    border-left-width: 5px;
-    border-left-color: var(--orange);
+    border-width: 2px;
+    border-color: rgba(236, 222, 190, 0.30);
+    border-radius: 26px;
+}
+
+.management-device {
+    border-bottom-width: 7px;
+    border-bottom-color: rgba(5, 9, 10, 0.96);
+}
+
+.management-device-speaker {
+    align-self: center;
+    width: 76px;
+    height: 4px;
+    margin-bottom: 14px;
+    border-radius: 4px;
+    background-color: rgba(236, 222, 190, 0.22);
 }
 
 .management-header {
@@ -416,7 +431,7 @@
 
 .management-title {
     color: var(--cream);
-    font-size: 38px;
+    font-size: 34px;
     -unity-font-style: bold;
     letter-spacing: 2px;
 }
@@ -438,7 +453,7 @@
 }
 
 .management-tab {
-    min-width: 132px;
+    min-width: 142px;
     height: 42px;
     margin-right: 8px;
     border-width: 0;
@@ -446,6 +461,24 @@
     background-color: rgba(0, 0, 0, 0);
     color: var(--cream-muted);
     font-size: 16px;
+}
+
+.management-page-heading {
+    margin-top: 2px;
+    margin-bottom: 10px;
+}
+
+.management-page-title {
+    color: var(--cream);
+    font-size: 25px;
+    -unity-font-style: bold;
+}
+
+.management-page-help {
+    max-width: 760px;
+    color: var(--cream-muted);
+    font-size: 14px;
+    white-space: normal;
 }
 
 .management-tab:hover,
@@ -501,6 +534,29 @@
     font-size: 14px;
     white-space: normal;
     margin-bottom: 8px;
+}
+
+.management-card-kicker {
+    color: var(--teal-bright);
+    font-size: 12px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+}
+
+.management-blocker {
+    color: var(--orange);
+    font-size: 14px;
+    white-space: normal;
+    margin-top: 3px;
+    margin-bottom: 8px;
+}
+
+.management-detail {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(236, 222, 190, 0.12);
 }
 
 .management-row {
