@@ -119,6 +119,10 @@ namespace Margins
         public int unitsSold;
         public int transactionCount;
         public DetailedOperationMetricsSnapshot metrics = new();
+        public bool usesDetailedInventoryBaseline;
+        public long detailedInventoryBaselineValueCents;
+        public List<PortfolioProductInventorySnapshot>
+            detailedProductInventoryBaseline = new();
     }
 
     [Serializable]
@@ -275,6 +279,62 @@ namespace Margins
 
             error = null;
             return true;
+        }
+
+        public static int CalculateProductMixBasisPoints(
+            IReadOnlyList<ShelfMerchandiseAssignmentSnapshot> assignments,
+            IReadOnlyList<PortfolioProductInventorySnapshot> inventory,
+            int preferredProductMixCount)
+        {
+            if (assignments == null || inventory == null ||
+                preferredProductMixCount <= 0)
+            {
+                throw new ArgumentException(
+                    "Product-mix scoring requires merchandise assignments, product inventory, and a positive preferred count.");
+            }
+
+            HashSet<string> assignedProducts = new(
+                assignments
+                    .Where(value => value != null &&
+                                    StableIdentifier.IsValid(
+                                        value.assignedProductId))
+                    .Select(value => value.assignedProductId),
+                StringComparer.Ordinal);
+            int availableAssignedProducts = inventory.Count(value =>
+                value != null && value.quantityUnits > 0 &&
+                assignedProducts.Contains(value.productId));
+            return Math.Clamp(
+                availableAssignedProducts * BasisPoints /
+                preferredProductMixCount,
+                0,
+                BasisPoints);
+        }
+
+        public static int CalculateDailySatisfaction(
+            int serviceQuality,
+            int productAvailabilityBasisPoints,
+            int productMixBasisPoints,
+            bool standardsMet)
+        {
+            if (serviceQuality < 0 || serviceQuality > 100 ||
+                productAvailabilityBasisPoints < 0 ||
+                productAvailabilityBasisPoints > BasisPoints ||
+                productMixBasisPoints < 0 ||
+                productMixBasisPoints > BasisPoints)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(serviceQuality),
+                    "Satisfaction inputs must be valid percentages or basis points.");
+            }
+
+            int standardsQuality = standardsMet ? 100 : 45;
+            return Math.Clamp(
+                (serviceQuality * 5 +
+                 productAvailabilityBasisPoints / 100 * 3 +
+                 productMixBasisPoints / 100 +
+                 standardsQuality) / 10,
+                0,
+                100);
         }
 
         public static List<PortfolioProductInventorySnapshot>
@@ -448,6 +508,15 @@ namespace Margins
                         source.inventoryAcquiredCostCents,
                     unitsSold = source.unitsSold,
                     transactionCount = source.transactionCount,
+                    usesDetailedInventoryBaseline =
+                        source.usesDetailedInventoryBaseline,
+                    detailedInventoryBaselineValueCents =
+                        source.detailedInventoryBaselineValueCents,
+                    detailedProductInventoryBaseline =
+                        source.detailedProductInventoryBaseline?
+                            .Select(Clone)
+                            .ToList() ??
+                        new List<PortfolioProductInventorySnapshot>(),
                     metrics = source.metrics == null
                         ? null
                         : new DetailedOperationMetricsSnapshot

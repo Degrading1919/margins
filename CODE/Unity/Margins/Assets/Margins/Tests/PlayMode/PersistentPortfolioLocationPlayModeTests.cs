@@ -20,12 +20,26 @@ namespace Margins.Tests.PlayMode
                     "Recipes/GrayboxConvenienceRecipe");
             Assert.That(registry, Is.Not.Null);
             Assert.That(recipe, Is.Not.Null);
+            ProceduralBusinessRecipe decoyRecipe =
+                ScriptableObject.CreateInstance<ProceduralBusinessRecipe>();
+            decoyRecipe.Configure(
+                "graybox-unused-recipe",
+                recipe.MinimumFrontageFeet,
+                recipe.MinimumDepthFeet,
+                recipe.MinimumUsableAreaSquareFeet,
+                recipe.RequiresServiceEntrance,
+                recipe.ZoneRequests.ToArray(),
+                recipe.AssetRequests.ToArray());
 
             PortfolioProgression progression = CreateReadyPortfolio();
             GameObject host = new("Persistent Portfolio E2E");
             PersistentPortfolioLocationController locations =
                 host.AddComponent<PersistentPortfolioLocationController>();
-            locations.ConfigureForDomain(progression, registry, recipe);
+            locations.ConfigureForDomain(
+                progression,
+                registry,
+                decoyRecipe,
+                recipe);
             try
             {
                 Assert.That(
@@ -150,6 +164,7 @@ namespace Margins.Tests.PlayMode
             finally
             {
                 UnityEngine.Object.Destroy(host);
+                UnityEngine.Object.Destroy(decoyRecipe);
             }
         }
 

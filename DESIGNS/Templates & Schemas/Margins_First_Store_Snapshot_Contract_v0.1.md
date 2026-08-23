@@ -74,8 +74,11 @@ The first-store snapshot contains:
 
 The portfolio snapshot contains:
 
-- one player company with separate brand, commercial-property, commercial-unit,
-  and business-location identities;
+- one player company with independent brand, commercial-property,
+  commercial-unit, and business-location collections linked by stable IDs;
+- multiple brands, multiple units per property, vacant units, and properties
+  without business locations are valid even though current authored content
+  still instantiates only the convenience brand and occupied locations;
 - leased or owned property tenure, acquisition history, unit occupancy, and
   persistent unit improvements;
 - generator version, seed, archetype, authored footprint dimensions, selected
@@ -93,7 +96,8 @@ The portfolio snapshot contains:
   totals; and
 - a per-location detailed-session baseline and cumulative reconciliation record
   so repeated synchronization and later detailed sessions cannot repost prior
-  money, inventory, customers, or progress.
+  money, inventory, customers, or progress, including a persisted loaded-scene
+  inventory baseline when returning after aggregate operation.
 
 The nested procurement snapshot contains:
 
@@ -134,9 +138,10 @@ The nested procurement snapshot contains:
 - Legacy first-store versions `2` and `3`, file-envelope versions `1` and `2`,
   and portfolio versions `1` through `3` normalize deterministically to the
   current temporary contract before validation and live-state mutation.
-- Every business location references exactly one known brand, property, and
-  occupied commercial unit. Property, unit, and business-location identifiers
-  remain distinct and unique.
+- Every business location resolves by ID to one brand, property, and occupied
+  commercial unit. Brands and properties may exist without locations, and
+  commercial units may be vacant. Property, unit, and business-location
+  identifiers remain distinct and unique.
 - At most one business location is physically detailed at a time. Its generated
   layout signature must match the deterministic result of its persisted
   generator inputs before player modifications are replayed.

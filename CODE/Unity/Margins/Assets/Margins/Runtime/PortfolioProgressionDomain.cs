@@ -528,8 +528,7 @@ namespace Margins
                 snapshot.companyReputation > 100 ||
                 snapshot.employees == null ||
                 snapshot.locations == null ||
-                snapshot.locations.Count == 0 ||
-                snapshot.locations.Count > 2)
+                snapshot.locations.Count == 0)
             {
                 error = "Portfolio snapshot contains invalid company totals or collections.";
                 return false;
@@ -776,6 +775,178 @@ namespace Margins
                 out error);
         }
 
+        public bool TryRebaseDetailedOperation(
+            string locationId,
+            string sessionId,
+            StoreSessionTotals totals,
+            int detailedInventoryUnits,
+            long detailedInventoryAssetValueCents,
+            IReadOnlyList<PortfolioProductInventorySnapshot>
+                detailedProductInventory,
+            DetailedOperationMetricsSnapshot metrics,
+            out string error)
+        {
+            if (!FirstStoreIdentifier.IsValid(locationId) ||
+                !FirstStoreIdentifier.IsValid(sessionId) || totals == null ||
+                !totals.IsValid || detailedInventoryAssetValueCents < 0 ||
+                !TryGetLocation(
+                    state,
+                    locationId,
+                    out PortfolioLocationSnapshot current) ||
+                detailedInventoryUnits < 0 ||
+                detailedInventoryUnits > current.inventoryCapacityUnits)
+            {
+                error =
+                    "A valid location, detailed session, totals, and physical inventory are required to rebase detailed operation.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(
+                    state.company.activeDetailedLocationId) &&
+                !string.Equals(
+                    state.company.activeDetailedLocationId,
+                    locationId,
+                    StringComparison.Ordinal))
+            {
+                error =
+                    "A different portfolio location is currently active in detailed simulation.";
+                return false;
+            }
+
+            List<PortfolioProductInventorySnapshot> acceptedInventory =
+                detailedProductInventory?
+                    .Select(PortfolioOperationsRules.Clone)
+                    .ToList();
+            if (!PortfolioOperationsRules.TryValidateProductInventory(
+                    acceptedInventory,
+                    current.merchandisePrices,
+                    detailedInventoryUnits,
+                    out error) ||
+                CalculateProductInventoryValue(acceptedInventory) !=
+                detailedInventoryAssetValueCents)
+            {
+                error ??=
+                    "Detailed inventory value does not reconcile to its product baseline.";
+                return false;
+            }
+
+            DetailedOperationMetricsSnapshot acceptedMetrics = metrics == null
+                ? new DetailedOperationMetricsSnapshot
+                {
+                    customerVisits = totals.transactionCount,
+                    customersServed = totals.transactionCount,
+                    requestedProductUnits = totals.unitsSold,
+                    standardsTaskComplete = true
+                }
+                : new DetailedOperationMetricsSnapshot
+                {
+                    customerVisits = metrics.customerVisits,
+                    customersServed = metrics.customersServed,
+                    customersAbandoned = metrics.customersAbandoned,
+                    requestedProductUnits = metrics.requestedProductUnits,
+                    unavailableProductUnits = metrics.unavailableProductUnits,
+                    standardsTaskComplete = metrics.standardsTaskComplete
+                };
+            if (!acceptedMetrics.TryValidate(out error))
+            {
+                return false;
+            }
+
+            PortfolioDetailedReconciliationSnapshot prior =
+                current.detailedReconciliation;
+            if (prior == null || !prior.initialized ||
+                prior.sessionStartedDay >= state.currentDay ||
+                !current.hasLastReport || current.lastReport == null ||
+                current.lastReport.day != state.currentDay ||
+                current.lastReport.isDetailedOperation)
+            {
+                error =
+                    "Detailed operation can only be rebased after aggregate simulation has advanced this location beyond its prior detailed baseline.";
+                return false;
+            }
+
+            long scheduledPayroll;
+            try
+            {
+                scheduledPayroll = state.employees
+                    .Where(employee => string.Equals(
+                                           employee.assignedLocationId,
+                                           locationId,
+                                           StringComparison.Ordinal) &&
+                                       PortfolioOperationsRules.IsScheduled(
+                                           employee.schedule,
+                                           state.currentDay))
+                    .Sum(employee => employee.dailyWageCents);
+            }
+            catch (OverflowException)
+            {
+                error =
+                    "Detailed scheduled payroll overflowed integer-cent storage.";
+                return false;
+            }
+
+            long detailedPayrollCents = Math.Min(
+                scheduledPayroll,
+                totals.includedOperatingExpensesCents);
+            long afterPayroll = totals.includedOperatingExpensesCents -
+                                detailedPayrollCents;
+            long detailedRentCents = Math.Min(
+                EffectiveDailyRent(state.company, current),
+                afterPayroll);
+            long detailedOperatingCostCents = afterPayroll -
+                                              detailedRentCents;
+            GetProcurementTotals(
+                state.procurement,
+                locationId,
+                out long procurementPurchaseCents,
+                out long procurementDeliveryFeesCents,
+                out long deliveredProcurementInventoryCents);
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            PortfolioLocationSnapshot location = candidate.locations.First(
+                value => string.Equals(
+                    value.locationId,
+                    locationId,
+                    StringComparison.Ordinal));
+            location.detailedReconciliation =
+                new PortfolioDetailedReconciliationSnapshot
+                {
+                    initialized = true,
+                    sessionId = sessionId,
+                    sessionStartedDay = candidate.currentDay,
+                    startingInventoryAssetValueCents =
+                        CalculateProductInventoryValue(
+                            location.productInventory),
+                    startingDeliveredProcurementInventoryCents =
+                        deliveredProcurementInventoryCents,
+                    startingProcurementPurchaseCents =
+                        procurementPurchaseCents,
+                    startingProcurementDeliveryFeesCents =
+                        procurementDeliveryFeesCents,
+                    startingCustomerSatisfaction =
+                        location.customerSatisfaction,
+                    startingMaintenanceCondition =
+                        location.maintenanceCondition,
+                    grossSalesCents = totals.grossSalesCents,
+                    costOfGoodsSoldCents =
+                        totals.costOfGoodsSoldCents,
+                    includedOperatingExpensesCents =
+                        totals.includedOperatingExpensesCents,
+                    payrollCents = detailedPayrollCents,
+                    rentCents = detailedRentCents,
+                    operatingCostCents = detailedOperatingCostCents,
+                    inventoryAcquiredCostCents = 0,
+                    unitsSold = totals.unitsSold,
+                    transactionCount = totals.transactionCount,
+                    metrics = acceptedMetrics,
+                    usesDetailedInventoryBaseline = true,
+                    detailedInventoryBaselineValueCents =
+                        detailedInventoryAssetValueCents,
+                    detailedProductInventoryBaseline = acceptedInventory
+                };
+            return TryCommit(candidate, out error);
+        }
+
         public bool TryReconcileDetailedOperation(
             string locationId,
             string sessionId,
@@ -830,7 +1001,7 @@ namespace Margins
                 return false;
             }
 
-            List<PortfolioProductInventorySnapshot> reconciledInventory =
+            List<PortfolioProductInventorySnapshot> detailedInventory =
                 productInventory == null
                     ? PortfolioOperationsRules.CreateProvisionalProductInventory(
                         current.merchandisePrices,
@@ -840,7 +1011,7 @@ namespace Margins
                         .Select(PortfolioOperationsRules.Clone)
                         .ToList();
             if (!PortfolioOperationsRules.TryValidateProductInventory(
-                    reconciledInventory,
+                    detailedInventory,
                     current.merchandisePrices,
                     remainingInventoryUnits,
                     out error))
@@ -916,6 +1087,27 @@ namespace Margins
                 };
             }
 
+            List<PortfolioProductInventorySnapshot> reconciledInventory;
+            if (prior.usesDetailedInventoryBaseline && !newSession)
+            {
+                if (!TryApplyDetailedInventoryDelta(
+                        current.productInventory,
+                        prior.detailedProductInventoryBaseline,
+                        detailedInventory,
+                        current.inventoryCapacityUnits,
+                        out reconciledInventory,
+                        out error))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                reconciledInventory = detailedInventory;
+            }
+            int reconciledInventoryUnits = reconciledInventory.Sum(value =>
+                value.quantityUnits);
+
             long scheduledPayroll;
             try
             {
@@ -959,15 +1151,6 @@ namespace Margins
             long sessionDeliveryFeesCents;
             try
             {
-                long physicalInventoryAcquiredCost = checked(
-                    inventoryAssetValueCents + totals.costOfGoodsSoldCents);
-                long deliveredDuringSession = checked(
-                    deliveredProcurementInventoryCents -
-                    prior.startingDeliveredProcurementInventoryCents);
-                acquiredInventoryCost = checked(
-                    physicalInventoryAcquiredCost -
-                    prior.startingInventoryAssetValueCents -
-                    deliveredDuringSession);
                 grossSalesDelta = checked(
                     totals.grossSalesCents - prior.grossSalesCents);
                 costOfGoodsDelta = checked(
@@ -980,8 +1163,31 @@ namespace Margins
                 rentDelta = checked(detailedRentCents - prior.rentCents);
                 operatingCostDelta = checked(
                     detailedOperatingCostCents - prior.operatingCostCents);
-                purchaseDelta = checked(
-                    acquiredInventoryCost - prior.inventoryAcquiredCostCents);
+                long deliveredDuringSession = checked(
+                    deliveredProcurementInventoryCents -
+                    prior.startingDeliveredProcurementInventoryCents);
+                if (prior.usesDetailedInventoryBaseline && !newSession)
+                {
+                    purchaseDelta = checked(
+                        inventoryAssetValueCents -
+                        prior.detailedInventoryBaselineValueCents +
+                        costOfGoodsDelta - deliveredDuringSession);
+                    acquiredInventoryCost = checked(
+                        prior.inventoryAcquiredCostCents + purchaseDelta);
+                }
+                else
+                {
+                    long physicalInventoryAcquiredCost = checked(
+                        inventoryAssetValueCents +
+                        totals.costOfGoodsSoldCents);
+                    acquiredInventoryCost = checked(
+                        physicalInventoryAcquiredCost -
+                        prior.startingInventoryAssetValueCents -
+                        deliveredDuringSession);
+                    purchaseDelta = checked(
+                        acquiredInventoryCost -
+                        prior.inventoryAcquiredCostCents);
+                }
                 cashDelta = checked(
                     grossSalesDelta - expenseDelta - purchaseDelta);
                 profitDelta = checked(
@@ -1090,6 +1296,17 @@ namespace Margins
             reconciliation.unitsSold = totals.unitsSold;
             reconciliation.transactionCount = totals.transactionCount;
             reconciliation.metrics = acceptedMetrics;
+            if (reconciliation.usesDetailedInventoryBaseline)
+            {
+                reconciliation.startingDeliveredProcurementInventoryCents =
+                    deliveredProcurementInventoryCents;
+                reconciliation.detailedInventoryBaselineValueCents =
+                    inventoryAssetValueCents;
+                reconciliation.detailedProductInventoryBaseline =
+                    detailedInventory
+                        .Select(PortfolioOperationsRules.Clone)
+                        .ToList();
+            }
             location.detailedReconciliation = reconciliation;
 
             if (string.Equals(
@@ -1108,7 +1325,7 @@ namespace Margins
             }
 
             location.productInventory = reconciledInventory;
-            location.inventoryUnits = remainingInventoryUnits;
+            location.inventoryUnits = reconciledInventoryUnits;
             int demand = Math.Max(
                 totals.unitsSold,
                 acceptedMetrics.requestedProductUnits);
@@ -1130,22 +1347,18 @@ namespace Margins
                         Math.Max(1, acceptedMetrics.requestedProductUnits),
                         0,
                         PortfolioOperationsRules.BasisPoints);
-            int stockedProductCount = reconciledInventory.Count(value =>
-                value.quantityUnits > 0);
-            location.productMixBasisPoints = Clamp(
-                stockedProductCount * PortfolioOperationsRules.BasisPoints /
-                Math.Max(
-                    1,
+            location.productMixBasisPoints =
+                PortfolioOperationsRules.CalculateProductMixBasisPoints(
+                    location.shelfMerchandiseAssignments,
+                    reconciledInventory,
                     locationDefinition.SimulationProfile
-                        .PreferredProductMixCount),
-                0,
-                PortfolioOperationsRules.BasisPoints);
-            int dailySatisfaction = Clamp(
-                (location.serviceQuality * 5 +
-                 location.productAvailabilityBasisPoints / 100 * 4 +
-                 (acceptedMetrics.standardsTaskComplete ? 100 : 40)) / 10,
-                0,
-                100);
+                        .PreferredProductMixCount);
+            int dailySatisfaction =
+                PortfolioOperationsRules.CalculateDailySatisfaction(
+                    location.serviceQuality,
+                    location.productAvailabilityBasisPoints,
+                    location.productMixBasisPoints,
+                    acceptedMetrics.standardsTaskComplete);
             location.customerSatisfaction = Clamp(
                 (prior.startingCustomerSatisfaction * 7 +
                  dailySatisfaction * 3) / 10,
@@ -1187,7 +1400,7 @@ namespace Margins
                 demandUnits = demand,
                 unitsSold = totals.unitsSold,
                 lostDemandUnits = lostDemand,
-                endingInventoryUnits = remainingInventoryUnits,
+                endingInventoryUnits = reconciledInventoryUnits,
                 reorderedUnits = 0,
                 unitPriceCents = hasExactMerchandiseSales &&
                                  merchandiseSales.Count == 1
@@ -1234,6 +1447,90 @@ namespace Margins
             };
             location.hasLastReport = true;
             return TryCommit(candidate, out error);
+        }
+
+        private static bool TryApplyDetailedInventoryDelta(
+            IReadOnlyList<PortfolioProductInventorySnapshot> portfolioInventory,
+            IReadOnlyList<PortfolioProductInventorySnapshot> detailedBaseline,
+            IReadOnlyList<PortfolioProductInventorySnapshot> detailedInventory,
+            int inventoryCapacityUnits,
+            out List<PortfolioProductInventorySnapshot> result,
+            out string error)
+        {
+            result = null;
+            if (portfolioInventory == null || detailedBaseline == null ||
+                detailedInventory == null || inventoryCapacityUnits < 0)
+            {
+                error = "Detailed inventory baseline is missing.";
+                return false;
+            }
+
+            Dictionary<string, PortfolioProductInventorySnapshot> baselineById =
+                detailedBaseline.ToDictionary(
+                    value => value.productId,
+                    StringComparer.Ordinal);
+            Dictionary<string, PortfolioProductInventorySnapshot> detailedById =
+                detailedInventory.ToDictionary(
+                    value => value.productId,
+                    StringComparer.Ordinal);
+            result = portfolioInventory
+                .Select(PortfolioOperationsRules.Clone)
+                .OrderBy(value => value.productId, StringComparer.Ordinal)
+                .ToList();
+            if (baselineById.Count != result.Count ||
+                detailedById.Count != result.Count)
+            {
+                error =
+                    "Detailed inventory baseline no longer matches the location merchandise catalog.";
+                result = null;
+                return false;
+            }
+
+            long totalUnits = 0;
+            foreach (PortfolioProductInventorySnapshot product in result)
+            {
+                if (!baselineById.TryGetValue(
+                        product.productId,
+                        out PortfolioProductInventorySnapshot baseline) ||
+                    !detailedById.TryGetValue(
+                        product.productId,
+                        out PortfolioProductInventorySnapshot detailed))
+                {
+                    error =
+                        "Detailed inventory baseline no longer matches the location merchandise catalog.";
+                    result = null;
+                    return false;
+                }
+
+                long quantity = (long)product.quantityUnits +
+                                detailed.quantityUnits -
+                                baseline.quantityUnits;
+                if (quantity < 0 || quantity > int.MaxValue)
+                {
+                    error =
+                        $"Detailed inventory change for '{product.productId}' exceeds the location's aggregate stock.";
+                    result = null;
+                    return false;
+                }
+
+                product.quantityUnits = (int)quantity;
+                if (product.quantityUnits > 0 && product.unitCostCents == 0)
+                {
+                    product.unitCostCents = detailed.unitCostCents;
+                }
+                totalUnits += quantity;
+            }
+
+            if (totalUnits > inventoryCapacityUnits)
+            {
+                error =
+                    "Detailed inventory changes exceed the location inventory capacity.";
+                result = null;
+                return false;
+            }
+
+            error = null;
+            return true;
         }
 
         private static long CalculateProductInventoryValue(
@@ -2444,12 +2741,6 @@ namespace Margins
                 return false;
             }
 
-            if (state.locations.Count >= 2)
-            {
-                error = "The current production build supports two active locations.";
-                return false;
-            }
-
             if (!PortfolioProgressionRules.TryGetLocationDefinition(
                     locationId,
                     out PortfolioLocationDefinition definition) ||
@@ -3104,23 +3395,20 @@ namespace Margins
                 ? PortfolioOperationsRules.BasisPoints
                 : stockSupportedDemand * PortfolioOperationsRules.BasisPoints /
                   Math.Max(1, willingDemand);
-            int stockedOfferCount = offers.Count(offer =>
-                inventoryAvailableByProduct.TryGetValue(
-                    offer.ProductId,
-                    out int available) && available > 0);
-            int productMixBasisPoints = Clamp(
-                stockedOfferCount * PortfolioOperationsRules.BasisPoints /
-                Math.Max(1, simulation.PreferredProductMixCount),
-                0,
-                PortfolioOperationsRules.BasisPoints);
-            int maintenanceStandard = standardsMet ? 100 : 45;
-            int dailySatisfaction = Clamp(
-                (serviceRatioPercent * 5 +
-                 availabilityBasisPoints / 100 * 3 +
-                 productMixBasisPoints / 100 +
-                 maintenanceStandard) / 10,
-                0,
-                100);
+            int productMixBasisPoints =
+                PortfolioOperationsRules.CalculateProductMixBasisPoints(
+                    location.shelfMerchandiseAssignments,
+                    location.productInventory,
+                    simulation.PreferredProductMixCount);
+            int dailySatisfaction =
+                PortfolioOperationsRules.CalculateDailySatisfaction(
+                    Clamp(serviceRatioPercent, 0, 100),
+                    Clamp(
+                        availabilityBasisPoints,
+                        0,
+                        PortfolioOperationsRules.BasisPoints),
+                    productMixBasisPoints,
+                    standardsMet);
             location.serviceQuality = Clamp(serviceRatioPercent, 0, 100);
             location.productAvailabilityBasisPoints = Clamp(
                 availabilityBasisPoints,
@@ -3681,9 +3969,6 @@ namespace Margins
                 !PortfolioProgressionRules.TryGetLocationDefinition(
                     location.locationId,
                     out PortfolioLocationDefinition definition) ||
-                !PortfolioPropertyRules.TryGetDefinitionForLocation(
-                    location.locationId,
-                    out PortfolioPropertyDefinition propertyDefinition) ||
                 !string.Equals(
                     location.displayName,
                     definition.DisplayName,
@@ -3704,20 +3989,12 @@ namespace Margins
                 (!string.IsNullOrWhiteSpace(location.operatingModel) &&
                  !string.Equals(
                      location.operatingModel,
-                      definition.OperatingModel,
-                      StringComparison.Ordinal)) ||
-                !string.Equals(
-                    location.brandId,
-                    PortfolioPropertyRules.ConvenienceBrandId,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
-                    location.propertyId,
-                    propertyDefinition.PropertyId,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
-                    location.commercialUnitId,
-                    propertyDefinition.CommercialUnitId,
-                    StringComparison.Ordinal) ||
+                     definition.OperatingModel,
+                     StringComparison.Ordinal)) ||
+                !StableIdentifier.IsValid(location.businessTypeId) ||
+                !StableIdentifier.IsValid(location.brandId) ||
+                !StableIdentifier.IsValid(location.propertyId) ||
+                !StableIdentifier.IsValid(location.commercialUnitId) ||
                 location.baseDemandUnits != definition.BaseDemandUnits ||
                 location.competitionIndex != definition.CompetitionIndex ||
                 location.reputation < 0 ||
@@ -3781,6 +4058,7 @@ namespace Margins
                     out error) ||
                 !TryValidateDetailedReconciliation(
                     location.detailedReconciliation,
+                    location.merchandisePrices,
                     out error) ||
                 location.operatingAlerts == null)
             {
@@ -3830,6 +4108,7 @@ namespace Margins
 
         private static bool TryValidateDetailedReconciliation(
             PortfolioDetailedReconciliationSnapshot reconciliation,
+            IReadOnlyList<MerchandisePriceSnapshot> merchandisePrices,
             out string error)
         {
             error = null;
@@ -3852,6 +4131,7 @@ namespace Margins
                 reconciliation.inventoryAcquiredCostCents < 0 ||
                 reconciliation.unitsSold < 0 ||
                 reconciliation.transactionCount < 0 ||
+                reconciliation.detailedInventoryBaselineValueCents < 0 ||
                 reconciliation.payrollCents >
                 reconciliation.includedOperatingExpensesCents ||
                 reconciliation.rentCents >
@@ -3873,17 +4153,58 @@ namespace Margins
                   reconciliation.startingProcurementPurchaseCents != 0 ||
                   reconciliation.startingProcurementDeliveryFeesCents != 0 ||
                   reconciliation.startingCustomerSatisfaction != 0 ||
-                  reconciliation.startingMaintenanceCondition != 0 ||
-                  reconciliation.grossSalesCents != 0 ||
+                   reconciliation.startingMaintenanceCondition != 0 ||
+                   reconciliation.grossSalesCents != 0 ||
                   reconciliation.costOfGoodsSoldCents != 0 ||
                   reconciliation.includedOperatingExpensesCents != 0 ||
-                  reconciliation.inventoryAcquiredCostCents != 0 ||
-                  reconciliation.unitsSold != 0 ||
-                  reconciliation.transactionCount != 0)) ||
+                   reconciliation.inventoryAcquiredCostCents != 0 ||
+                   reconciliation.unitsSold != 0 ||
+                   reconciliation.transactionCount != 0)) ||
+                (!reconciliation.usesDetailedInventoryBaseline &&
+                 (reconciliation.detailedInventoryBaselineValueCents != 0 ||
+                  reconciliation.detailedProductInventoryBaseline?.Count > 0)) ||
                 !reconciliation.metrics.TryValidate(out error))
             {
                 error ??= "Detailed reconciliation fields disagree.";
                 return false;
+            }
+
+            if (reconciliation.usesDetailedInventoryBaseline)
+            {
+                if (!reconciliation.initialized ||
+                    reconciliation.detailedProductInventoryBaseline == null)
+                {
+                    error =
+                        "Detailed return baseline requires an initialized session and product inventory.";
+                    return false;
+                }
+
+                int baselineUnits;
+                try
+                {
+                    baselineUnits = reconciliation
+                        .detailedProductInventoryBaseline
+                        .Sum(value => value.quantityUnits);
+                }
+                catch (OverflowException)
+                {
+                    error =
+                        "Detailed return baseline exceeds supported inventory storage.";
+                    return false;
+                }
+                if (!PortfolioOperationsRules.TryValidateProductInventory(
+                        reconciliation.detailedProductInventoryBaseline,
+                        merchandisePrices,
+                        baselineUnits,
+                        out error) ||
+                    CalculateProductInventoryValue(
+                        reconciliation.detailedProductInventoryBaseline) !=
+                    reconciliation.detailedInventoryBaselineValueCents)
+                {
+                    error ??=
+                        "Detailed return inventory baseline does not reconcile.";
+                    return false;
+                }
             }
 
             error = null;
@@ -4805,6 +5126,11 @@ namespace Margins
                         right?.shelfFixtureId));
                 location?.productInventory?.Sort((left, right) =>
                     string.CompareOrdinal(left?.productId, right?.productId));
+                location?.detailedReconciliation?
+                    .detailedProductInventoryBaseline?.Sort((left, right) =>
+                        string.CompareOrdinal(
+                            left?.productId,
+                            right?.productId));
                 location?.operatingAlerts?.Sort((left, right) =>
                     string.CompareOrdinal(left?.alertId, right?.alertId));
                 location?.lastReport?.merchandiseSales?.Sort((left, right) =>

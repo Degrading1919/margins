@@ -318,28 +318,27 @@ namespace Margins
                     PlayerCompanyId,
                     StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(company.displayName) ||
-                company.brands == null || company.brands.Count != 1 ||
+                company.brands == null || company.brands.Count == 0 ||
                 company.properties == null || locations == null ||
-                company.properties.Count != locations.Count || currentDay < 1)
+                currentDay < 1)
             {
                 error = "Player company, brand, property, or location state is missing or contradictory.";
                 return false;
             }
 
-            PortfolioBrandSnapshot brand = company.brands[0];
-            if (brand == null ||
-                !string.Equals(
-                    brand.brandId,
-                    ConvenienceBrandId,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
-                    brand.businessTypeId,
-                    ConvenienceBusinessTypeId,
-                    StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(brand.displayName))
+            Dictionary<string, PortfolioBrandSnapshot> brandsById =
+                new(StringComparer.Ordinal);
+            foreach (PortfolioBrandSnapshot brand in company.brands)
             {
-                error = "The current portfolio supports one stable convenience-store brand.";
-                return false;
+                if (brand == null ||
+                    !StableIdentifier.IsValid(brand.brandId) ||
+                    !StableIdentifier.IsValid(brand.businessTypeId) ||
+                    string.IsNullOrWhiteSpace(brand.displayName) ||
+                    !brandsById.TryAdd(brand.brandId, brand))
+                {
+                    error = "Portfolio brands require unique stable identities, business types, and display names.";
+                    return false;
+                }
             }
 
             HashSet<string> locationIds = new(
@@ -352,26 +351,33 @@ namespace Margins
                 return false;
             }
 
-            HashSet<string> propertyIds = new(StringComparer.Ordinal);
-            HashSet<string> unitIds = new(StringComparer.Ordinal);
+            Dictionary<string, PortfolioCommercialPropertySnapshot>
+                propertiesById = new(StringComparer.Ordinal);
+            Dictionary<string, PortfolioCommercialUnitSnapshot> unitsById =
+                new(StringComparer.Ordinal);
             HashSet<string> occupiedLocations = new(StringComparer.Ordinal);
             foreach (PortfolioCommercialPropertySnapshot property in company.properties)
             {
+                bool hasDefinition = TryGetDefinitionForProperty(
+                    property?.propertyId,
+                    out PortfolioPropertyDefinition definition);
                 if (property == null ||
-                    !propertyIds.Add(property.propertyId) ||
-                    !TryGetDefinitionForProperty(
-                        property.propertyId,
-                        out PortfolioPropertyDefinition definition) ||
-                    !string.Equals(
-                        property.displayName,
-                        definition.DisplayName,
-                        StringComparison.Ordinal) ||
-                    !string.Equals(
-                        property.districtName,
-                        definition.DistrictName,
-                        StringComparison.Ordinal) ||
-                    property.acquisitionCostCents !=
-                    definition.AcquisitionCostCents ||
+                    !StableIdentifier.IsValid(property.propertyId) ||
+                    !propertiesById.TryAdd(property.propertyId, property) ||
+                    string.IsNullOrWhiteSpace(property.displayName) ||
+                    string.IsNullOrWhiteSpace(property.districtName) ||
+                    property.acquisitionCostCents <= 0 ||
+                    (hasDefinition &&
+                     (!string.Equals(
+                          property.displayName,
+                          definition.DisplayName,
+                          StringComparison.Ordinal) ||
+                      !string.Equals(
+                          property.districtName,
+                          definition.DistrictName,
+                          StringComparison.Ordinal) ||
+                      property.acquisitionCostCents !=
+                      definition.AcquisitionCostCents)) ||
                     !Enum.IsDefined(
                         typeof(PortfolioPropertyTenure),
                         property.tenure) ||
@@ -381,51 +387,87 @@ namespace Margins
                      property.acquiredDay != 0) ||
                     (property.tenure == PortfolioPropertyTenure.Owned &&
                      property.acquiredDay == 0) ||
-                    property.commercialUnits == null ||
-                    property.commercialUnits.Count != 1)
+                    property.commercialUnits == null)
                 {
                     error = "Commercial property identity, tenure, acquisition, or unit state is invalid.";
                     return false;
                 }
 
-                PortfolioCommercialUnitSnapshot unit =
-                    property.commercialUnits[0];
-                if (unit == null ||
-                    !unitIds.Add(unit.commercialUnitId) ||
+                foreach (PortfolioCommercialUnitSnapshot unit in
+                         property.commercialUnits)
+                {
+                    bool occupied = !string.IsNullOrWhiteSpace(
+                        unit?.occupyingLocationId);
+                    PortfolioPropertyDefinition unitDefinition =
+                        hasDefinition && unit != null && string.Equals(
+                            unit.commercialUnitId,
+                            definition.CommercialUnitId,
+                            StringComparison.Ordinal)
+                            ? definition
+                            : null;
+                    if (unit == null ||
+                        !StableIdentifier.IsValid(unit.commercialUnitId) ||
+                        !unitsById.TryAdd(unit.commercialUnitId, unit) ||
+                        !string.Equals(
+                            unit.propertyId,
+                            property.propertyId,
+                            StringComparison.Ordinal) ||
+                        string.IsNullOrWhiteSpace(unit.displayName) ||
+                        (occupied &&
+                         (!locationIds.Contains(unit.occupyingLocationId) ||
+                          !occupiedLocations.Add(unit.occupyingLocationId) ||
+                          unit.generatedLayout == null)) ||
+                        (unit.generatedLayout != null &&
+                         !TryValidateGeneratedLayout(
+                             unit.generatedLayout,
+                             unitDefinition,
+                             currentDay,
+                             out error)) ||
+                        !TryValidateImprovements(
+                            unit.improvements,
+                            unit.commercialUnitId,
+                            currentDay,
+                            out error))
+                    {
+                        error ??= "Commercial unit identity, occupancy, layout, or improvement state is invalid.";
+                        return false;
+                    }
+                }
+            }
+
+            foreach (PortfolioLocationSnapshot location in locations)
+            {
+                if (!brandsById.TryGetValue(
+                        location.brandId,
+                        out PortfolioBrandSnapshot brand) ||
                     !string.Equals(
-                        unit.commercialUnitId,
-                        definition.CommercialUnitId,
+                        brand.businessTypeId,
+                        location.businessTypeId,
                         StringComparison.Ordinal) ||
+                    !propertiesById.TryGetValue(
+                        location.propertyId,
+                        out PortfolioCommercialPropertySnapshot property) ||
+                    !unitsById.TryGetValue(
+                        location.commercialUnitId,
+                        out PortfolioCommercialUnitSnapshot unit) ||
                     !string.Equals(
                         unit.propertyId,
                         property.propertyId,
                         StringComparison.Ordinal) ||
-                    !locationIds.Contains(unit.occupyingLocationId) ||
                     !string.Equals(
                         unit.occupyingLocationId,
-                        definition.LocationId,
-                        StringComparison.Ordinal) ||
-                    !occupiedLocations.Add(unit.occupyingLocationId) ||
-                    string.IsNullOrWhiteSpace(unit.displayName) ||
-                    !TryValidateGeneratedLayout(
-                        unit.generatedLayout,
-                        definition,
-                        currentDay,
-                        out error) ||
-                    !TryValidateImprovements(
-                        unit.improvements,
-                        unit.commercialUnitId,
-                        currentDay,
-                        out error))
+                        location.locationId,
+                        StringComparison.Ordinal))
                 {
-                    error ??= "Commercial unit identity, occupancy, layout, or improvement state is invalid.";
+                    error =
+                        $"Business location '{location.locationId}' does not resolve to its brand, property, and occupied commercial unit by stable ID.";
                     return false;
                 }
             }
 
             if (!occupiedLocations.SetEquals(locationIds))
             {
-                error = "Every business location must occupy exactly one persistent commercial unit.";
+                error = "Every business location must occupy exactly one persistent commercial unit; other units may remain vacant.";
                 return false;
             }
 
@@ -444,26 +486,38 @@ namespace Margins
                     layout.generatorVersion,
                     ProceduralGenerationResult.CurrentGeneratorVersion,
                     StringComparison.Ordinal) ||
-                layout.seed != definition.Seed ||
-                layout.archetype != definition.Archetype ||
-                layout.footprintKind != definition.FootprintKind ||
-                layout.widthFeet != definition.WidthFeet ||
-                layout.depthFeet != definition.DepthFeet ||
-                layout.cornerExposure != definition.CornerExposure ||
-                !string.Equals(
-                    layout.businessRecipeId,
-                    ConvenienceRecipeId,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
-                    layout.selectedUnitId,
-                    "unit-01",
-                    StringComparison.Ordinal) ||
+                !Enum.IsDefined(
+                    typeof(CommercialBuildingArchetype),
+                    layout.archetype) ||
+                !Enum.IsDefined(
+                    typeof(OrthogonalFootprintKind),
+                    layout.footprintKind) ||
+                layout.widthFeet < 12 || layout.depthFeet < 12 ||
+                !StableIdentifier.IsValid(layout.businessRecipeId) ||
+                !StableIdentifier.IsValid(layout.selectedUnitId) ||
+                (definition != null &&
+                 (layout.seed != definition.Seed ||
+                  layout.archetype != definition.Archetype ||
+                  layout.footprintKind != definition.FootprintKind ||
+                  layout.widthFeet != definition.WidthFeet ||
+                  layout.depthFeet != definition.DepthFeet ||
+                  layout.cornerExposure != definition.CornerExposure ||
+                  !string.Equals(
+                      layout.businessRecipeId,
+                      ConvenienceRecipeId,
+                      StringComparison.Ordinal) ||
+                  !string.Equals(
+                      layout.selectedUnitId,
+                      "unit-01",
+                      StringComparison.Ordinal))) ||
                 layout.layoutRevision < 0 || layout.modifications == null ||
                 (!string.IsNullOrWhiteSpace(layout.canonicalSignature) &&
                  (layout.canonicalSignature.Length != 8 ||
                   layout.canonicalSignature.Any(value => !Uri.IsHexDigit(value)))))
             {
-                error = "Persistent generated-layout identity contradicts its approved property definition.";
+                error = definition == null
+                    ? "Persistent generated-layout identity is invalid."
+                    : "Persistent generated-layout identity contradicts its approved property definition.";
                 return false;
             }
 

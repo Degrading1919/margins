@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
@@ -244,6 +245,246 @@ namespace Margins.Tests.EditMode
                     out error),
                 Is.False);
             StringAssert.Contains("revision", error.ToLowerInvariant());
+        }
+
+        [Test]
+        public void HoldingCompanyGraphAllowsMultipleBrandsVacantUnitsAndIndependentProperties()
+        {
+            PortfolioProgressionSnapshot snapshot =
+                ReadyWithFirstTeam().CreateSnapshot();
+            snapshot.company.brands.Add(new PortfolioBrandSnapshot
+            {
+                brandId = "brand-mile-7-express",
+                displayName = "Mile 7 Express",
+                businessTypeId =
+                    PortfolioPropertyRules.ConvenienceBusinessTypeId
+            });
+            PortfolioPropertyDefinition definition =
+                PortfolioPropertyRules.PropertyDefinitions.Single(value =>
+                    value.PropertyId == "property-downtown-main-street");
+            PortfolioCommercialPropertySnapshot independent =
+                PortfolioPropertyRules.CreateLeasedProperty(definition);
+            independent.commercialUnits[0].occupyingLocationId = null;
+            independent.commercialUnits.Add(
+                new PortfolioCommercialUnitSnapshot
+                {
+                    commercialUnitId =
+                        "unit-downtown-main-street-02",
+                    propertyId = independent.propertyId,
+                    displayName = "Exchange Main Street Vacant Unit"
+                });
+            snapshot.company.properties.Add(independent);
+
+            Assert.That(
+                PortfolioProgression.TryRestore(
+                    snapshot,
+                    out PortfolioProgression restored,
+                    out string error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot accepted =
+                restored.CreateSnapshot();
+            Assert.That(accepted.company.brands, Has.Count.EqualTo(2));
+            Assert.That(accepted.company.properties, Has.Count.EqualTo(2));
+            Assert.That(accepted.locations, Has.Count.EqualTo(1));
+            Assert.That(
+                accepted.company.properties.Single(property =>
+                        property.propertyId ==
+                        "property-downtown-main-street")
+                    .commercialUnits,
+                Has.Count.EqualTo(2));
+            Assert.That(
+                accepted.company.properties.SelectMany(property =>
+                        property.commercialUnits)
+                    .Count(unit => string.IsNullOrWhiteSpace(
+                        unit.occupyingLocationId)),
+                Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ConfiguredExpansionIsNotCappedAtTwoPortfolioLocations()
+        {
+            PortfolioProgression progression = ReadyWithFirstTeam();
+            Assert.That(
+                progression.TryAdvanceDelegatedDay(out string error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot first = progression.CreateSnapshot()
+                .locations.Single();
+            long startingInventoryValue = first.productInventory.Sum(value =>
+                value.InventoryValueCents);
+            List<PortfolioProductInventorySnapshot> emptyInventory =
+                first.productInventory
+                    .Select(value => new PortfolioProductInventorySnapshot
+                    {
+                        productId = value.productId,
+                        quantityUnits = 0,
+                        unitCostCents = value.unitCostCents
+                    })
+                    .ToList();
+            int syntheticUnitsSold = Math.Max(1, first.inventoryUnits);
+            const long financingProofSales = 1_000_000;
+            Assert.That(
+                progression.TryReconcileDetailedOperation(
+                    first.locationId,
+                    "session-capital-for-configured-expansion",
+                    new StoreSessionTotals(
+                        financingProofSales,
+                        startingInventoryValue,
+                        0,
+                        financingProofSales - startingInventoryValue,
+                        syntheticUnitsSold,
+                        1),
+                    0,
+                    0,
+                    emptyInventory,
+                    null,
+                    null,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+
+            Assert.That(
+                progression.TryLeaseLocation(
+                    "location-riverbend-market",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                progression.TryLeaseLocation(
+                    "location-downtown-market",
+                    out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot expanded =
+                progression.CreateSnapshot();
+            Assert.That(expanded.locations, Has.Count.EqualTo(3));
+            Assert.That(expanded.company.properties, Has.Count.EqualTo(3));
+            Assert.That(
+                PortfolioProgression.TryRestore(
+                    expanded,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+        }
+
+        [Test]
+        public void ProductMixAndSatisfactionUseOneDetailedAggregateRule()
+        {
+            PortfolioProgression detailed = PortfolioProgression.CreateInitial();
+            Assert.That(
+                detailed.TryPostDetailedShift(
+                    "session-product-mix-parity",
+                    FirstShift,
+                    6,
+                    out _,
+                    out string error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot detailedSeedLocation = detailed
+                .CreateSnapshot().locations.Single();
+            ShelfMerchandiseAssignmentSnapshot detailedUnassigned =
+                detailedSeedLocation.shelfMerchandiseAssignments[1];
+            Assert.That(
+                detailed.TryUpdateShelfOffer(
+                    detailedSeedLocation.locationId,
+                    detailedUnassigned.shelfFixtureId,
+                    null,
+                    0,
+                    null,
+                    out error),
+                Is.True,
+                error);
+            detailedSeedLocation = detailed.CreateSnapshot()
+                .locations.Single();
+            int detailedStartingSatisfaction = detailedSeedLocation
+                .detailedReconciliation.startingCustomerSatisfaction;
+            int detailedInventoryUnits = detailedSeedLocation.productInventory
+                .Sum(value => value.quantityUnits);
+            long detailedInventoryValue = detailedInventoryUnits *
+                                          PortfolioProgressionRules
+                                              .AggregateUnitCostCents;
+            Assert.That(
+                detailed.TryReconcileDetailedOperation(
+                    PortfolioProgressionRules.FirstLocationId,
+                    "session-product-mix-parity",
+                    FirstShift,
+                    detailedInventoryUnits,
+                    detailedInventoryValue,
+                    detailedSeedLocation.productInventory,
+                    null,
+                    new DetailedOperationMetricsSnapshot
+                    {
+                        customerVisits = 10,
+                        customersServed = 10,
+                        requestedProductUnits = 10,
+                        standardsTaskComplete = true
+                    },
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot detailedResult = detailed
+                .CreateSnapshot().locations.Single();
+            Assert.That(detailedResult.productMixBasisPoints,
+                Is.EqualTo(5_000),
+                "Detailed operation must not count stocked products that have no shelf assignment.");
+            int detailedDailySatisfaction = PortfolioOperationsRules
+                .CalculateDailySatisfaction(
+                    detailedResult.serviceQuality,
+                    detailedResult.productAvailabilityBasisPoints,
+                    detailedResult.productMixBasisPoints,
+                    true);
+            Assert.That(
+                detailedResult.customerSatisfaction,
+                Is.EqualTo((detailedStartingSatisfaction * 7 +
+                            detailedDailySatisfaction * 3) / 10));
+
+            PortfolioProgression aggregate = ReadyWithFirstTeam();
+            PortfolioLocationSnapshot aggregateSeed = aggregate
+                .CreateSnapshot().locations.Single();
+            ShelfMerchandiseAssignmentSnapshot unassigned = aggregateSeed
+                .shelfMerchandiseAssignments[1];
+            Assert.That(
+                aggregate.TryUpdateShelfOffer(
+                    aggregateSeed.locationId,
+                    unassigned.shelfFixtureId,
+                    null,
+                    0,
+                    null,
+                    out error),
+                Is.True,
+                error);
+            int aggregateStartingSatisfaction = aggregate.CreateSnapshot()
+                .locations.Single().customerSatisfaction;
+            Assert.That(
+                aggregate.TryAdvanceDelegatedDay(out error),
+                Is.True,
+                error);
+            PortfolioLocationSnapshot aggregateResult = aggregate
+                .CreateSnapshot().locations.Single();
+            Assert.That(
+                aggregateResult.productMixBasisPoints,
+                Is.EqualTo(
+                    PortfolioOperationsRules.CalculateProductMixBasisPoints(
+                        aggregateResult.shelfMerchandiseAssignments,
+                        aggregateResult.productInventory,
+                        ConvenienceStoreOperations.Simulation
+                            .PreferredProductMixCount)),
+                "Aggregate operation must use the same assigned-and-in-stock product-mix authority as detailed operation.");
+            int aggregateDailySatisfaction = PortfolioOperationsRules
+                .CalculateDailySatisfaction(
+                    aggregateResult.serviceQuality,
+                    aggregateResult.productAvailabilityBasisPoints,
+                    aggregateResult.productMixBasisPoints,
+                    true);
+            Assert.That(
+                aggregateResult.customerSatisfaction,
+                Is.EqualTo((aggregateStartingSatisfaction * 7 +
+                            aggregateDailySatisfaction * 3) / 10),
+                "Detailed and aggregate operation must apply product mix to satisfaction through the same rule.");
         }
 
         [Test]

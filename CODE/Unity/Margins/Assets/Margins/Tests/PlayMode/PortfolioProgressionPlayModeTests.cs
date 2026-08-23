@@ -117,6 +117,151 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator RealFirstStoreAdapterRebasesAfterDelegationAndPostsNextSaleOnce()
+        {
+            CompletePhysicalFirstShift();
+            HireFirstTeam();
+            player.SetGameplayMode(false);
+            Assert.That(
+                portfolio.TryAdvanceDelegatedDay(out string error),
+                Is.True,
+                error);
+
+            FirstStoreInventoryComponent inventory =
+                Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+
+            PortfolioProgressionSnapshot aggregate =
+                portfolio.Progression.CreateSnapshot();
+            string saleProductId = FindReturnSaleProduct(
+                aggregate.locations.Single(),
+                inventory,
+                delivery,
+                checkout);
+            if (saleProductId == null)
+            {
+                Assert.That(
+                    portfolio.Progression.TryAdvanceProcurementTicks(
+                        10,
+                        out _,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    portfolio.TryAdvanceDelegatedDay(out error),
+                    Is.True,
+                    error);
+                aggregate = portfolio.Progression.CreateSnapshot();
+                saleProductId = FindReturnSaleProduct(
+                    aggregate.locations.Single(),
+                    inventory,
+                    delivery,
+                    checkout);
+            }
+            Assert.That(saleProductId, Is.Not.Null,
+                "Delegated operation must leave or procure stock that the loaded detailed scene can sell after return.");
+
+            long aggregateCash = aggregate.cashCents;
+            int aggregateInventory = aggregate.locations[0].inventoryUnits;
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot stillDelegated =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(stillDelegated.cashCents, Is.EqualTo(aggregateCash));
+            Assert.That(
+                stillDelegated.locations[0].detailedReconciliation
+                    .sessionStartedDay,
+                Is.LessThan(stillDelegated.currentDay),
+                "The loaded scene must not become authoritative while the player remains at the management desk.");
+
+            player.SetGameplayMode(true);
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot rebased =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(rebased.cashCents, Is.EqualTo(aggregateCash));
+            Assert.That(rebased.locations[0].inventoryUnits,
+                Is.EqualTo(aggregateInventory));
+            Assert.That(
+                rebased.locations[0].detailedReconciliation
+                    .usesDetailedInventoryBaseline,
+                Is.True);
+            Assert.That(
+                rebased.locations[0].detailedReconciliation
+                    .sessionStartedDay,
+                Is.EqualTo(rebased.currentDay));
+
+            ProductDefinition product = GetProduct(saleProductId);
+            StockOneProduct(delivery, stocking, product);
+            Assert.That(
+                checkout.TryBeginSession(
+                    "transaction-portfolio-return-002",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                checkout.TryScan(
+                    product,
+                    1,
+                    out CheckoutFailure scanFailure),
+                Is.True,
+                scanFailure.ToString());
+            Assert.That(
+                checkout.TryComplete(
+                    out CheckoutTransactionSummary sale,
+                    out CheckoutFailure completionFailure),
+                Is.True,
+                completionFailure.ToString());
+
+            PortfolioLocationSnapshot beforeSale = rebased.locations[0];
+            int productBeforeSale = beforeSale.productInventory.Single(value =>
+                value.productId == saleProductId).quantityUnits;
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot posted =
+                portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot postedLocation = posted.locations[0];
+            Assert.That(posted.cashCents,
+                Is.EqualTo(rebased.cashCents + sale.subtotalCents));
+            Assert.That(postedLocation.inventoryUnits,
+                Is.EqualTo(beforeSale.inventoryUnits - 1));
+            Assert.That(
+                postedLocation.productInventory.Single(value =>
+                    value.productId == saleProductId).quantityUnits,
+                Is.EqualTo(productBeforeSale - 1));
+            Assert.That(postedLocation.lifetimeGrossSalesCents,
+                Is.EqualTo(beforeSale.lifetimeGrossSalesCents +
+                           sale.subtotalCents));
+            Assert.That(postedLocation.lifetimeCostOfGoodsSoldCents,
+                Is.EqualTo(beforeSale.lifetimeCostOfGoodsSoldCents +
+                           sale.lines.Sum(line => line.LineCostCents)));
+
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot repeated =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(repeated.cashCents, Is.EqualTo(posted.cashCents));
+            Assert.That(repeated.locations[0].inventoryUnits,
+                Is.EqualTo(postedLocation.inventoryUnits));
+            Assert.That(repeated.locations[0].lifetimeGrossSalesCents,
+                Is.EqualTo(postedLocation.lifetimeGrossSalesCents));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator DiskRoundTripRestoresEmployeesPoliciesDelegatedReportAndCash()
         {
             CompletePhysicalFirstShift();
@@ -886,6 +1031,24 @@ namespace Margins.Tests
             return Resources
                 .FindObjectsOfTypeAll<ProductDefinition>()
                 .Single(product => product.StableProductId == productId);
+        }
+
+        private static string FindReturnSaleProduct(
+            PortfolioLocationSnapshot location,
+            FirstStoreInventoryComponent inventory,
+            DeliveryBoxComponent delivery,
+            CheckoutStationComponent checkout)
+        {
+            return location.productInventory
+                .Where(value => value.quantityUnits > 0 &&
+                                checkout.ConfiguredProductIds.Contains(
+                                    value.productId) &&
+                                inventory.Inventory.GetQuantity(
+                                    delivery.InventoryLocationId,
+                                    value.productId) > 0)
+                .OrderBy(value => value.productId, StringComparer.Ordinal)
+                .Select(value => value.productId)
+                .FirstOrDefault();
         }
 
         private static void StockOneProduct(

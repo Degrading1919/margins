@@ -16,7 +16,8 @@ namespace Margins
 
         [SerializeField] private PortfolioProgressionController portfolio;
         [SerializeField] private ProceduralAssetRegistry assetRegistry;
-        [SerializeField] private ProceduralBusinessRecipe convenienceRecipe;
+        [SerializeField] private ProceduralBusinessRecipe[] businessRecipes =
+            Array.Empty<ProceduralBusinessRecipe>();
 
         private PortfolioProgression directProgression;
         private GameObject activeHost;
@@ -32,23 +33,25 @@ namespace Margins
         public void Configure(
             PortfolioProgressionController progressionController,
             ProceduralAssetRegistry registry,
-            ProceduralBusinessRecipe recipe)
+            params ProceduralBusinessRecipe[] recipes)
         {
             portfolio = progressionController;
             directProgression = null;
             assetRegistry = registry;
-            convenienceRecipe = recipe;
+            businessRecipes = recipes ??
+                              Array.Empty<ProceduralBusinessRecipe>();
         }
 
         public void ConfigureForDomain(
             PortfolioProgression progression,
             ProceduralAssetRegistry registry,
-            ProceduralBusinessRecipe recipe)
+            params ProceduralBusinessRecipe[] recipes)
         {
             directProgression = progression;
             portfolio = null;
             assetRegistry = registry;
-            convenienceRecipe = recipe;
+            businessRecipes = recipes ??
+                              Array.Empty<ProceduralBusinessRecipe>();
         }
 
         public bool TryMaterializeLocation(
@@ -56,12 +59,9 @@ namespace Margins
             out string error)
         {
             error = null;
-            if (Progression == null ||
-                !TryResolveContent(out ProceduralAssetRegistry registry,
-                    out ProceduralBusinessRecipe recipe,
-                    out error))
+            if (Progression == null)
             {
-                error ??= "Persistent portfolio progression is unavailable.";
+                error = "Persistent portfolio progression is unavailable.";
                 return false;
             }
 
@@ -80,13 +80,12 @@ namespace Margins
             }
 
             PersistentGeneratedLayoutSnapshot layout = unit.generatedLayout;
-            if (!string.Equals(
-                    recipe.StableRecipeId,
+            if (!TryResolveContent(
                     layout.businessRecipeId,
-                    StringComparison.Ordinal))
+                    out ProceduralAssetRegistry registry,
+                    out ProceduralBusinessRecipe recipe,
+                    out error))
             {
-                error =
-                    $"Recipe '{recipe.StableRecipeId}' does not match persistent recipe '{layout.businessRecipeId}'.";
                 return false;
             }
 
@@ -228,6 +227,7 @@ namespace Margins
         }
 
         private bool TryResolveContent(
+            string businessRecipeId,
             out ProceduralAssetRegistry registry,
             out ProceduralBusinessRecipe recipe,
             out string error)
@@ -237,16 +237,29 @@ namespace Margins
                 ? assetRegistry
                 : Resources.Load<ProceduralAssetRegistry>(
                     "ProceduralAssetRegistry");
-            recipe = convenienceRecipe != null
-                ? convenienceRecipe
-                : Resources.Load<ProceduralBusinessRecipe>(
-                    "Recipes/GrayboxConvenienceRecipe");
+            recipe = null;
+            if (!StableIdentifier.IsValid(businessRecipeId))
+            {
+                error = "Persistent location has an invalid business recipe id.";
+                return false;
+            }
+
+            ProceduralBusinessRecipe[] configured = businessRecipes?
+                .Where(value => value != null)
+                .ToArray() ?? Array.Empty<ProceduralBusinessRecipe>();
+            ProceduralBusinessRecipe[] candidates = configured.Length > 0
+                ? configured
+                : Resources.LoadAll<ProceduralBusinessRecipe>("Recipes");
+            recipe = candidates.FirstOrDefault(value => string.Equals(
+                value.StableRecipeId,
+                businessRecipeId,
+                StringComparison.Ordinal));
             if (registry == null || recipe == null ||
                 !registry.TryValidate(true, out error) ||
                 !recipe.TryValidate(out error))
             {
                 error ??=
-                    "Persistent location materialization requires the approved registry and convenience recipe.";
+                    $"Persistent location materialization could not resolve recipe '{businessRecipeId}' from the configured content registry.";
                 return false;
             }
 
