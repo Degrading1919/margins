@@ -91,6 +91,34 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
+
+            <ui:VisualElement name="management-view" class="management-view">
+                <ui:VisualElement class="management-shell">
+                    <ui:VisualElement class="management-header">
+                        <ui:VisualElement>
+                            <ui:Label text="MILE 7 HOLDINGS" class="settings-brand" />
+                            <ui:Label text="Company Desk" class="management-title" />
+                        </ui:VisualElement>
+                        <ui:Label name="management-summary" class="management-summary" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="management-tabs">
+                        <ui:Button name="management-overview-tab" text="Overview" class="management-tab" />
+                        <ui:Button name="management-team-tab" text="Team" class="management-tab" />
+                        <ui:Button name="management-policy-tab" text="Policies" class="management-tab" />
+                        <ui:Button name="management-alerts-tab" text="Alerts" class="management-tab" />
+                    </ui:VisualElement>
+
+                    <ui:ScrollView name="management-content" class="management-content" mode="Vertical" />
+
+                    <ui:VisualElement class="management-footer">
+                        <ui:Label name="management-status" class="management-status" />
+                        <ui:Button name="management-save" text="Save" class="quiet-button management-footer-button" />
+                        <ui:Button name="management-load" text="Load" class="quiet-button management-footer-button" />
+                        <ui:Button name="management-resume" text="Return to Store" class="apply-button management-footer-button" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

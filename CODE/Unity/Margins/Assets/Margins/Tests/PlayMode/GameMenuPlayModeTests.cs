@@ -116,6 +116,155 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator CompanyDeskUsesAuthoritativeSchedulesPoliciesAlertsRecoveryAndOvernight()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+
+            CompleteManagementFirstShift(portfolio);
+            Assert.That(
+                portfolio.TryHireCandidate(
+                    "employee-elena-ruiz",
+                    PortfolioProgressionRules.FirstLocationId,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.TryHireCandidate(
+                    "employee-marcus-reed",
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.TryHireCandidate(
+                    "employee-priya-shah",
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error),
+                Is.True,
+                error);
+
+            player.SetGameplayMode(false);
+            portfolio.enabled = false;
+
+            PortfolioProgressionSnapshot degraded =
+                portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot degradedLocation = degraded.locations.Single();
+            degradedLocation.maintenanceCondition = 20;
+            degradedLocation.failurePressure = 80;
+            degradedLocation.operatingAlerts.Add(
+                new PortfolioOperatingAlertSnapshot
+                {
+                    alertId =
+                        "alert-location-mile-7-market-maintenance-pressure-999",
+                    problemTypeId = "maintenance-pressure",
+                    severity = PortfolioAlertSeverity.Critical,
+                    openedDay = degraded.currentDay,
+                    resolvedDay = 0,
+                    acknowledged = false,
+                    requiresOwnerAttention = true,
+                    summary =
+                        "Maintenance condition is below the configured standard.",
+                    recoveryAction =
+                        "Authorize maintenance, raise the spending limit, or complete standards work."
+                });
+            Assert.That(
+                portfolio.TryRestoreSnapshot(degraded, out error),
+                Is.True,
+                error);
+
+            yield return null;
+            yield return null;
+            VisualElement root = presenter.Root;
+            Assert.That(
+                root.Q("management-view").resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.Flex));
+            Assert.That(root.Q<IMGUIContainer>(), Is.Null);
+
+            Submit(root.Q<Button>("management-team-tab"));
+            yield return null;
+            Button weekdaySchedule = root.Q<Button>(
+                "management-schedule-employee-elena-ruiz-weekdays");
+            Assert.That(weekdaySchedule, Is.Not.Null);
+            Submit(weekdaySchedule);
+            yield return null;
+            Assert.That(
+                portfolio.Progression.Employees.Single(employee =>
+                    employee.employeeId == "employee-elena-ruiz")
+                    .schedule.scheduledDayMask,
+                Is.EqualTo(0x1f));
+
+            Submit(root.Q<Button>("management-policy-tab"));
+            yield return null;
+            long priorBudget = portfolio.Progression.Locations.Single()
+                .delegationPolicy.dailySpendingLimitCents;
+            Submit(root.Q<Button>("management-purchase-authority"));
+            yield return null;
+            Assert.That(
+                portfolio.Progression.Locations.Single()
+                    .delegationPolicy.managerCanPurchase,
+                Is.False);
+            Submit(root.Q<Button>("management-budget-increase"));
+            yield return null;
+            Assert.That(
+                portfolio.Progression.Locations.Single()
+                    .delegationPolicy.dailySpendingLimitCents,
+                Is.EqualTo(priorBudget + 25_000));
+
+            Submit(root.Q<Button>("management-alerts-tab"));
+            yield return null;
+            const string alertId =
+                "alert-location-mile-7-market-maintenance-pressure-999";
+            Button acknowledge = root.Q<Button>($"management-ack-{alertId}");
+            Assert.That(acknowledge, Is.Not.Null);
+            Submit(acknowledge);
+            yield return null;
+            Assert.That(
+                portfolio.Progression.Locations.Single().operatingAlerts
+                    .Single(alert => alert.alertId == alertId).acknowledged,
+                Is.True);
+
+            long cashBeforeRecovery = portfolio.Progression.CashCents;
+            int conditionBeforeRecovery = portfolio.Progression.Locations
+                .Single().maintenanceCondition;
+            Button emergency = root.Q<Button>(
+                "management-emergency-maintenance");
+            Assert.That(emergency, Is.Not.Null);
+            Submit(emergency);
+            yield return null;
+            Assert.That(portfolio.Progression.CashCents,
+                Is.LessThan(cashBeforeRecovery));
+            Assert.That(
+                portfolio.Progression.Locations.Single().maintenanceCondition,
+                Is.GreaterThan(conditionBeforeRecovery));
+
+            Submit(root.Q<Button>("management-overview-tab"));
+            yield return null;
+            int dayBefore = portfolio.Progression.CurrentDay;
+            Button overnight = root.Q<Button>(
+                "management-advance-overnight");
+            Assert.That(overnight, Is.Not.Null);
+            Assert.That(overnight.enabledInHierarchy, Is.True);
+            Submit(overnight);
+            yield return null;
+            PortfolioProgressionSnapshot afterOvernight =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(afterOvernight.currentDay, Is.EqualTo(dayBefore + 1));
+            Assert.That(afterOvernight.locations.Single().lastReport.day,
+                Is.EqualTo(afterOvernight.currentDay));
+            Assert.That(afterOvernight.locations.Single().lastReport
+                .isDetailedOperation, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator NewAndLoadBusinessUseAuthoritativeStateAndKeepDiskSave()
         {
             yield return LoadValidationScene();
@@ -250,6 +399,89 @@ namespace Margins.Tests
                 position,
                 quarterTurns);
             Assert.That(result.IsSuccess, Is.True, result.Failure.ToString());
+        }
+
+        private static void CompleteManagementFirstShift(
+            PortfolioProgressionController portfolio)
+        {
+            FixturePlacementController placement =
+                Object.FindAnyObjectByType<FixturePlacementController>();
+            PlaceableFixtureComponent fixture = Resources
+                .FindObjectsOfTypeAll<PlaceableFixtureComponent>()
+                .Single(item =>
+                    item.StableFixtureInstanceId ==
+                    "fixture-checkout-essential-01");
+            if (!placement.IsPlaced(fixture.StableFixtureInstanceId))
+            {
+                FixturePlacementResult placed = placement.TryPlace(
+                    fixture,
+                    new GridPosition(1, 1),
+                    0);
+                Assert.That(placed.IsSuccess, Is.True, placed.Failure.ToString());
+            }
+
+            DeliveryBoxComponent delivery =
+                Object.FindAnyObjectByType<DeliveryBoxComponent>();
+            StockingController stocking =
+                Object.FindAnyObjectByType<StockingController>();
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+            ProductDefinition cola = Resources
+                .FindObjectsOfTypeAll<ProductDefinition>()
+                .Single(product =>
+                    product.StableProductId == "prod-cola-can-355ml");
+            Assert.That(delivery.TryOpen(out _, out string error), Is.True, error);
+            Assert.That(
+                delivery.TryRemoveOneUnit(
+                    cola,
+                    out ProductItem loose,
+                    out _,
+                    out _,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                stocking.TryPickUpLooseUnit(loose, out _, out error),
+                Is.True,
+                error);
+            Assert.That(stocking.TryStockHeldUnit(0, out error), Is.True, error);
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
+            Assert.That(
+                checkout.TryBeginSession(
+                    "transaction-management-ui-001",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                checkout.TryScan(
+                    cola,
+                    1,
+                    out CheckoutFailure scanFailure),
+                Is.True,
+                scanFailure.ToString());
+            Assert.That(
+                checkout.TryComplete(
+                    out _,
+                    out CheckoutFailure completionFailure),
+                Is.True,
+                completionFailure.ToString());
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            Assert.That(portfolio.Progression.FirstShiftCompleted, Is.True);
+        }
+
+        private static void Submit(Button button)
+        {
+            Assert.That(button, Is.Not.Null);
+            NavigationSubmitEvent submit =
+                NavigationSubmitEvent.GetPooled();
+            submit.target = button;
+            button.SendEvent(submit);
+            submit.Dispose();
         }
 
         private static void SetPrivateField(

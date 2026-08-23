@@ -52,6 +52,7 @@ namespace Margins
         private string selectedLocationId = PortfolioProgressionRules.FirstLocationId;
         private string lastAction = "Complete the hands-on first shift to unlock company management.";
         private bool lastActionSucceeded = true;
+        private bool toolkitManagementAvailable;
         private bool hasOpenedDeskAfterFirstShift;
         private Vector2 peopleScroll;
         private Vector2 reportScroll;
@@ -69,6 +70,7 @@ namespace Margins
         private GUIStyle humanCenteredStyle;
 
         public PortfolioProgression Progression => progression;
+        public event Action ManagementChanged;
         public bool IsInitialized => progression != null;
         public bool OwnsManagementDesk =>
             progression != null &&
@@ -76,9 +78,15 @@ namespace Margins
             !GamePauseMenuController.IsAnyMenuOpen &&
             !firstPersonController.IsGameplayMode;
         public string LastAction => lastAction;
+        public bool LastActionSucceeded => lastActionSucceeded;
         public string SelectedLocationId => selectedLocationId;
         public PersistentPortfolioLocationSceneAdapter LocationSceneAdapter =>
             locationSceneAdapter;
+
+        public void SetToolkitManagementAvailable(bool available)
+        {
+            toolkitManagementAvailable = available;
+        }
 
         private void Awake()
         {
@@ -1511,16 +1519,35 @@ namespace Margins
                     merchandising.LocationId,
                     StringComparison.Ordinal))
             {
-                return merchandising.TryApplyPricePreset(preset, out error);
+                bool detailedSuccess = merchandising.TryApplyPricePreset(
+                    preset,
+                    out error);
+                RecordResult(
+                    detailedSuccess,
+                    detailedSuccess
+                        ? $"{LocationName(locationId)} pricing set to {preset}."
+                        : error);
+                return detailedSuccess;
             }
 
-            return progression.TrySetPricingPolicy(
+            bool success = progression.TrySetPricingPolicy(
                 locationId,
                 preset,
                 out error);
+            RecordResult(
+                success,
+                success
+                    ? $"{LocationName(locationId)} pricing set to {preset}."
+                    : error);
+            return success;
         }
 
         public bool TryAdvanceDelegatedDay(out string error)
+        {
+            return TryAdvanceOvernight(out error);
+        }
+
+        public bool TryAdvanceOvernight(out string error)
         {
             if (!TrySynchronizeLivePayroll(out error) ||
                 !TrySynchronizeDetailedProcurement(out error) ||
@@ -1534,7 +1561,181 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"Delegated day {progression.CurrentDay} completed and all location reports posted."
+                    ? $"Advanced overnight to operating day {progression.CurrentDay}; all delegated location reports posted."
+                    : error);
+            return success;
+        }
+
+        public bool TrySelectManagementLocation(
+            string locationId,
+            out string error)
+        {
+            if (progression == null || progression.Locations.All(location =>
+                    !string.Equals(
+                        location.locationId,
+                        locationId,
+                        StringComparison.Ordinal)))
+            {
+                error = "The selected management location is unavailable.";
+                RecordResult(false, error);
+                return false;
+            }
+
+            selectedLocationId = locationId;
+            RecordResult(true, $"Managing {LocationName(locationId)}.");
+            error = null;
+            return true;
+        }
+
+        public bool TrySetEmployeeSchedule(
+            string employeeId,
+            PortfolioEmployeeScheduleSnapshot schedule,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TrySetEmployeeSchedule(
+                               employeeId,
+                               schedule,
+                               out error);
+            error ??= "Company employee schedules are unavailable.";
+            PortfolioEmployeeSnapshot employee = progression?.Employees
+                .FirstOrDefault(value => string.Equals(
+                    value.employeeId,
+                    employeeId,
+                    StringComparison.Ordinal));
+            RecordResult(
+                success,
+                success
+                    ? $"Updated {employee?.displayName ?? employeeId}'s schedule."
+                    : error);
+            return success;
+        }
+
+        public bool TrySetTaskFocus(
+            string employeeId,
+            PortfolioTaskFocus focus,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TrySetTaskFocus(
+                               employeeId,
+                               focus,
+                               out error);
+            error ??= "Company employee assignments are unavailable.";
+            RecordResult(
+                success,
+                success ? $"Employee task focus set to {focus}." : error);
+            return success;
+        }
+
+        public bool TryReassignEmployee(
+            string employeeId,
+            string locationId,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TryReassignEmployee(
+                               employeeId,
+                               locationId,
+                               out error);
+            error ??= "Company employee assignments are unavailable.";
+            RecordResult(
+                success,
+                success
+                    ? $"Employee reassigned to {LocationName(locationId)}."
+                    : error);
+            return success;
+        }
+
+        public bool TryTrainEmployee(string employeeId, out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TryTrainEmployee(
+                               employeeId,
+                               out error);
+            error ??= "Company employee development is unavailable.";
+            RecordResult(
+                success,
+                success ? "Employee training completed." : error);
+            return success;
+        }
+
+        public bool TrySetReorderPolicy(
+            string locationId,
+            PortfolioReorderPolicy policy,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TrySetReorderPolicy(
+                               locationId,
+                               policy,
+                               out error);
+            error ??= "Company reorder policy is unavailable.";
+            RecordResult(
+                success,
+                success
+                    ? $"{LocationName(locationId)} reordering set to {policy}."
+                    : error);
+            return success;
+        }
+
+        public bool TrySetDelegationPolicy(
+            string locationId,
+            PortfolioDelegationPolicySnapshot policy,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TrySetDelegationPolicy(
+                               locationId,
+                               policy,
+                               out error);
+            error ??= "Company delegation policy is unavailable.";
+            RecordResult(
+                success,
+                success
+                    ? $"{LocationName(locationId)} delegation policy updated."
+                    : error);
+            return success;
+        }
+
+        public bool TryAcknowledgeOperatingAlert(
+            string locationId,
+            string alertId,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TryAcknowledgeOperatingAlert(
+                               locationId,
+                               alertId,
+                               out error);
+            error ??= "Company operating alerts are unavailable.";
+            RecordResult(
+                success,
+                success ? "Operating alert acknowledged." : error);
+            return success;
+        }
+
+        public bool TryPerformEmergencyMaintenance(
+            string locationId,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TryPerformEmergencyMaintenance(
+                               locationId,
+                               out error);
+            error ??= "Company maintenance recovery is unavailable.";
+            RecordResult(
+                success,
+                success
+                    ? $"Emergency maintenance completed at {LocationName(locationId)}."
                     : error);
             return success;
         }
@@ -1591,7 +1792,7 @@ namespace Margins
 
         private void OnGUI()
         {
-            if (!OwnsManagementDesk)
+            if (!OwnsManagementDesk || toolkitManagementAvailable)
             {
                 return;
             }
@@ -3412,6 +3613,7 @@ namespace Margins
             {
                 Debug.LogWarning(message, this);
             }
+            ManagementChanged?.Invoke();
         }
 
         private static string FriendlyRole(PortfolioEmployeeRole role)

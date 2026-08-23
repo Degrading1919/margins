@@ -760,7 +760,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator PhysicalShiftBuildsAndRestoresTwoLocationPortfolio()
+        public IEnumerator PhysicalShiftOvernightRecoveryAndTwoLocationDiskRoundTripStayContinuous()
         {
             CompletePhysicalFirstShift();
             Assert.That(
@@ -771,7 +771,7 @@ namespace Margins.Tests
             Assert.That(portfolio.OwnsManagementDesk, Is.True);
 
             HireFirstTeam();
-            Assert.That(portfolio.TryAdvanceDelegatedDay(out error), Is.True, error);
+            Assert.That(portfolio.TryAdvanceOvernight(out error), Is.True, error);
             Assert.That(
                 portfolio.TryLeaseLocation("location-riverbend-market", out error),
                 Is.True,
@@ -791,7 +791,65 @@ namespace Margins.Tests
                     out error),
                 Is.True,
                 error);
-            Assert.That(portfolio.TryAdvanceDelegatedDay(out error), Is.True, error);
+            PortfolioEmployeeSnapshot scheduled = portfolio.Progression.Employees
+                .Single(employee =>
+                    employee.employeeId == "employee-jonah-brooks");
+            PortfolioEmployeeScheduleSnapshot weekdays =
+                PortfolioOperationsRules.Clone(scheduled.schedule);
+            weekdays.scheduledDayMask = 0x1f;
+            weekdays.shiftStartMinute = 12 * 60;
+            weekdays.shiftEndMinute = 20 * 60;
+            Assert.That(
+                portfolio.TrySetEmployeeSchedule(
+                    scheduled.employeeId,
+                    weekdays,
+                    out error),
+                Is.True,
+                error);
+
+            PortfolioLocationSnapshot riverbend = portfolio.Progression.Locations
+                .Single(location =>
+                    location.locationId == "location-riverbend-market");
+            PortfolioDelegationPolicySnapshot riverbendPolicy =
+                PortfolioOperationsRules.Clone(riverbend.delegationPolicy);
+            riverbendPolicy.managerCanPurchase = false;
+            riverbendPolicy.dailySpendingLimitCents = 125_000;
+            riverbendPolicy.minimumMaintenanceCondition = 70;
+            Assert.That(
+                portfolio.TrySetDelegationPolicy(
+                    riverbend.locationId,
+                    riverbendPolicy,
+                    out error),
+                Is.True,
+                error);
+
+            PortfolioProgressionSnapshot degraded =
+                portfolio.Progression.CreateSnapshot();
+            PortfolioLocationSnapshot degradedRiverbend = degraded.locations
+                .Single(location =>
+                    location.locationId == "location-riverbend-market");
+            degradedRiverbend.maintenanceCondition = 35;
+            degradedRiverbend.failurePressure = 65;
+            Assert.That(
+                portfolio.TryRestoreSnapshot(degraded, out error),
+                Is.True,
+                error);
+            long cashBeforeRecovery = portfolio.Progression.CashCents;
+            Assert.That(
+                portfolio.TryPerformEmergencyMaintenance(
+                    "location-riverbend-market",
+                    out error),
+                Is.True,
+                error);
+            Assert.That(portfolio.Progression.CashCents,
+                Is.LessThan(cashBeforeRecovery));
+            Assert.That(
+                portfolio.Progression.Locations.Single(location =>
+                    location.locationId == "location-riverbend-market")
+                    .maintenanceCondition,
+                Is.GreaterThan(35));
+
+            Assert.That(portfolio.TryAdvanceOvernight(out error), Is.True, error);
 
             PortfolioProgressionSnapshot expected =
                 portfolio.Progression.CreateSnapshot();
@@ -808,6 +866,15 @@ namespace Margins.Tests
                     PortfolioProgressionRules.MinimumCashReserveCents));
 
             Assert.That(disk.TrySaveToPath(savePath), Is.True, disk.LastDiagnostic);
+            Assert.That(
+                FirstStoreDiskSaveCodec.TryFromJson(
+                    File.ReadAllText(savePath),
+                    out FirstStoreDiskSaveData accepted,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(accepted.generatedLocation, Is.Null,
+                $"Unexpected active adapter location: {portfolio.LocationSceneAdapter?.ActiveLocationId ?? "none"}");
             Assert.That(
                 portfolio.Progression.TrySetPricingPolicy(
                     "location-riverbend-market",
@@ -828,6 +895,21 @@ namespace Margins.Tests
                     location.locationId == "location-riverbend-market")
                     .pricingPolicy,
                 Is.EqualTo(PortfolioPricingPolicy.Value));
+            Assert.That(
+                restored.locations.Single(location =>
+                    location.locationId == "location-riverbend-market")
+                    .delegationPolicy.managerCanPurchase,
+                Is.False);
+            Assert.That(
+                restored.locations.Single(location =>
+                    location.locationId == "location-riverbend-market")
+                    .delegationPolicy.dailySpendingLimitCents,
+                Is.EqualTo(125_000));
+            Assert.That(
+                restored.employees.Single(employee =>
+                    employee.employeeId == "employee-jonah-brooks")
+                    .schedule.scheduledDayMask,
+                Is.EqualTo(0x1f));
             Assert.That(
                 restored.locations.Sum(location => location.lastReport.cashChangeCents),
                 Is.EqualTo(
