@@ -47,9 +47,12 @@ namespace Margins.Tests
             Assert.That(CommercialGenerationDimensions.StructuralIncrementMeters,
                 Is.EqualTo(0.3048f).Within(0.000001f));
             Assert.That(CommercialGenerationDimensions.OpeningIncrementMeters,
-                Is.EqualTo(0.1524f).Within(0.000001f));
+                Is.EqualTo(
+                    CommercialGenerationDimensions.ArchitecturalOpeningIncrementInches *
+                    CommercialGenerationDimensions.MetersPerInch).Within(0.000001f));
             Assert.That(CommercialGenerationDimensions.FixturePlacementIncrementMeters,
-                Is.EqualTo(0.1524f).Within(0.000001f));
+                Is.EqualTo(FixturePlacementGrid.PlacementIncrementMeters)
+                    .Within(0.000001f));
             Assert.That(CommercialGenerationDimensions.ExteriorWallThicknessMeters,
                 Is.EqualTo(0.2032f).Within(0.000001f));
             Assert.That(CommercialGenerationDimensions.InteriorPartitionThicknessMeters,
@@ -60,6 +63,18 @@ namespace Margins.Tests
             Assert.That(CommercialGenerationDimensions.WallFaceOffset(
                     CommercialGenerationDimensions.InteriorPartitionThicknessMeters),
                 Is.EqualTo(0.05715f).Within(0.000001f));
+        }
+
+        [Test]
+        public void ArchitecturalOpeningIncrement_HasItsOwnSixInchConvention()
+        {
+            Assert.That(
+                CommercialGenerationDimensions.ArchitecturalOpeningIncrementInches,
+                Is.EqualTo(6f));
+            Assert.That(CommercialGenerationDimensions.OpeningIncrementMeters,
+                Is.EqualTo(
+                    CommercialGenerationDimensions.ArchitecturalOpeningIncrementInches *
+                    CommercialGenerationDimensions.MetersPerInch).Within(0.000001f));
         }
 
         [Test]
@@ -357,6 +372,216 @@ namespace Margins.Tests
                 Diagnostics(result));
         }
 
+        [Test]
+        public void RecipeWithoutPublicZone_GeneratesOnlyItsRequiredZones()
+        {
+            ProceduralBusinessRecipe recipe = CreateRecipe(
+                "work-only-regression",
+                new[]
+                {
+                    Zone(FunctionalZoneType.Work, 80f, 120f),
+                    Zone(FunctionalZoneType.Circulation, 0f, 0f)
+                },
+                new[]
+                {
+                    AssetRequest(
+                        "work-counter",
+                        ProceduralAssetCategory.WorkSurface,
+                        "staff-prep",
+                        FunctionalZoneType.Work)
+                });
+
+            try
+            {
+                Assert.That(recipe.TryValidate(out string recipeError),
+                    Is.True, recipeError);
+                ProceduralGenerationResult result = Generate(new ProceduralBuildingRequest(
+                    301,
+                    CommercialBuildingArchetype.StandaloneSmallCommercial,
+                    OrthogonalFootprintKind.Rectangle,
+                    48,
+                    40,
+                    true,
+                    registry,
+                    recipe));
+
+                Assert.That(result.Zones.Select(item => item.ZoneType),
+                    Does.Contain(FunctionalZoneType.Work));
+                Assert.That(result.Zones.Select(item => item.ZoneType),
+                    Does.Contain(FunctionalZoneType.Circulation));
+                Assert.That(result.Zones.Any(item =>
+                    item.ZoneType == FunctionalZoneType.Public), Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(recipe);
+            }
+        }
+
+        [Test]
+        public void AssetRequest_DoesNotFallBackToPublicWhenPreferredZoneIsMissing()
+        {
+            ProceduralBusinessRecipe recipe = CreateRecipe(
+                "missing-work-zone-regression",
+                new[]
+                {
+                    Zone(FunctionalZoneType.Public, 400f, 600f),
+                    Zone(FunctionalZoneType.Circulation, 0f, 0f)
+                },
+                new[]
+                {
+                    AssetRequest(
+                        "work-counter",
+                        ProceduralAssetCategory.WorkSurface,
+                        "staff-prep",
+                        FunctionalZoneType.Work)
+                });
+
+            try
+            {
+                Assert.That(recipe.TryValidate(out string recipeError),
+                    Is.True, recipeError);
+                bool success = ProceduralCommercialGenerator.TryGenerate(
+                    new ProceduralBuildingRequest(
+                        302,
+                        CommercialBuildingArchetype.StandaloneSmallCommercial,
+                        OrthogonalFootprintKind.Rectangle,
+                        48,
+                        40,
+                        true,
+                        registry,
+                        recipe),
+                    out ProceduralGenerationResult result);
+
+                Assert.That(success, Is.False, Diagnostics(result));
+                Assert.That(result.Diagnostics.Any(item =>
+                    item.Code == "required-asset-unplaceable"), Is.True,
+                    Diagnostics(result));
+                Assert.That(result.Placements.Any(item =>
+                    item.RequestId == "work-counter"), Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(recipe);
+            }
+        }
+
+        [Test]
+        public void NestedSocket_UsesAssetRootTransformAndAllowsSingleOccupant()
+        {
+            GameObject sourcePrefab = registry.AssetPrefabs.Single(item =>
+                item.GetComponent<ProceduralAssetComponent>().StableAssetId ==
+                "proc-work-surface-prep-counter-6ft");
+            GameObject nestedSocketPrefab = UnityEngine.Object.Instantiate(sourcePrefab);
+            nestedSocketPrefab.name = "PROC_WorkSurface_NestedSocket_Test";
+            ProceduralAssetComponent nestedAsset =
+                nestedSocketPrefab.GetComponent<ProceduralAssetComponent>();
+            ProceduralSocketComponent socket = nestedSocketPrefab
+                .GetComponentInChildren<ProceduralSocketComponent>(true);
+            float socketHeight = socket.transform.localPosition.y;
+
+            GameObject hierarchyOne = new("Socket Hierarchy One");
+            hierarchyOne.transform.SetParent(nestedSocketPrefab.transform, false);
+            hierarchyOne.transform.localPosition = new Vector3(0.20f, 0f, 0.10f);
+            hierarchyOne.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            GameObject hierarchyTwo = new("Socket Hierarchy Two");
+            hierarchyTwo.transform.SetParent(hierarchyOne.transform, false);
+            hierarchyTwo.transform.localPosition = new Vector3(0.05f, 0f, 0.04f);
+            socket.transform.SetParent(hierarchyTwo.transform, false);
+            socket.transform.localPosition = new Vector3(0.06f, socketHeight, 0.02f);
+            socket.transform.localRotation = Quaternion.identity;
+
+            ProceduralAssetRegistry nestedRegistry =
+                ScriptableObject.CreateInstance<ProceduralAssetRegistry>();
+            nestedRegistry.Configure(registry.AssetPrefabs.Select(item =>
+                item == sourcePrefab ? nestedSocketPrefab : item).ToArray());
+            ProceduralBusinessRecipe recipe = CreateRecipe(
+                "nested-socket-regression",
+                new[]
+                {
+                    Zone(FunctionalZoneType.Work, 100f, 160f),
+                    Zone(FunctionalZoneType.Circulation, 0f, 0f)
+                },
+                new[]
+                {
+                    AssetRequest(
+                        "socket-parent",
+                        ProceduralAssetCategory.WorkSurface,
+                        "staff-prep",
+                        FunctionalZoneType.Work,
+                        priority: 200),
+                    AssetRequest(
+                        "socket-child",
+                        ProceduralAssetCategory.ProcessStation,
+                        "coffee-prep",
+                        FunctionalZoneType.Work,
+                        minimum: 2,
+                        preferred: 2,
+                        maximum: 2,
+                        priority: 100)
+                });
+
+            try
+            {
+                Assert.That(nestedRegistry.TryValidate(true, out string registryError),
+                    Is.True, registryError);
+                Assert.That(recipe.TryValidate(out string recipeError),
+                    Is.True, recipeError);
+                bool success = ProceduralCommercialGenerator.TryGenerate(
+                    new ProceduralBuildingRequest(
+                        303,
+                        CommercialBuildingArchetype.StandaloneSmallCommercial,
+                        OrthogonalFootprintKind.Rectangle,
+                        48,
+                        40,
+                        true,
+                        nestedRegistry,
+                        recipe),
+                    out ProceduralGenerationResult result);
+
+                Assert.That(success, Is.False, Diagnostics(result));
+                Assert.That(result.Diagnostics.Any(item =>
+                    item.Code == "required-asset-unplaceable"), Is.True,
+                    Diagnostics(result));
+
+                GeneratedAssetPlacement parent = result.Placements.Single(item =>
+                    item.RequestId == "socket-parent");
+                GeneratedAssetPlacement child = result.Placements.Single(item =>
+                    item.RequestId == "socket-child");
+                Assert.That(child.ParentPlacementId, Is.EqualTo(parent.PlacementId));
+                Assert.That(child.HostSocketId, Is.EqualTo(socket.SocketId));
+
+                Vector3 socketPositionRelativeToRoot = nestedAsset.transform
+                    .InverseTransformPoint(socket.transform.position);
+                Quaternion socketRotationRelativeToRoot =
+                    Quaternion.Inverse(nestedAsset.transform.rotation) *
+                    socket.transform.rotation;
+                Quaternion parentRotation = Quaternion.Euler(
+                    0f,
+                    parent.YawDegrees,
+                    0f);
+                Vector3 expectedPosition = parent.LocalPositionMeters +
+                                           parentRotation * socketPositionRelativeToRoot;
+                float expectedYaw = (parentRotation * socketRotationRelativeToRoot)
+                    .eulerAngles.y;
+
+                Assert.That(Vector3.Distance(
+                        child.LocalPositionMeters,
+                        expectedPosition),
+                    Is.LessThan(0.0001f));
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(
+                        child.YawDegrees,
+                        expectedYaw)),
+                    Is.LessThan(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(recipe);
+                UnityEngine.Object.DestroyImmediate(nestedRegistry);
+                UnityEngine.Object.DestroyImmediate(nestedSocketPrefab);
+            }
+        }
+
         private ProceduralBuildingRequest Request(
             int seed,
             CommercialBuildingArchetype archetype,
@@ -399,6 +624,52 @@ namespace Margins.Tests
                 ? "No result returned."
                 : string.Join("\n", result.Diagnostics.Select(item =>
                     $"[{item.Severity}] {item.Code}: {item.Message}"));
+        }
+
+        private static ProceduralBusinessRecipe CreateRecipe(
+            string recipeId,
+            ProceduralZoneRequest[] zones,
+            ProceduralAssetRequest[] requests)
+        {
+            ProceduralBusinessRecipe recipe =
+                ScriptableObject.CreateInstance<ProceduralBusinessRecipe>();
+            recipe.Configure(recipeId, 20f, 20f, 400f, false, zones, requests);
+            return recipe;
+        }
+
+        private static ProceduralZoneRequest Zone(
+            FunctionalZoneType zoneType,
+            float minimumArea,
+            float preferredArea)
+        {
+            return new ProceduralZoneRequest(
+                zoneType,
+                true,
+                false,
+                minimumArea,
+                preferredArea);
+        }
+
+        private static ProceduralAssetRequest AssetRequest(
+            string requestId,
+            ProceduralAssetCategory category,
+            string capability,
+            FunctionalZoneType hostZone,
+            int minimum = 1,
+            int preferred = 1,
+            int maximum = 1,
+            int priority = 100)
+        {
+            return new ProceduralAssetRequest(
+                requestId,
+                category,
+                new[] { capability },
+                minimum,
+                preferred,
+                maximum,
+                true,
+                hostZone,
+                priority);
         }
 
         private static void AssertNoPlacementOverlap(ProceduralGenerationResult result)

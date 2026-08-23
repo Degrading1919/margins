@@ -778,12 +778,14 @@ namespace Margins
             {
                 result.Reject(
                     "required-zones-do-not-fit",
-                    "Required rear Work/Storage/Service/Staff zones leave no valid public floor and entrance arrival area.");
+                    "Required rear Work/Storage/Service/Staff zones leave no valid front floor and entrance arrival area.");
                 return false;
             }
 
             float rearDepth = CommercialGenerationDimensions.Feet(rearDepthFeet);
-            float publicDepth = usable.Depth - rearDepth;
+            float frontDepth = usable.Depth - rearDepth;
+            bool publicRequired = request.BusinessRecipe.RequiresZone(
+                FunctionalZoneType.Public);
             bool transactionRequired = request.BusinessRecipe.RequiresZone(
                 FunctionalZoneType.Transaction);
             float transactionWidth = transactionRequired
@@ -792,26 +794,29 @@ namespace Margins
                     usable.Width * 0.25f)
                 : 0f;
             bool transactionOnLeft = random.NextBool();
-            PlanRect publicBounds = new(
-                transactionRequired && transactionOnLeft
-                    ? usable.MinX + transactionWidth
-                    : usable.MinX,
-                usable.MinZ,
-                usable.Width - transactionWidth,
-                publicDepth);
-            if (publicBounds.Width < CommercialGenerationDimensions.Feet(8f))
+            if (publicRequired)
             {
-                result.Reject(
-                    "required-zones-do-not-fit",
-                    "The Transaction zone leaves less than 8 ft of usable Public zone width.");
-                return false;
-            }
+                PlanRect publicBounds = new(
+                    transactionRequired && transactionOnLeft
+                        ? usable.MinX + transactionWidth
+                        : usable.MinX,
+                    usable.MinZ,
+                    usable.Width - transactionWidth,
+                    frontDepth);
+                if (publicBounds.Width < CommercialGenerationDimensions.Feet(8f))
+                {
+                    result.Reject(
+                        "required-zones-do-not-fit",
+                        "The Transaction zone leaves less than 8 ft of usable Public zone width.");
+                    return false;
+                }
 
-            result.MutableZones.Add(new GeneratedFunctionalZone(
-                "zone-public",
-                FunctionalZoneType.Public,
-                publicBounds,
-                false));
+                result.MutableZones.Add(new GeneratedFunctionalZone(
+                    "zone-public",
+                    FunctionalZoneType.Public,
+                    publicBounds,
+                    false));
+            }
             result.MutableZones.Add(new GeneratedFunctionalZone(
                 "zone-circulation",
                 FunctionalZoneType.Circulation,
@@ -824,7 +829,7 @@ namespace Margins
                     transactionOnLeft ? usable.MinX : usable.MaxX - transactionWidth,
                     usable.MinZ,
                     transactionWidth,
-                    Mathf.Min(publicDepth, CommercialGenerationDimensions.Feet(12f)));
+                    Mathf.Min(frontDepth, CommercialGenerationDimensions.Feet(12f)));
                 result.MutableZones.Add(new GeneratedFunctionalZone(
                     "zone-transaction",
                     FunctionalZoneType.Transaction,
@@ -1488,6 +1493,19 @@ namespace Margins
 
                 foreach (ProceduralSocketComponent socket in parentAsset.Sockets)
                 {
+                    if (result.Placements.Any(item =>
+                            string.Equals(
+                                item.ParentPlacementId,
+                                parent.PlacementId,
+                                StringComparison.Ordinal) &&
+                            string.Equals(
+                                item.HostSocketId,
+                                socket.SocketId,
+                                StringComparison.Ordinal)))
+                    {
+                        continue;
+                    }
+
                     if (!string.Equals(
                             socket.CompatibilityTag,
                             asset.RequiredSocketCompatibility,
@@ -1497,9 +1515,15 @@ namespace Margins
                     }
 
                     Quaternion parentRotation = Quaternion.Euler(0f, parent.YawDegrees, 0f);
+                    Vector3 socketPositionRelativeToRoot = parentAsset.transform
+                        .InverseTransformPoint(socket.transform.position);
+                    Quaternion socketRotationRelativeToRoot =
+                        Quaternion.Inverse(parentAsset.transform.rotation) *
+                        socket.transform.rotation;
                     Vector3 position = parent.LocalPositionMeters +
-                                       parentRotation * socket.transform.localPosition;
-                    float yaw = parent.YawDegrees + socket.transform.localEulerAngles.y;
+                                       parentRotation * socketPositionRelativeToRoot;
+                    float yaw = (parentRotation * socketRotationRelativeToRoot)
+                        .eulerAngles.y;
                     PlanRect physical = BuildPhysicalBounds(asset, position, yaw);
                     List<GeneratedAssetClearance> clearances = BuildClearances(
                         asset,
@@ -1633,9 +1657,7 @@ namespace Margins
             ProceduralGenerationResult result,
             FunctionalZoneType preferred)
         {
-            return result.Zones.FirstOrDefault(item => item.ZoneType == preferred) ??
-                   result.Zones.FirstOrDefault(item =>
-                       item.ZoneType == FunctionalZoneType.Public);
+            return result.Zones.FirstOrDefault(item => item.ZoneType == preferred);
         }
 
         private static PlanRect BuildPhysicalBounds(
@@ -1945,9 +1967,35 @@ namespace Margins
             ProceduralGenerationResult result,
             out string error)
         {
+            Dictionary<string, HashSet<string>> occupiedSockets =
+                new(StringComparer.Ordinal);
             for (int index = 0; index < result.Placements.Count; index++)
             {
                 GeneratedAssetPlacement placement = result.Placements[index];
+                if (placement.MountingMode == ProceduralMountingMode.Socket)
+                {
+                    if (string.IsNullOrEmpty(placement.ParentPlacementId) ||
+                        string.IsNullOrEmpty(placement.HostSocketId))
+                    {
+                        error = $"Socket placement '{placement.PlacementId}' has invalid host metadata.";
+                        return false;
+                    }
+
+                    if (!occupiedSockets.TryGetValue(
+                            placement.ParentPlacementId,
+                            out HashSet<string> parentSockets))
+                    {
+                        parentSockets = new HashSet<string>(StringComparer.Ordinal);
+                        occupiedSockets.Add(placement.ParentPlacementId, parentSockets);
+                    }
+
+                    if (!parentSockets.Add(placement.HostSocketId))
+                    {
+                        error = $"Socket '{placement.HostSocketId}' on placement '{placement.ParentPlacementId}' has multiple occupants.";
+                        return false;
+                    }
+                }
+
                 bool exterior = placement.MountingMode == ProceduralMountingMode.ExteriorPad;
                 if (!exterior && !result.Footprint.Contains(placement.PhysicalBoundsMeters))
                 {

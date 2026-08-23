@@ -14,7 +14,9 @@ namespace Margins
         public const float MetersPerInch = FixturePlacementGrid.MetersPerInch;
         public const float InchesPerFoot = 12f;
         public const float StructuralIncrementMeters = InchesPerFoot * MetersPerInch;
-        public const float OpeningIncrementMeters = FixturePlacementGrid.PlacementIncrementMeters;
+        public const float ArchitecturalOpeningIncrementInches = 6f;
+        public const float OpeningIncrementMeters =
+            ArchitecturalOpeningIncrementInches * MetersPerInch;
         public const float FixturePlacementIncrementMeters =
             FixturePlacementGrid.PlacementIncrementMeters;
         public const float ExteriorWallThicknessMeters = 8f * MetersPerInch;

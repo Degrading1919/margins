@@ -84,10 +84,9 @@ namespace Margins
                 }
             }
 
-            if (!RequiresZone(FunctionalZoneType.Public) ||
-                !RequiresZone(FunctionalZoneType.Circulation))
+            if (!RequiresZone(FunctionalZoneType.Circulation))
             {
-                error = $"Recipe '{stableRecipeId}' requires Public and Circulation zones.";
+                error = $"Recipe '{stableRecipeId}' requires a Circulation zone.";
                 return false;
             }
 
