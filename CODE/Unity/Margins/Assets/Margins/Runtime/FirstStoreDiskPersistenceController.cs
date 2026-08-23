@@ -8,6 +8,13 @@ using UnityEngine.InputSystem;
 
 namespace Margins
 {
+    public enum FirstStoreDiskSourceState
+    {
+        FirstStoreDetailed = 0,
+        Management = 1,
+        GeneratedDetailed = 2
+    }
+
     [Serializable]
     public sealed class PersistentGeneratedLocationDiskSnapshot
     {
@@ -25,6 +32,10 @@ namespace Margins
         public FirstStoreSnapshot firstStore;
         public FirstStorePlayerTransformSnapshot playerTransform;
         public PortfolioProgressionSnapshot portfolio;
+        public FirstStoreDiskSourceState sourceState =
+            FirstStoreDiskSourceState.FirstStoreDetailed;
+        public bool firstStoreCustomerFlowEnabled = true;
+        public bool firstStoreEmployeeWorkEnabled = true;
         public bool hasGeneratedLocation;
         public PersistentGeneratedLocationDiskSnapshot generatedLocation;
     }
@@ -365,7 +376,10 @@ namespace Margins
                 version = CurrentFileVersion,
                 firstStore = firstStore,
                 playerTransform = playerTransform,
-                portfolio = portfolio
+                portfolio = portfolio,
+                sourceState = FirstStoreDiskSourceState.FirstStoreDetailed,
+                firstStoreCustomerFlowEnabled = true,
+                firstStoreEmployeeWorkEnabled = true
             };
             error = null;
             return true;
@@ -380,6 +394,10 @@ namespace Margins
             PersistentGeneratedLocationDiskSnapshot generatedLocation = null;
             PersistentPortfolioLocationSceneAdapter sceneAdapter =
                 portfolioProgression?.LocationSceneAdapter;
+            FirstStoreDiskSourceState sourceState =
+                FirstStoreDiskSourceState.FirstStoreDetailed;
+            bool firstStoreCustomerFlowEnabled = true;
+            bool firstStoreEmployeeWorkEnabled = true;
             if (sceneAdapter?.HasActiveGeneratedLocation == true)
             {
                 if (!sceneAdapter.TryCapturePersistenceState(
@@ -389,6 +407,11 @@ namespace Margins
                 {
                     return false;
                 }
+                sourceState = FirstStoreDiskSourceState.GeneratedDetailed;
+                firstStoreCustomerFlowEnabled =
+                    sceneAdapter.FirstStoreCustomerFlowResumeEnabled;
+                firstStoreEmployeeWorkEnabled =
+                    sceneAdapter.FirstStoreEmployeeWorkResumeEnabled;
             }
             else
             {
@@ -402,6 +425,17 @@ namespace Margins
                     !persistenceMapper.TryCapture(out firstStore, out error))
                 {
                     return false;
+                }
+                if (sceneAdapter != null)
+                {
+                    sourceState = sceneAdapter
+                        .IsFirstStoreDetailedSimulationActive
+                        ? FirstStoreDiskSourceState.FirstStoreDetailed
+                        : FirstStoreDiskSourceState.Management;
+                    firstStoreCustomerFlowEnabled =
+                        sceneAdapter.FirstStoreCustomerFlowResumeEnabled;
+                    firstStoreEmployeeWorkEnabled =
+                        sceneAdapter.FirstStoreEmployeeWorkResumeEnabled;
                 }
             }
 
@@ -429,6 +463,11 @@ namespace Margins
                 firstStore = firstStore,
                 playerTransform = playerTransform,
                 portfolio = portfolio,
+                sourceState = sourceState,
+                firstStoreCustomerFlowEnabled =
+                    firstStoreCustomerFlowEnabled,
+                firstStoreEmployeeWorkEnabled =
+                    firstStoreEmployeeWorkEnabled,
                 hasGeneratedLocation = generatedLocation != null,
                 generatedLocation = generatedLocation
             };
@@ -501,6 +540,11 @@ namespace Margins
                     firstStore = parkedFirstStore,
                     playerTransform = activePlayerTransform,
                     portfolio = portfolio,
+                    sourceState = FirstStoreDiskSourceState.GeneratedDetailed,
+                    firstStoreCustomerFlowEnabled = sceneAdapter
+                        .FirstStoreCustomerFlowResumeEnabled,
+                    firstStoreEmployeeWorkEnabled = sceneAdapter
+                        .FirstStoreEmployeeWorkResumeEnabled,
                     hasGeneratedLocation = true,
                     generatedLocation = generated
                 };
@@ -533,6 +577,15 @@ namespace Margins
                 firstStore = firstStore,
                 playerTransform = playerTransform,
                 portfolio = portfolio,
+                sourceState = sceneAdapter != null &&
+                              !sceneAdapter
+                                  .IsFirstStoreDetailedSimulationActive
+                    ? FirstStoreDiskSourceState.Management
+                    : FirstStoreDiskSourceState.FirstStoreDetailed,
+                firstStoreCustomerFlowEnabled = sceneAdapter == null ||
+                    sceneAdapter.FirstStoreCustomerFlowResumeEnabled,
+                firstStoreEmployeeWorkEnabled = sceneAdapter == null ||
+                    sceneAdapter.FirstStoreEmployeeWorkResumeEnabled,
                 hasGeneratedLocation = false,
                 generatedLocation = null
             };
@@ -591,7 +644,9 @@ namespace Margins
 
             if (!GamePauseMenuController.IsAnyMenuOpen)
             {
-                firstPersonController.SetGameplayMode(priorGameplayMode);
+                firstPersonController.SetGameplayMode(
+                    saveData.sourceState !=
+                    FirstStoreDiskSourceState.Management);
             }
 
             return Accept(
@@ -619,6 +674,21 @@ namespace Margins
                 error = saveData == null
                     ? "First-store save state is missing."
                     : $"Unsupported first-store file version {saveData.version}; expected {LegacyFileVersion}, {VersionTwo}, {PriorFileVersion}, or {CurrentFileVersion}.";
+                return false;
+            }
+
+            if (saveData.version < CurrentFileVersion)
+            {
+                saveData.sourceState =
+                    FirstStoreDiskSourceState.FirstStoreDetailed;
+                saveData.firstStoreCustomerFlowEnabled = true;
+                saveData.firstStoreEmployeeWorkEnabled = true;
+            }
+            if (!Enum.IsDefined(
+                    typeof(FirstStoreDiskSourceState),
+                    saveData.sourceState))
+            {
+                error = "First-store save source state is invalid.";
                 return false;
             }
 
@@ -675,6 +745,8 @@ namespace Margins
             if (generated != null)
             {
                 if (saveData.version != CurrentFileVersion ||
+                    saveData.sourceState !=
+                    FirstStoreDiskSourceState.GeneratedDetailed ||
                     portfolioProgression == null ||
                     !FirstStoreIdentifier.IsValid(generated.locationId) ||
                     string.Equals(
@@ -682,6 +754,10 @@ namespace Margins
                         PortfolioProgressionRules.FirstLocationId,
                         StringComparison.Ordinal) ||
                     generated.detailedStore == null ||
+                    generated.customerFlowEnabled !=
+                    saveData.firstStoreCustomerFlowEnabled ||
+                    generated.employeeWorkEnabled !=
+                    saveData.firstStoreEmployeeWorkEnabled ||
                     !persistenceMapper.TryValidateSnapshot(
                         generated.detailedStore,
                         out error) ||
@@ -713,6 +789,13 @@ namespace Margins
                     return false;
                 }
             }
+            else if (saveData.sourceState ==
+                     FirstStoreDiskSourceState.GeneratedDetailed)
+            {
+                error =
+                    "Generated detailed source state is missing its generated-location snapshot.";
+                return false;
+            }
             else if (acceptedPortfolio != null &&
                      !string.IsNullOrWhiteSpace(
                          acceptedPortfolio.company.activeDetailedLocationId) &&
@@ -723,6 +806,16 @@ namespace Margins
             {
                 error =
                     "Portfolio state identifies an active generated location without its detailed scene snapshot.";
+                return false;
+            }
+            else if (saveData.sourceState ==
+                         FirstStoreDiskSourceState.Management &&
+                     acceptedPortfolio != null &&
+                     !string.IsNullOrWhiteSpace(
+                         acceptedPortfolio.company.activeDetailedLocationId))
+            {
+                error =
+                    "Management source state contradicts an active detailed portfolio location.";
                 return false;
             }
 
@@ -808,6 +901,16 @@ namespace Margins
             {
                 error ??=
                     "The scene has no generated-location adapter for the saved detailed location.";
+                return false;
+            }
+            if (saveData.generatedLocation == null &&
+                sceneAdapter != null &&
+                !sceneAdapter.TryApplyFirstStorePersistenceState(
+                    saveData.sourceState,
+                    saveData.firstStoreCustomerFlowEnabled,
+                    saveData.firstStoreEmployeeWorkEnabled,
+                    out error))
+            {
                 return false;
             }
             if (!firstPersonController.TryApplyTransformSnapshot(

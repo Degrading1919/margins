@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -264,6 +265,91 @@ namespace Margins.Tests
             File.WriteAllText(savePath, "{not-json");
             Assert.That(diskPersistence.TryLoadFromPath(savePath), Is.False);
             AssertUnchanged(before, poseBefore);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator VersionThreeEnvelopeRestoresAsDetailedFirstStore()
+        {
+            Assert.That(
+                mapper.TryCapture(
+                    out FirstStoreSnapshot expectedState,
+                    out string error),
+                Is.True,
+                error);
+            FirstStorePlayerTransformSnapshot expectedPose =
+                player.CaptureTransformSnapshot();
+            Assert.That(
+                diskPersistence.TrySaveToPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+            Assert.That(
+                FirstStoreDiskSaveCodec.TryFromJson(
+                    File.ReadAllText(savePath),
+                    out FirstStoreDiskSaveData versionThree,
+                    out error),
+                Is.True,
+                error);
+            versionThree.version =
+                FirstStoreDiskPersistenceController.PriorFileVersion;
+            string legacyJson = FirstStoreDiskSaveCodec.ToJson(versionThree);
+            legacyJson = Regex.Replace(
+                legacyJson,
+                "^\\s*\\\"sourceState\\\"\\s*:\\s*\\d+\\s*,?\\r?\\n",
+                string.Empty,
+                RegexOptions.Multiline);
+            legacyJson = Regex.Replace(
+                legacyJson,
+                "^\\s*\\\"firstStoreCustomerFlowEnabled\\\"\\s*:\\s*(true|false)\\s*,?\\r?\\n",
+                string.Empty,
+                RegexOptions.Multiline);
+            legacyJson = Regex.Replace(
+                legacyJson,
+                "^\\s*\\\"firstStoreEmployeeWorkEnabled\\\"\\s*:\\s*(true|false)\\s*,?\\r?\\n",
+                string.Empty,
+                RegexOptions.Multiline);
+            legacyJson = Regex.Replace(
+                legacyJson,
+                ",\\s*\\\"hasGeneratedLocation\\\"\\s*:\\s*false",
+                string.Empty,
+                RegexOptions.Multiline);
+            File.WriteAllText(savePath, legacyJson);
+
+            MutateFixtureLayout();
+            Assert.That(
+                player.TryApplyTransformSnapshot(
+                    new FirstStorePlayerTransformSnapshot(
+                        expectedPose.worldPosition + Vector3.right * 2f,
+                        91f,
+                        -12f),
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                diskPersistence.TryLoadFromPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+
+            Assert.That(
+                mapper.TryCapture(
+                    out FirstStoreSnapshot restored,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(restored, Is.EqualTo(expectedState));
+            AssertPoseEqual(player.CaptureTransformSnapshot(), expectedPose);
+            PersistentPortfolioLocationSceneAdapter adapter =
+                Object.FindAnyObjectByType<
+                    PersistentPortfolioLocationSceneAdapter>();
+            Assert.That(adapter.IsFirstStoreDetailedSimulationActive, Is.True);
+            Assert.That(adapter.ActiveLocationId,
+                Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
+            Assert.That(
+                Object.FindAnyObjectByType<StoreCustomerFlowController>().enabled,
+                Is.True);
+            Assert.That(
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>().enabled,
+                Is.True);
             yield return null;
         }
 

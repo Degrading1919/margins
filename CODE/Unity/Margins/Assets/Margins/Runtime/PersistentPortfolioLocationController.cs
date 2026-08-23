@@ -327,6 +327,12 @@ namespace Margins
             {
                 if (Application.isPlaying)
                 {
+                    // Destroy is deferred until the end of the frame. Disable
+                    // the old location immediately so same-call persistence
+                    // restores cannot bake its colliders into the next
+                    // location's navigation surface.
+                    activeHost.SetActive(false);
+                    Physics.SyncTransforms();
                     Destroy(activeHost);
                 }
                 else

@@ -130,6 +130,31 @@ namespace Margins.Tests
             Assert.That(presenter, Is.Not.Null);
 
             CompleteManagementFirstShift(portfolio);
+            StoreCustomerFlowController customerFlow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            customerFlow.enabled = false;
+            employeeWork.enabled = false;
+            player.SetGameplayMode(false);
+            portfolio.enabled = false;
+
+            yield return null;
+            yield return null;
+            VisualElement root = presenter.Root;
+            Assert.That(
+                root.Q("management-view").resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.Flex));
+            Assert.That(root.Q<IMGUIContainer>(), Is.Null);
+            Button blockedOvernight = root.Q<Button>(
+                "management-advance-overnight");
+            Assert.That(blockedOvernight, Is.Not.Null);
+            Assert.That(blockedOvernight.enabledInHierarchy, Is.False);
+            Submit(root.Q<Button>("management-leave-location"));
+            yield return null;
+            Assert.That(portfolio.HasActiveDetailedSimulation, Is.False);
+            Assert.That(customerFlow.enabled, Is.False);
+            Assert.That(employeeWork.enabled, Is.False);
             Assert.That(
                 portfolio.TryHireCandidate(
                     "employee-elena-ruiz",
@@ -151,9 +176,6 @@ namespace Margins.Tests
                     out error),
                 Is.True,
                 error);
-
-            player.SetGameplayMode(false);
-            portfolio.enabled = false;
 
             PortfolioProgressionSnapshot degraded =
                 portfolio.Progression.CreateSnapshot();
@@ -180,14 +202,7 @@ namespace Margins.Tests
                 portfolio.TryRestoreSnapshot(degraded, out error),
                 Is.True,
                 error);
-
             yield return null;
-            yield return null;
-            VisualElement root = presenter.Root;
-            Assert.That(
-                root.Q("management-view").resolvedStyle.display,
-                Is.EqualTo(DisplayStyle.Flex));
-            Assert.That(root.Q<IMGUIContainer>(), Is.Null);
 
             Submit(root.Q<Button>("management-team-tab"));
             yield return null;
@@ -201,9 +216,66 @@ namespace Margins.Tests
                     employee.employeeId == "employee-elena-ruiz")
                     .schedule.scheduledDayMask,
                 Is.EqualTo(0x1f));
+            Assert.That(
+                root.Q<Button>("management-shift-employee-elena-ruiz-day"),
+                Is.Null,
+                "Inert same-day shift-time presets must not be player-facing.");
+
+            PortfolioProgressionSnapshot beforePromotion =
+                portfolio.Progression.CreateSnapshot();
+            PortfolioProgressionSnapshot promotable =
+                portfolio.Progression.CreateSnapshot();
+            promotable.employees.RemoveAll(employee =>
+                employee.role == PortfolioEmployeeRole.Manager);
+            promotable.employees.Single(employee =>
+                employee.employeeId == "employee-elena-ruiz").skill = 65;
+            Assert.That(
+                portfolio.TryRestoreSnapshot(promotable, out error),
+                Is.True,
+                error);
+            yield return null;
+            Button promote = root.Q<Button>(
+                "management-promote-employee-elena-ruiz");
+            Assert.That(promote, Is.Not.Null);
+            Submit(promote);
+            yield return null;
+            Assert.That(
+                portfolio.Progression.Employees.Single(employee =>
+                    employee.employeeId == "employee-elena-ruiz").role,
+                Is.EqualTo(PortfolioEmployeeRole.Manager));
+            Assert.That(
+                portfolio.TryRestoreSnapshot(beforePromotion, out error),
+                Is.True,
+                error);
+            yield return null;
 
             Submit(root.Q<Button>("management-policy-tab"));
             yield return null;
+            Assert.That(
+                root.Q<Button>("management-pricing-authority"),
+                Is.Null,
+                "Manager price authority has no simulation effect and must not be player-facing.");
+            long cashBeforeOrder = portfolio.Progression.CashCents;
+            Assert.That(
+                portfolio.TryPlaceManualPurchaseOrder(
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error),
+                Is.True,
+                error);
+            PurchaseOrderSnapshot pendingOrder = portfolio.Progression
+                .PurchaseOrders.Single(order => !order.IsTerminal);
+            yield return null;
+            Button cancelOrder = root.Q<Button>(
+                $"management-cancel-order-{pendingOrder.orderId}");
+            Assert.That(cancelOrder, Is.Not.Null);
+            Submit(cancelOrder);
+            yield return null;
+            Assert.That(
+                portfolio.Progression.PurchaseOrders.Single(order =>
+                    order.orderId == pendingOrder.orderId).status,
+                Is.EqualTo(PurchaseOrderStatus.Canceled));
+            Assert.That(portfolio.Progression.CashCents,
+                Is.EqualTo(cashBeforeOrder));
             long priorBudget = portfolio.Progression.Locations.Single()
                 .delegationPolicy.dailySpendingLimitCents;
             Submit(root.Q<Button>("management-purchase-authority"));
@@ -262,6 +334,28 @@ namespace Margins.Tests
                 Is.EqualTo(afterOvernight.currentDay));
             Assert.That(afterOvernight.locations.Single().lastReport
                 .isDetailedOperation, Is.False);
+
+            Submit(root.Q<Button>("management-locations-tab"));
+            yield return null;
+            Assert.That(
+                root.Q("management-location-card-location-mile-7-market"),
+                Is.Not.Null);
+            Button lease = root.Q<Button>(
+                "management-lease-location-riverbend-market");
+            Assert.That(lease, Is.Not.Null);
+            Submit(lease);
+            yield return null;
+            Assert.That(portfolio.Progression.Locations.Count, Is.EqualTo(2));
+
+            Submit(root.Q<Button>("management-reports-tab"));
+            yield return null;
+            Assert.That(root.Q("management-portfolio-report"), Is.Not.Null);
+            Assert.That(
+                root.Q("management-location-report-location-mile-7-market"),
+                Is.Not.Null);
+            Assert.That(
+                root.Q("management-location-report-location-riverbend-market"),
+                Is.Not.Null);
         }
 
         [UnityTest]

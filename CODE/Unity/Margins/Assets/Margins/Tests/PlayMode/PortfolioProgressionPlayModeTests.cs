@@ -117,15 +117,54 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator RealFirstStoreAdapterRebasesAfterDelegationAndPostsNextSaleOnce()
+        public IEnumerator FirstStoreManagementOvernightReturnQuiescesAndPostsNextSaleOnce()
         {
             CompletePhysicalFirstShift();
-            HireFirstTeam();
+            PersistentPortfolioLocationSceneAdapter adapter =
+                portfolio.LocationSceneAdapter;
+            StoreCustomerFlowController customerFlow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            FirstStorePersistenceMapperComponent persistence =
+                Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            Assert.That(adapter, Is.Not.Null);
+            Assert.That(adapter.IsFirstStoreDetailedSimulationActive, Is.True);
+            Assert.That(
+                portfolio.CanAdvanceOvernight(out string activeBlocker),
+                Is.False);
+            StringAssert.Contains("Leave", activeBlocker);
             player.SetGameplayMode(false);
             Assert.That(
-                portfolio.TryAdvanceDelegatedDay(out string error),
+                portfolio.TryLeaveVisitedLocation(out string error),
                 Is.True,
                 error);
+            HireFirstTeam();
+            Assert.That(adapter.IsDetailedSimulationActive, Is.False);
+            Assert.That(customerFlow.enabled, Is.False);
+            Assert.That(employeeWork.enabled, Is.False);
+            Assert.That(
+                persistence.TryCapture(
+                    out FirstStoreSnapshot quiescentStore,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                portfolio.TryAdvanceDelegatedDay(out error),
+                Is.True,
+                error);
+            yield return null;
+            yield return null;
+            Assert.That(
+                persistence.TryCapture(
+                    out FirstStoreSnapshot afterOvernightStore,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                afterOvernightStore,
+                Is.EqualTo(quiescentStore),
+                "Aggregate Overnight must not run the loaded first-store customer, employee, or inventory simulation concurrently.");
 
             FirstStoreInventoryComponent inventory =
                 Object.FindAnyObjectByType<FirstStoreInventoryComponent>();
@@ -181,7 +220,15 @@ namespace Margins.Tests
                 Is.LessThan(stillDelegated.currentDay),
                 "The loaded scene must not become authoritative while the player remains at the management desk.");
 
-            player.SetGameplayMode(true);
+            Assert.That(
+                portfolio.TryVisitLocation(
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(adapter.IsFirstStoreDetailedSimulationActive, Is.True);
+            Assert.That(customerFlow.enabled, Is.True);
+            Assert.That(employeeWork.enabled, Is.True);
             Assert.That(
                 portfolio.TrySynchronizeDetailedShift(out error),
                 Is.True,
@@ -266,6 +313,10 @@ namespace Margins.Tests
         {
             CompletePhysicalFirstShift();
             Assert.That(portfolio.TrySynchronizeDetailedShift(out string error), Is.True, error);
+            Assert.That(
+                portfolio.TryLeaveVisitedLocation(out error),
+                Is.True,
+                error);
             HireFirstTeam();
             Assert.That(portfolio.TryAdvanceDelegatedDay(out error), Is.True, error);
             Assert.That(
@@ -769,6 +820,10 @@ namespace Margins.Tests
                 error);
             player.SetGameplayMode(false);
             Assert.That(portfolio.OwnsManagementDesk, Is.True);
+            Assert.That(
+                portfolio.TryLeaveVisitedLocation(out error),
+                Is.True,
+                error);
 
             HireFirstTeam();
             Assert.That(portfolio.TryAdvanceOvernight(out error), Is.True, error);
@@ -957,6 +1012,10 @@ namespace Margins.Tests
         {
             CompletePhysicalFirstShift();
             Assert.That(portfolio.TrySynchronizeDetailedShift(out string error), Is.True, error);
+            Assert.That(
+                portfolio.TryLeaveVisitedLocation(out error),
+                Is.True,
+                error);
             HireFirstTeam();
             Assert.That(portfolio.TryAdvanceDelegatedDay(out error), Is.True, error);
             Assert.That(disk.TrySaveToPath(savePath), Is.True, disk.LastDiagnostic);
