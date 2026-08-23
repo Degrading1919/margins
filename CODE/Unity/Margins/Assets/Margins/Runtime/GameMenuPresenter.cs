@@ -14,7 +14,9 @@ namespace Margins
             Overview,
             Team,
             Policies,
-            Alerts
+            Alerts,
+            Locations,
+            Reports
         }
 
         private const long PolicyBudgetStepCents = 25_000;
@@ -63,6 +65,8 @@ namespace Margins
         private Button managementTeamTab;
         private Button managementPolicyTab;
         private Button managementAlertsTab;
+        private Button managementLocationsTab;
+        private Button managementReportsTab;
         private Button managementSave;
         private Button managementLoad;
         private Button managementResume;
@@ -195,6 +199,8 @@ namespace Margins
             managementTeamTab = Require<Button>("management-team-tab");
             managementPolicyTab = Require<Button>("management-policy-tab");
             managementAlertsTab = Require<Button>("management-alerts-tab");
+            managementLocationsTab = Require<Button>("management-locations-tab");
+            managementReportsTab = Require<Button>("management-reports-tab");
             managementSave = Require<Button>("management-save");
             managementLoad = Require<Button>("management-load");
             managementResume = Require<Button>("management-resume");
@@ -259,6 +265,12 @@ namespace Margins
             RegisterButton(
                 managementAlertsTab,
                 () => SelectManagementPage(ManagementPage.Alerts));
+            RegisterButton(
+                managementLocationsTab,
+                () => SelectManagementPage(ManagementPage.Locations));
+            RegisterButton(
+                managementReportsTab,
+                () => SelectManagementPage(ManagementPage.Reports));
             RegisterButton(managementSave, controller.SaveBusiness);
             RegisterButton(managementLoad, controller.RequestLoadBusiness);
             RegisterButton(managementResume, ResumeManagement);
@@ -279,6 +291,8 @@ namespace Margins
             staticManagementButtons.Add(managementTeamTab);
             staticManagementButtons.Add(managementPolicyTab);
             staticManagementButtons.Add(managementAlertsTab);
+            staticManagementButtons.Add(managementLocationsTab);
+            staticManagementButtons.Add(managementReportsTab);
             staticManagementButtons.Add(managementSave);
             staticManagementButtons.Add(managementLoad);
             staticManagementButtons.Add(managementResume);
@@ -785,6 +799,12 @@ namespace Margins
             managementAlertsTab.EnableInClassList(
                 "management-tab--active",
                 managementPage == ManagementPage.Alerts);
+            managementLocationsTab.EnableInClassList(
+                "management-tab--active",
+                managementPage == ManagementPage.Locations);
+            managementReportsTab.EnableInClassList(
+                "management-tab--active",
+                managementPage == ManagementPage.Reports);
 
             if (snapshot.locations.Count == 0)
             {
@@ -811,6 +831,12 @@ namespace Margins
                     break;
                 case ManagementPage.Alerts:
                     BuildManagementAlerts(selected);
+                    break;
+                case ManagementPage.Locations:
+                    BuildManagementLocations(snapshot);
+                    break;
+                case ManagementPage.Reports:
+                    BuildManagementReports(snapshot);
                     break;
                 default:
                     BuildManagementOverview(snapshot, selected);
@@ -858,13 +884,15 @@ namespace Margins
                 $"Product mix {selected.productMixBasisPoints / 100f:0.#}%   •   " +
                 $"Maintenance {selected.maintenanceCondition}/100");
 
-            string activeId = snapshot.company.activeDetailedLocationId;
+            string activeId = portfolio.ActiveDetailedSimulationLocationId;
+            bool detailedSimulationActive =
+                portfolio.HasActiveDetailedSimulation;
             VisualElement physical = AddManagementCard(
                 "Physical operation",
-                string.IsNullOrWhiteSpace(activeId)
+                !detailedSimulationActive
                     ? "No detailed location is active. Choose a location to enter physically."
                     : $"{LocationDisplayName(snapshot, activeId)} is active in detailed simulation.");
-            if (string.IsNullOrWhiteSpace(activeId))
+            if (!detailedSimulationActive)
             {
                 AddManagementButton(
                     AddManagementRow(physical),
@@ -886,7 +914,7 @@ namespace Margins
             }
 
             AddManagementSection("OVERNIGHT");
-            bool canAdvance = portfolio.Progression.CanAdvanceDelegatedDay(
+            bool canAdvance = portfolio.CanAdvanceOvernight(
                 out string blocker);
             VisualElement overnight = AddManagementCard(
                 $"Advance to operating day {snapshot.currentDay + 1}",
@@ -952,7 +980,7 @@ namespace Margins
                 VisualElement card = AddManagementCard(
                     $"{target.displayName} · {FriendlyRole(target.role)}",
                     $"{target.trait}   •   Skill {target.skill}   •   Reliability {target.reliability}   •   Morale {target.satisfaction}\n" +
-                    $"Schedule {FormatSchedule(target.schedule)}   •   Focus {target.taskFocus}   •   Wage {FormatCents(target.dailyWageCents)}/day");
+                    $"Scheduled {FormatScheduledDays(target.schedule)}   •   Focus {target.taskFocus}   •   Wage {FormatCents(target.dailyWageCents)}/day");
 
                 AddManagementCopy(card, "Scheduled days", "management-policy-value");
                 VisualElement scheduleRow = AddManagementRow(card);
@@ -975,12 +1003,6 @@ namespace Margins
                     0x60,
                     "weekend");
 
-                AddManagementCopy(card, "Same-day shift", "management-policy-value");
-                VisualElement shiftRow = AddManagementRow(card);
-                AddShiftPreset(shiftRow, target, 8 * 60, 16 * 60, "08:00–16:00", "day");
-                AddShiftPreset(shiftRow, target, 12 * 60, 20 * 60, "12:00–20:00", "swing");
-                AddShiftPreset(shiftRow, target, 16 * 60, 24 * 60, "16:00–24:00", "late");
-
                 VisualElement actionRow = AddManagementRow(card);
                 PortfolioTaskFocus nextFocus = (PortfolioTaskFocus)(
                     ((int)target.taskFocus + 1) %
@@ -998,6 +1020,16 @@ namespace Margins
                     $"Train · {FormatCents(PortfolioProgressionRules.TrainingCostCents)}",
                     $"management-train-{target.employeeId}",
                     () => portfolio.TryTrainEmployee(target.employeeId, out _));
+                if (target.role != PortfolioEmployeeRole.Manager)
+                {
+                    AddManagementButton(
+                        actionRow,
+                        $"Promote · {FormatCents(PortfolioProgressionRules.PromotionCostCents)}",
+                        $"management-promote-{target.employeeId}",
+                        () => portfolio.TryPromoteEmployeeToManager(
+                            target.employeeId,
+                            out _));
+                }
                 foreach (PortfolioLocationSnapshot other in snapshot.locations
                              .Where(value => !string.Equals(
                                  value.locationId,
@@ -1073,33 +1105,6 @@ namespace Margins
                 employee.schedule.scheduledDayMask == mask);
         }
 
-        private void AddShiftPreset(
-            VisualElement row,
-            PortfolioEmployeeSnapshot employee,
-            int startMinute,
-            int endMinute,
-            string label,
-            string suffix)
-        {
-            AddManagementButton(
-                row,
-                label,
-                $"management-shift-{employee.employeeId}-{suffix}",
-                () =>
-                {
-                    PortfolioEmployeeScheduleSnapshot schedule =
-                        PortfolioOperationsRules.Clone(employee.schedule);
-                    schedule.shiftStartMinute = startMinute;
-                    schedule.shiftEndMinute = endMinute;
-                    portfolio.TrySetEmployeeSchedule(
-                        employee.employeeId,
-                        schedule,
-                        out _);
-                },
-                employee.schedule.shiftStartMinute == startMinute &&
-                employee.schedule.shiftEndMinute == endMinute);
-        }
-
         private void BuildManagementPolicies(PortfolioLocationSnapshot location)
         {
             AddManagementSection("PRICING & PROCUREMENT");
@@ -1146,6 +1151,31 @@ namespace Margins
                     location.locationId,
                     out _));
 
+            PurchaseOrderSnapshot activeOrder = portfolio.Progression
+                .PurchaseOrders.FirstOrDefault(order =>
+                    !order.IsTerminal && string.Equals(
+                        order.locationId,
+                        location.locationId,
+                        StringComparison.Ordinal));
+            if (activeOrder != null)
+            {
+                VisualElement order = AddManagementCard(
+                    "Active purchase order",
+                    $"{activeOrder.orderId}   •   {activeOrder.status}   •   due tick {activeOrder.fulfillAtTick}");
+                if (activeOrder.status == PurchaseOrderStatus.Pending)
+                {
+                    string orderId = activeOrder.orderId;
+                    AddManagementButton(
+                        AddManagementRow(order),
+                        "Cancel pending order",
+                        $"management-cancel-order-{orderId}",
+                        () => portfolio.TryCancelPurchaseOrder(
+                            orderId,
+                            out _),
+                        danger: true);
+                }
+            }
+
             PortfolioDelegationPolicySnapshot policyState =
                 location.delegationPolicy;
             AddManagementSection("MANAGER AUTHORITY & BUDGET");
@@ -1169,15 +1199,6 @@ namespace Margins
                 policyState.managerCanAuthorizeMaintenance,
                 policy => policy.managerCanAuthorizeMaintenance =
                     !policy.managerCanAuthorizeMaintenance);
-            AddPolicyToggle(
-                authorityRow,
-                location,
-                "Price adjustments",
-                "pricing-authority",
-                policyState.managerCanAdjustPrices,
-                policy => policy.managerCanAdjustPrices =
-                    !policy.managerCanAdjustPrices);
-
             AddManagementCopy(
                 authority,
                 $"Daily delegated spending limit: {FormatCents(policyState.dailySpendingLimitCents)}",
@@ -1340,6 +1361,142 @@ namespace Margins
                     policy,
                     Math.Min(maximum, current + step)),
                 enabled: current < maximum);
+        }
+
+        private void BuildManagementLocations(
+            PortfolioProgressionSnapshot snapshot)
+        {
+            AddManagementSection("CURRENT LOCATIONS");
+            foreach (PortfolioLocationSnapshot location in snapshot.locations
+                         .OrderBy(value =>
+                             value.displayName,
+                             StringComparer.Ordinal))
+            {
+                PortfolioLocationSnapshot target = location;
+                PortfolioCommercialPropertySnapshot property = snapshot.company
+                    .properties.FirstOrDefault(value => string.Equals(
+                        value.propertyId,
+                        target.propertyId,
+                        StringComparison.Ordinal));
+                int staff = snapshot.employees.Count(employee => string.Equals(
+                    employee.assignedLocationId,
+                    target.locationId,
+                    StringComparison.Ordinal));
+                VisualElement card = AddManagementCard(
+                    target.displayName,
+                    $"{target.districtName}   •   {(property == null ? "Property unavailable" : property.tenure.ToString())}\n" +
+                    $"{target.marketSummary}\n" +
+                    $"Team {staff}   •   Inventory {target.inventoryUnits}/{target.inventoryCapacityUnits}   •   Rent {FormatCents(target.dailyRentCents)}/day");
+                card.name = $"management-location-card-{target.locationId}";
+                VisualElement actions = AddManagementRow(card);
+                AddManagementButton(
+                    actions,
+                    "Manage location",
+                    $"management-manage-location-{target.locationId}",
+                    () =>
+                    {
+                        portfolio.TrySelectManagementLocation(
+                            target.locationId,
+                            out _);
+                        SelectManagementPage(ManagementPage.Overview);
+                    });
+                if (!portfolio.HasActiveDetailedSimulation)
+                {
+                    AddManagementButton(
+                        actions,
+                        "Visit physically",
+                        $"management-visit-{target.locationId}",
+                        () => portfolio.TryVisitLocation(
+                            target.locationId,
+                            out _),
+                        primary: true);
+                }
+            }
+
+            PortfolioLocationDefinition[] available =
+                PortfolioProgressionRules.ExpansionOptions
+                    .Where(option => snapshot.locations.All(location =>
+                        !string.Equals(
+                            location.locationId,
+                            option.LocationId,
+                            StringComparison.Ordinal)))
+                    .OrderBy(option =>
+                        option.DisplayName,
+                        StringComparer.Ordinal)
+                    .ToArray();
+            AddManagementSection("AVAILABLE LEASES");
+            if (available.Length == 0)
+            {
+                AddManagementCopy(
+                    managementContent,
+                    "No additional approved vertical-slice locations are currently available.",
+                    "management-empty");
+                return;
+            }
+
+            foreach (PortfolioLocationDefinition option in available)
+            {
+                PortfolioLocationDefinition target = option;
+                long committed = checked(
+                    target.LeaseCostCents +
+                    target.OpeningInventoryCostCents);
+                VisualElement card = AddManagementCard(
+                    target.DisplayName,
+                    $"{target.DistrictName}\n{target.MarketSummary}\n" +
+                    $"Demand {target.BaseDemandUnits}   •   Competition {target.CompetitionIndex}/100   •   Rent {FormatCents(target.DailyRentCents)}/day\n" +
+                    $"Lease and opening inventory {FormatCents(committed)}");
+                AddManagementButton(
+                    AddManagementRow(card),
+                    $"Lease and open · {FormatCents(committed)}",
+                    $"management-lease-{target.LocationId}",
+                    () => portfolio.TryLeaseLocation(
+                        target.LocationId,
+                        out _),
+                    primary: true);
+            }
+        }
+
+        private void BuildManagementReports(
+            PortfolioProgressionSnapshot snapshot)
+        {
+            PortfolioConsolidatedReportSnapshot consolidated =
+                portfolio.Progression.CreateConsolidatedReport();
+            AddManagementSection("PORTFOLIO REPORT");
+            VisualElement portfolioReport = AddManagementCard(
+                $"Company through day {consolidated.day}",
+                $"Cash {FormatCents(consolidated.cashCents)}   •   Brands {consolidated.brandCount}   •   Locations {consolidated.locationCount}\n" +
+                $"Lifetime sales {FormatCents(consolidated.lifetimeGrossSalesCents)}   •   Operating costs {FormatCents(consolidated.lifetimeOperatingCostsCents)}   •   Profit {FormatCents(consolidated.lifetimeOperatingProfitCents)}\n" +
+                $"Properties {consolidated.leasedPropertyCount} leased / {consolidated.ownedPropertyCount} owned   •   Alerts {consolidated.openAlertCount} open / {consolidated.ownerAttentionAlertCount} owner attention");
+            portfolioReport.name = "management-portfolio-report";
+
+            AddManagementSection("LOCATION REPORTS");
+            foreach (PortfolioLocationSnapshot location in snapshot.locations
+                         .OrderBy(value =>
+                             value.displayName,
+                             StringComparer.Ordinal))
+            {
+                if (!location.hasLastReport || location.lastReport == null)
+                {
+                    VisualElement emptyReport = AddManagementCard(
+                        location.displayName,
+                        "No completed operating report exists for this location yet.");
+                    emptyReport.name =
+                        $"management-location-report-{location.locationId}";
+                    continue;
+                }
+
+                PortfolioLocationReportSnapshot report = location.lastReport;
+                VisualElement locationReport = AddManagementCard(
+                    $"{location.displayName} · Day {report.day} · " +
+                    (report.isDetailedOperation ? "Detailed" : "Delegated"),
+                    $"Sales {FormatCents(report.grossSalesCents)}   •   COGS {FormatCents(report.costOfGoodsSoldCents)}   •   Payroll {FormatCents(report.payrollCents)}   •   Rent {FormatCents(report.rentCents)}\n" +
+                    $"Operating profit {FormatCents(report.operatingProfitCents)}   •   Cash change {FormatCents(report.cashChangeCents)}\n" +
+                    $"Demand {report.unitsSold}/{report.demandUnits} sold, {report.lostDemandUnits} lost   •   Ending inventory {report.endingInventoryUnits}\n" +
+                    $"Service {report.serviceQuality}/100   •   Satisfaction {report.customerSatisfaction}/100   •   Availability {report.productAvailabilityBasisPoints / 100f:0.#}%   •   Maintenance {report.maintenanceCondition}/100\n" +
+                    $"Primary cause: {report.primaryCause}");
+                locationReport.name =
+                    $"management-location-report-{location.locationId}";
+            }
         }
 
         private void BuildManagementAlerts(PortfolioLocationSnapshot location)
@@ -1558,7 +1715,7 @@ namespace Margins
                        StringComparison.Ordinal))?.displayName ?? locationId;
         }
 
-        private static string FormatSchedule(
+        private static string FormatScheduledDays(
             PortfolioEmployeeScheduleSnapshot schedule)
         {
             if (schedule == null)
@@ -1572,17 +1729,7 @@ namespace Margins
                 0x60 => "Days 6–7",
                 _ => $"Custom mask {schedule.scheduledDayMask}"
             };
-            return $"{days}, {FormatMinute(schedule.shiftStartMinute)}–" +
-                   FormatMinute(schedule.shiftEndMinute);
-        }
-
-        private static string FormatMinute(int minute)
-        {
-            if (minute == PortfolioOperationsRules.MinutesPerDay)
-            {
-                return "24:00";
-            }
-            return $"{minute / 60:00}:{minute % 60:00}";
+            return days;
         }
 
         private static string FormatCents(long cents)
@@ -1639,7 +1786,9 @@ namespace Margins
                    managementOverviewTab == null ||
                    managementTeamTab == null ||
                    managementPolicyTab == null ||
-                   managementAlertsTab == null || managementSave == null ||
+                   managementAlertsTab == null ||
+                   managementLocationsTab == null ||
+                   managementReportsTab == null || managementSave == null ||
                    managementLoad == null || managementResume == null ||
                    !titleNotification.IsValid || !pauseNotification.IsValid ||
                    !settingsNotification.IsValid;

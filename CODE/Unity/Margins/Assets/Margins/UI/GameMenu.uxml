@@ -105,7 +105,9 @@
                     <ui:VisualElement class="management-tabs">
                         <ui:Button name="management-overview-tab" text="Overview" class="management-tab" />
                         <ui:Button name="management-team-tab" text="Team" class="management-tab" />
+                        <ui:Button name="management-locations-tab" text="Locations" class="management-tab" />
                         <ui:Button name="management-policy-tab" text="Policies" class="management-tab" />
+                        <ui:Button name="management-reports-tab" text="Reports" class="management-tab" />
                         <ui:Button name="management-alerts-tab" text="Alerts" class="management-tab" />
                     </ui:VisualElement>
 

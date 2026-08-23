@@ -52,6 +52,11 @@ preserves whether shared customer and employee work adapters should resume. The
 envelope carries an explicit generated-location presence bit because Unity's
 JSON serializer can otherwise materialize a null nested object as an empty
 instance. The presence bit is authoritative and is false for legacy envelopes.
+Version `4` also records one explicit source state: detailed first store,
+management/aggregate, or detailed generated location. It preserves the intended
+first-store customer-flow and employee-work enablement separately from the
+management state's deliberately quiescent loaded rig. File-envelope versions
+`1` through `3` normalize to the historical detailed-first-store source.
 The portfolio snapshot remains the authority for company cash, company/brand/
 property/unit/location identity, employees, schedules, delegation policies,
 product-level aggregate inventory, procurement, operating reports, alerts, and
@@ -152,6 +157,15 @@ The nested procurement snapshot contains:
 - At most one business location is physically detailed at a time. Its generated
   layout signature must match the deterministic result of its persisted
   generator inputs before player modifications are replayed.
+- A management source has no active detailed portfolio location and keeps the
+  loaded first-store customer, employee, and detailed-procurement adapters
+  quiescent. Delegated day advancement rejects while either the first store or a
+  generated location can still mutate detailed state.
+- Leaving the first store reconciles its final detailed delta, rejects unsafe
+  customer, employee, carried-tool, or in-progress delivery state, clears the
+  active detailed location, and only then enables aggregate operation. Returning
+  establishes a fresh per-location reconciliation baseline before re-enabling
+  the saved detailed adapters.
 - An active generated-location envelope must identify the same detailed location
   as the portfolio, retain a valid parked first-store snapshot, and cannot park
   active customers in that inactive first-store scene.
@@ -208,10 +222,12 @@ The nested procurement snapshot contains:
 11. Validate physical-unit counts and shelf placements against the accepted
     inventory without mutating the scene.
 12. Validate player position, body yaw, and camera pitch.
-13. Apply the accepted portfolio; rematerialize an active generated layout when
-    present; rebind and restore shared detailed adapters; reconcile distinct Unity
-    physical-unit objects; and establish a current per-location reconciliation
-    baseline before detailed operation resumes.
+13. Apply the accepted portfolio; restore the recorded detailed-first-store,
+    management, or generated source state; rematerialize an active generated
+    layout when present; rebind and restore shared detailed adapters; reconcile
+    distinct Unity physical-unit objects; and establish a current per-location
+    reconciliation baseline before detailed operation resumes. A management
+    restore leaves those adapters disabled.
 14. Restore cumulative customer-flow observations and apply the validated player
     transform only after every validation succeeds. If application fails, restore
     the captured pre-load store, portfolio, location, and player state.

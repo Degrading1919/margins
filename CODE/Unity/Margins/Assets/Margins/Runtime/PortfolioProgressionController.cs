@@ -82,6 +82,15 @@ namespace Margins
         public string SelectedLocationId => selectedLocationId;
         public PersistentPortfolioLocationSceneAdapter LocationSceneAdapter =>
             locationSceneAdapter;
+        public bool HasActiveDetailedSimulation =>
+            locationSceneAdapter != null
+                ? locationSceneAdapter.IsDetailedSimulationActive
+                : progression != null && !string.IsNullOrWhiteSpace(
+                    progression.CreateSnapshot().company
+                        .activeDetailedLocationId);
+        public string ActiveDetailedSimulationLocationId =>
+            locationSceneAdapter?.ActiveLocationId ?? progression?
+                .CreateSnapshot().company.activeDetailedLocationId;
 
         public void SetToolkitManagementAvailable(bool available)
         {
@@ -105,14 +114,21 @@ namespace Margins
 
         private void Update()
         {
-            if (!TrySynchronizeLivePayroll(out string payrollError))
+            bool detailedSimulationActive =
+                locationSceneAdapter == null ||
+                locationSceneAdapter.IsDetailedSimulationActive;
+            string procurementError = null;
+            if (detailedSimulationActive)
             {
-                Record(payrollError, false);
-            }
-            TrySynchronizeDetailedShift(out _);
-            if (!TrySynchronizeDetailedProcurement(out string procurementError))
-            {
-                Record(procurementError, false);
+                if (!TrySynchronizeLivePayroll(out string payrollError))
+                {
+                    Record(payrollError, false);
+                }
+                TrySynchronizeDetailedShift(out _);
+                if (!TrySynchronizeDetailedProcurement(out procurementError))
+                {
+                    Record(procurementError, false);
+                }
             }
             if (progression != null && progression.FirstShiftCompleted &&
                 !GamePauseMenuController.IsAnyMenuOpen &&
@@ -123,8 +139,9 @@ namespace Margins
                         1,
                         out _,
                         out procurementError) ||
-                    !TrySynchronizeDetailedProcurement(out procurementError) ||
-                    !TryApplyDetailedReorderPolicy(out procurementError))
+                    (detailedSimulationActive &&
+                     (!TrySynchronizeDetailedProcurement(out procurementError) ||
+                      !TryApplyDetailedReorderPolicy(out procurementError))))
                 {
                     Record(procurementError, false);
                 }
@@ -472,6 +489,12 @@ namespace Margins
                 error = null;
                 return true;
             }
+            if (locationSceneAdapter != null &&
+                !locationSceneAdapter.IsDetailedSimulationActive)
+            {
+                error = null;
+                return true;
+            }
 
             string activeLocationId = progression.CreateSnapshot().company
                 .activeDetailedLocationId;
@@ -597,7 +620,15 @@ namespace Margins
                 activeDetailedLocationId)
                 ? PortfolioProgressionRules.FirstLocationId
                 : activeDetailedLocationId;
+            bool requiresFirstStorePhysicalProducts = string.Equals(
+                    location.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal) &&
+                location.delegatedDaysOperating == 0;
             bool detailedLocation =
+                (requiresFirstStorePhysicalProducts ||
+                 locationSceneAdapter == null ||
+                 locationSceneAdapter.IsDetailedSimulationActive) &&
                 string.Equals(
                     locationId,
                     detailedLocationId,
@@ -682,6 +713,11 @@ namespace Margins
         {
             error = null;
             if (progression == null || !progression.FirstShiftCompleted)
+            {
+                return true;
+            }
+            if (locationSceneAdapter != null &&
+                !locationSceneAdapter.IsDetailedSimulationActive)
             {
                 return true;
             }
@@ -1547,11 +1583,39 @@ namespace Margins
             return TryAdvanceOvernight(out error);
         }
 
+        public bool CanAdvanceOvernight(out string blocker)
+        {
+            if (locationSceneAdapter != null &&
+                locationSceneAdapter.IsDetailedSimulationActive)
+            {
+                string detailedLocationId =
+                    locationSceneAdapter.ActiveLocationId;
+                blocker = string.IsNullOrWhiteSpace(detailedLocationId)
+                    ? "Leave the loaded first store before advancing overnight."
+                    : $"Leave {LocationName(detailedLocationId)} before advancing overnight.";
+                return false;
+            }
+            if (progression == null)
+            {
+                blocker = "Company progression is unavailable.";
+                return false;
+            }
+
+            return progression.CanAdvanceDelegatedDay(out blocker);
+        }
+
         public bool TryAdvanceOvernight(out string error)
         {
-            if (!TrySynchronizeLivePayroll(out error) ||
-                !TrySynchronizeDetailedProcurement(out error) ||
-                !TrySynchronizeDetailedShift(out error))
+            if (!CanAdvanceOvernight(out error))
+            {
+                RecordResult(false, error);
+                return false;
+            }
+
+            if (locationSceneAdapter == null &&
+                (!TrySynchronizeLivePayroll(out error) ||
+                 !TrySynchronizeDetailedProcurement(out error) ||
+                 !TrySynchronizeDetailedShift(out error)))
             {
                 RecordResult(false, error);
                 return false;
@@ -1661,6 +1725,29 @@ namespace Margins
             RecordResult(
                 success,
                 success ? "Employee training completed." : error);
+            return success;
+        }
+
+        public bool TryPromoteEmployeeToManager(
+            string employeeId,
+            out string error)
+        {
+            error = null;
+            bool success = progression != null &&
+                           progression.TryPromoteToManager(
+                               employeeId,
+                               out error);
+            error ??= "Company employee promotion is unavailable.";
+            PortfolioEmployeeSnapshot employee = progression?.Employees
+                .FirstOrDefault(value => string.Equals(
+                    value.employeeId,
+                    employeeId,
+                    StringComparison.Ordinal));
+            RecordResult(
+                success,
+                success
+                    ? $"Promoted {employee?.displayName ?? employeeId} to manager."
+                    : error);
             return success;
         }
 

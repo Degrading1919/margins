@@ -45,6 +45,7 @@ namespace Margins
         private bool hasFirstStorePlayerPose;
         private bool customerFlowWasEnabled;
         private bool employeeWorkWasEnabled;
+        private bool firstStoreManagementQuiescent;
         private int firstStoreOperatingExpensesCents;
         private long firstStorePayrollCents;
         private bool capturedFirstStoreAdapters;
@@ -72,6 +73,18 @@ namespace Margins
                 activeLocationId,
                 PortfolioProgressionRules.FirstLocationId,
                 StringComparison.Ordinal);
+        public bool IsFirstStoreDetailedSimulationActive =>
+            !HasActiveGeneratedLocation && !firstStoreManagementQuiescent;
+        public bool IsDetailedSimulationActive =>
+            HasActiveGeneratedLocation || IsFirstStoreDetailedSimulationActive;
+        public bool FirstStoreCustomerFlowResumeEnabled =>
+            firstStoreManagementQuiescent || HasActiveGeneratedLocation
+                ? customerFlowWasEnabled
+                : customerFlow != null && customerFlow.enabled;
+        public bool FirstStoreEmployeeWorkResumeEnabled =>
+            firstStoreManagementQuiescent || HasActiveGeneratedLocation
+                ? employeeWorkWasEnabled
+                : employeeWork != null && employeeWork.enabled;
         public string LastSynchronizationError => lastSynchronizationError;
         public GeneratedDetailedLocationBindings ActiveBindings =>
             activeBindings;
@@ -115,6 +128,39 @@ namespace Margins
             cleaningTool = detailedCleaningTool;
             operatingControl = detailedOperatingControl;
             player = firstPerson;
+        }
+
+        private void Start()
+        {
+            if (portfolio?.Progression == null || player == null ||
+                !player.IsGameplayMode)
+            {
+                return;
+            }
+
+            string detailedLocationId = portfolio.Progression.CreateSnapshot()
+                .company.activeDetailedLocationId;
+            if (string.IsNullOrWhiteSpace(detailedLocationId))
+            {
+                if (!portfolio.Progression.TryEnterDetailedLocation(
+                        PortfolioProgressionRules.FirstLocationId,
+                        out string error))
+                {
+                    Debug.LogError(
+                        $"First-store detailed simulation could not be registered: {error}",
+                        this);
+                    return;
+                }
+                detailedLocationId = PortfolioProgressionRules.FirstLocationId;
+            }
+
+            if (string.Equals(
+                    detailedLocationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
+            {
+                activeLocationId = detailedLocationId;
+            }
         }
 
         public bool TryValidateConfiguration(out string error)
@@ -411,6 +457,7 @@ namespace Margins
             if (!HasActiveGeneratedLocation)
             {
                 activeLocationId = null;
+                QuiesceFirstStoreDetailedSimulation();
                 return true;
             }
 
@@ -428,7 +475,59 @@ namespace Margins
                 return false;
             }
 
+            QuiesceFirstStoreDetailedSimulation();
             player.SetGameplayMode(false);
+            return true;
+        }
+
+        public bool TryApplyFirstStorePersistenceState(
+            FirstStoreDiskSourceState sourceState,
+            bool resumeCustomerFlow,
+            bool resumeEmployeeWork,
+            out string error)
+        {
+            if (sourceState == FirstStoreDiskSourceState.GeneratedDetailed)
+            {
+                error =
+                    "Generated detailed persistence must be restored through its generated-location snapshot.";
+                return false;
+            }
+
+            customerFlowWasEnabled = resumeCustomerFlow;
+            employeeWorkWasEnabled = resumeEmployeeWork;
+            if (sourceState == FirstStoreDiskSourceState.Management)
+            {
+                activeLocationId = null;
+                firstStoreManagementQuiescent = true;
+                customerFlow.enabled = false;
+                employeeWork.enabled = false;
+                error = null;
+                return true;
+            }
+
+            string activeDetailedLocationId = portfolio.Progression
+                .CreateSnapshot().company.activeDetailedLocationId;
+            if (string.IsNullOrWhiteSpace(activeDetailedLocationId) &&
+                !portfolio.Progression.TryEnterDetailedLocation(
+                    PortfolioProgressionRules.FirstLocationId,
+                    out error))
+            {
+                return false;
+            }
+            if (!string.IsNullOrWhiteSpace(activeDetailedLocationId) &&
+                !string.Equals(
+                    activeDetailedLocationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
+            {
+                error =
+                    "First-store detailed persistence contradicts the active portfolio location.";
+                return false;
+            }
+
+            activeLocationId = PortfolioProgressionRules.FirstLocationId;
+            ResumeFirstStoreDetailedSimulation();
+            error = null;
             return true;
         }
 
@@ -498,6 +597,7 @@ namespace Margins
             hasFirstStorePlayerPose = true;
             customerFlowWasEnabled = savedLocation.customerFlowEnabled;
             employeeWorkWasEnabled = savedLocation.employeeWorkEnabled;
+            firstStoreManagementQuiescent = false;
             activeLocationId = savedLocation.locationId;
             customerFlow.enabled = false;
             employeeWork.enabled = false;
@@ -580,26 +680,7 @@ namespace Margins
                     out error);
             }
 
-            string detailedLocation = portfolio?.Progression?.CreateSnapshot()
-                .company.activeDetailedLocationId;
-            if (string.Equals(
-                    detailedLocation,
-                    PortfolioProgressionRules.FirstLocationId,
-                    StringComparison.Ordinal))
-            {
-                if (!portfolio.TrySynchronizeDetailedShift(out error) ||
-                    !portfolio.Progression.TryLeaveDetailedLocation(
-                        PortfolioProgressionRules.FirstLocationId,
-                        out error))
-                {
-                    return false;
-                }
-            }
-
-            activeLocationId = null;
-            player.SetGameplayMode(false);
-            error = null;
-            return true;
+            return TryLeaveFirstStoreToManagement(out error);
         }
 
         public bool TrySynchronizeActiveLocation(out string error)
@@ -791,6 +872,16 @@ namespace Margins
                     out error);
             }
 
+            if (!firstStoreManagementQuiescent && string.Equals(
+                    activeLocationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal))
+            {
+                player.SetGameplayMode(true);
+                error = null;
+                return true;
+            }
+
             if (!merchandising.TryBindDetailedLocation(
                     PortfolioProgressionRules.FirstLocationId,
                     out error) ||
@@ -813,7 +904,78 @@ namespace Margins
             }
 
             activeLocationId = PortfolioProgressionRules.FirstLocationId;
+            ResumeFirstStoreDetailedSimulation();
             player.SetGameplayMode(true);
+            error = null;
+            return true;
+        }
+
+        private bool TryLeaveFirstStoreToManagement(out string error)
+        {
+            if (firstStoreManagementQuiescent)
+            {
+                player.SetGameplayMode(false);
+                error = null;
+                return true;
+            }
+            if (customerFlow.TryGetDetailedLocationChangeBlocker(
+                    out string customerBlocker))
+            {
+                error = customerBlocker;
+                return false;
+            }
+            if (employeeWork.IsHandlingInventory || deliveryBox.IsCarried)
+            {
+                error =
+                    "Finish the current delivery or stocking move before leaving this location.";
+                return false;
+            }
+            if (cleaningTool.IsCarried)
+            {
+                error = "Set down the cleaning tool before leaving this location.";
+                return false;
+            }
+            if (!portfolio.TrySynchronizeDetailedProcurement(out error))
+            {
+                return false;
+            }
+            PurchaseOrderSnapshot receivingOrder = portfolio.Progression
+                .PurchaseOrders.FirstOrDefault(value =>
+                    string.Equals(
+                        value.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal) &&
+                    (value.status == PurchaseOrderStatus.Delivered ||
+                     value.status == PurchaseOrderStatus.PartiallyReceived));
+            if (receivingOrder != null)
+            {
+                error =
+                    $"Receive every unit in {receivingOrder.orderId} before leaving this detailed location.";
+                return false;
+            }
+            if (!portfolio.TrySynchronizeDetailedShift(out error))
+            {
+                return false;
+            }
+
+            string detailedLocation = portfolio.Progression.CreateSnapshot()
+                .company.activeDetailedLocationId;
+            if (!string.IsNullOrWhiteSpace(detailedLocation) &&
+                (!string.Equals(
+                     detailedLocation,
+                     PortfolioProgressionRules.FirstLocationId,
+                     StringComparison.Ordinal) ||
+                 !portfolio.Progression.TryLeaveDetailedLocation(
+                     PortfolioProgressionRules.FirstLocationId,
+                     out error)))
+            {
+                error ??= "A different detailed location is active.";
+                return false;
+            }
+
+            activeLocationId = null;
+            QuiesceFirstStoreDetailedSimulation();
+            player.SetGameplayMode(false);
             error = null;
             return true;
         }
@@ -879,8 +1041,13 @@ namespace Margins
             firstStoreOperatingExpensesCents =
                 detailedStore.IncludedOperatingExpensesCents;
             firstStorePayrollCents = detailedStore.LivePayrollCents;
-            customerFlowWasEnabled = customerFlow != null && customerFlow.enabled;
-            employeeWorkWasEnabled = employeeWork != null && employeeWork.enabled;
+            if (!firstStoreManagementQuiescent)
+            {
+                customerFlowWasEnabled =
+                    customerFlow != null && customerFlow.enabled;
+                employeeWorkWasEnabled =
+                    employeeWork != null && employeeWork.enabled;
+            }
             firstStoreCustomerBindings = customerFlow.CaptureLocationBindings();
             firstStoreEmployeeBindings = employeeWork.CaptureLocationBindings();
             if (!TryCaptureFirstStoreTransformStates(out error))
@@ -890,6 +1057,39 @@ namespace Margins
             capturedFirstStoreAdapters = true;
             error = null;
             return true;
+        }
+
+        private void QuiesceFirstStoreDetailedSimulation()
+        {
+            if (!firstStoreManagementQuiescent)
+            {
+                customerFlowWasEnabled =
+                    customerFlow != null && customerFlow.enabled;
+                employeeWorkWasEnabled =
+                    employeeWork != null && employeeWork.enabled;
+            }
+            firstStoreManagementQuiescent = true;
+            if (customerFlow != null)
+            {
+                customerFlow.enabled = false;
+            }
+            if (employeeWork != null)
+            {
+                employeeWork.enabled = false;
+            }
+        }
+
+        private void ResumeFirstStoreDetailedSimulation()
+        {
+            firstStoreManagementQuiescent = false;
+            if (customerFlow != null)
+            {
+                customerFlow.enabled = customerFlowWasEnabled;
+            }
+            if (employeeWork != null)
+            {
+                employeeWork.enabled = employeeWorkWasEnabled;
+            }
         }
 
         private bool TryLeaveGeneratedLocation(
@@ -982,6 +1182,12 @@ namespace Margins
                     return false;
                 }
                 activeLocationId = PortfolioProgressionRules.FirstLocationId;
+                ResumeFirstStoreDetailedSimulation();
+            }
+
+            if (openManagement)
+            {
+                QuiesceFirstStoreDetailedSimulation();
             }
 
             if (hasFirstStorePlayerPose)

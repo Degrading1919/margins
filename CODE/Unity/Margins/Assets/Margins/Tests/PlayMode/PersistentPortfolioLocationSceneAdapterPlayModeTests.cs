@@ -557,6 +557,10 @@ namespace Margins.Tests.PlayMode
                 Assert.That(accepted.version,
                     Is.EqualTo(FirstStoreDiskPersistenceController.CurrentFileVersion));
                 Assert.That(accepted.hasGeneratedLocation, Is.True);
+                Assert.That(
+                    accepted.sourceState,
+                    Is.EqualTo(
+                        FirstStoreDiskSourceState.GeneratedDetailed));
                 Assert.That(accepted.generatedLocation, Is.Not.Null);
                 Assert.That(accepted.generatedLocation.locationId,
                     Is.EqualTo(RiverbendLocationId));
@@ -773,6 +777,291 @@ namespace Margins.Tests.PlayMode
                     JsonUtility.ToJson(
                         context.Portfolio.Progression.CreateSnapshot()),
                     Is.EqualTo(once));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator PersistenceSourceMatrixRestoresGeneratedAThenBAndFirstStoreThenManagement()
+        {
+            string directory = Path.Combine(
+                Application.temporaryCachePath,
+                $"location-source-matrix-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            string firstPath = Path.Combine(directory, "first.json");
+            string managementPath = Path.Combine(directory, "management.json");
+            string riverbendPath = Path.Combine(directory, "riverbend.json");
+            string downtownPath = Path.Combine(directory, "downtown.json");
+            try
+            {
+                SceneContext context = null;
+                yield return LoadContext(value => context = value);
+                Assert.That(
+                    context.Disk.TrySaveToPath(firstPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                FirstStoreDiskSaveData first = ReadSave(firstPath);
+                Assert.That(first.sourceState,
+                    Is.EqualTo(FirstStoreDiskSourceState.FirstStoreDetailed));
+                Assert.That(first.generatedLocation, Is.Null);
+                Assert.That(first.portfolio.company.activeDetailedLocationId,
+                    Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
+
+                PrepareRiverbendPortfolio(context);
+                Assert.That(
+                    context.Disk.TrySaveToPath(managementPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                FirstStoreDiskSaveData management = ReadSave(managementPath);
+                Assert.That(management.sourceState,
+                    Is.EqualTo(FirstStoreDiskSourceState.Management));
+                Assert.That(management.generatedLocation, Is.Null);
+                Assert.That(
+                    management.portfolio.company.activeDetailedLocationId,
+                    Is.Null.Or.Empty);
+                Assert.That(context.CustomerFlow.enabled, Is.False);
+                Assert.That(context.EmployeeWork.enabled, Is.False);
+
+                Assert.That(
+                    context.Adapter.TryEnterLocation(
+                        RiverbendLocationId,
+                        out string error),
+                    Is.True,
+                    error);
+                yield return null;
+                string riverbendSignature = context.Locations.ActiveBuilding
+                    .LastSignature;
+                Assert.That(
+                    context.Disk.TrySaveToPath(riverbendPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                FirstStoreDiskSaveData riverbend = ReadSave(riverbendPath);
+                Assert.That(riverbend.sourceState,
+                    Is.EqualTo(FirstStoreDiskSourceState.GeneratedDetailed));
+                Assert.That(riverbend.generatedLocation.locationId,
+                    Is.EqualTo(RiverbendLocationId));
+
+                Assert.That(
+                    context.Adapter.TryLeaveToManagement(out error),
+                    Is.True,
+                    error);
+                SeedReconciledHistoricalEarnings(context, 1_000_000);
+                Assert.That(
+                    context.Portfolio.TryLeaseLocation(
+                        DowntownLocationId,
+                        out error),
+                    Is.True,
+                    error);
+                ReassignTeam(
+                    context.Portfolio.Progression,
+                    DowntownLocationId,
+                    ExpansionTeam);
+                Assert.That(
+                    context.Adapter.TryEnterLocation(
+                        DowntownLocationId,
+                        out error),
+                    Is.True,
+                    error);
+                yield return null;
+                string downtownSignature = context.Locations.ActiveBuilding
+                    .LastSignature;
+                Assert.That(downtownSignature,
+                    Is.Not.EqualTo(riverbendSignature));
+                Assert.That(
+                    context.Disk.TrySaveToPath(downtownPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                FirstStoreDiskSaveData downtown = ReadSave(downtownPath);
+                Assert.That(downtown.sourceState,
+                    Is.EqualTo(FirstStoreDiskSourceState.GeneratedDetailed));
+                Assert.That(downtown.generatedLocation.locationId,
+                    Is.EqualTo(DowntownLocationId));
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(riverbendPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(RiverbendLocationId));
+                Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                    Is.EqualTo(riverbendSignature));
+                Assert.That(context.EmployeeWork.DetailedLocationId,
+                    Is.EqualTo(RiverbendLocationId));
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(downtownPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(DowntownLocationId));
+                Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                    Is.EqualTo(downtownSignature));
+                Assert.That(context.EmployeeWork.DetailedLocationId,
+                    Is.EqualTo(DowntownLocationId));
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(firstPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.HasActiveGeneratedLocation,
+                    Is.False);
+                Assert.That(
+                    context.Adapter.IsFirstStoreDetailedSimulationActive,
+                    Is.True);
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
+                Assert.That(context.CustomerFlow.enabled, Is.True);
+                Assert.That(context.EmployeeWork.enabled, Is.True);
+                Assert.That(context.Portfolio.Progression.Locations.Count,
+                    Is.EqualTo(1));
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(managementPath),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.IsDetailedSimulationActive,
+                    Is.False);
+                Assert.That(context.Adapter.ActiveLocationId, Is.Null);
+                Assert.That(context.Player.IsGameplayMode, Is.False);
+                Assert.That(context.CustomerFlow.enabled, Is.False);
+                Assert.That(context.EmployeeWork.enabled, Is.False);
+                Assert.That(context.Portfolio.Progression.Locations.Count,
+                    Is.EqualTo(2));
+                AssertJsonEqual(
+                    management.portfolio,
+                    context.Portfolio.Progression.CreateSnapshot(),
+                    "Management-source portfolio");
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator GeneratedApplyStageFailureRollsBackDetailedFirstStoreExactly()
+        {
+            string directory = Path.Combine(
+                Application.temporaryCachePath,
+                $"location-apply-rollback-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "generated.json");
+            try
+            {
+                SceneContext context = null;
+                yield return LoadContext(value => context = value);
+                PrepareRiverbendPortfolio(context);
+                Assert.That(
+                    context.Adapter.TryEnterLocation(
+                        RiverbendLocationId,
+                        out string error),
+                    Is.True,
+                    error);
+                yield return null;
+                Assert.That(
+                    context.Disk.TrySaveToPath(path),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(
+                    context.Adapter.TryLeaveToManagement(out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    context.Adapter.TryEnterLocation(
+                        PortfolioProgressionRules.FirstLocationId,
+                        out error),
+                    Is.True,
+                    error);
+                yield return null;
+
+                Assert.That(
+                    context.Persistence.TryCapture(
+                        out FirstStoreSnapshot beforeStore,
+                        out error),
+                    Is.True,
+                    error);
+                PortfolioProgressionSnapshot beforePortfolio =
+                    context.Portfolio.Progression.CreateSnapshot();
+                FirstStorePlayerTransformSnapshot beforePose =
+                    context.Player.CaptureTransformSnapshot();
+                Assert.That(
+                    FirstStoreDiskSaveCodec.TryFromJson(
+                        File.ReadAllText(path),
+                        out FirstStoreDiskSaveData invalidAtApply,
+                        out error),
+                    Is.True,
+                    error);
+                PortfolioCommercialUnitSnapshot generatedUnit =
+                    invalidAtApply.portfolio.company.properties
+                        .SelectMany(property => property.commercialUnits)
+                        .Single(unit => string.Equals(
+                            unit.occupyingLocationId,
+                            RiverbendLocationId,
+                            StringComparison.Ordinal));
+                Assert.That(
+                    generatedUnit.generatedLayout.canonicalSignature,
+                    Is.Not.Empty);
+                generatedUnit.generatedLayout.canonicalSignature =
+                    string.Equals(
+                        generatedUnit.generatedLayout.canonicalSignature,
+                        "deadbeef",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? "cafebabe"
+                        : "deadbeef";
+                File.WriteAllText(
+                    path,
+                    FirstStoreDiskSaveCodec.ToJson(invalidAtApply));
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(path),
+                    Is.False,
+                    "The target must pass snapshot preflight and fail while materializing its contradictory generated layout.");
+                StringAssert.Contains(
+                    "authoritative layout",
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.HasActiveGeneratedLocation,
+                    Is.False);
+                Assert.That(
+                    context.Adapter.IsFirstStoreDetailedSimulationActive,
+                    Is.True);
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(PortfolioProgressionRules.FirstLocationId));
+                Assert.That(context.CustomerFlow.enabled, Is.True);
+                Assert.That(context.EmployeeWork.enabled, Is.True);
+                Assert.That(
+                    context.Persistence.TryCapture(
+                        out FirstStoreSnapshot afterStore,
+                        out error),
+                    Is.True,
+                    error);
+                AssertJsonEqual(
+                    beforeStore,
+                    afterStore,
+                    "First-store rollback after apply-stage failure");
+                AssertJsonEqual(
+                    beforePortfolio,
+                    context.Portfolio.Progression.CreateSnapshot(),
+                    "Portfolio rollback after apply-stage failure");
+                FirstStorePlayerTransformSnapshot afterPose =
+                    context.Player.CaptureTransformSnapshot();
+                Assert.That(
+                    Vector3.Distance(
+                        afterPose.worldPosition,
+                        beforePose.worldPosition),
+                    Is.LessThan(0.001f));
+                Assert.That(afterPose.bodyYawDegrees,
+                    Is.EqualTo(beforePose.bodyYawDegrees).Within(0.001f));
+                Assert.That(afterPose.cameraPitchDegrees,
+                    Is.EqualTo(beforePose.cameraPitchDegrees).Within(0.001f));
             }
             finally
             {
@@ -1091,13 +1380,17 @@ namespace Margins.Tests.PlayMode
         private static void PrepareRiverbendPortfolio(SceneContext context)
         {
             CompletePhysicalFirstShift(context.Portfolio, context.Store);
+            context.Player.SetGameplayMode(false);
+            Assert.That(
+                context.Portfolio.TryLeaveVisitedLocation(out string error),
+                Is.True,
+                error);
             HireTeam(
                 context.Portfolio,
                 PortfolioProgressionRules.FirstLocationId,
                 FirstTeam);
-            context.Player.SetGameplayMode(false);
             Assert.That(
-                context.Portfolio.TryAdvanceDelegatedDay(out string error),
+                context.Portfolio.TryAdvanceDelegatedDay(out error),
                 Is.True,
                 error);
             Assert.That(
@@ -1388,6 +1681,18 @@ namespace Margins.Tests.PlayMode
         {
             return snapshot.locations.Single(value =>
                 value.locationId == locationId);
+        }
+
+        private static FirstStoreDiskSaveData ReadSave(string path)
+        {
+            Assert.That(
+                FirstStoreDiskSaveCodec.TryFromJson(
+                    File.ReadAllText(path),
+                    out FirstStoreDiskSaveData saveData,
+                    out string error),
+                Is.True,
+                error);
+            return saveData;
         }
 
         private static void AssertLocationBusinessStateEqual(
