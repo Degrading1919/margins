@@ -55,6 +55,7 @@ namespace Margins
             {
                 return false;
             }
+            BuildSelectedUnitPartyWalls(request, result);
 
             BuildExteriorOpenings(request, result, ref random);
             if (!TryBuildFunctionalLayout(request, result, ref random, out Vector2 entrancePoint))
@@ -502,6 +503,53 @@ namespace Margins
                 selected.BayIds,
                 recipe.StableRecipeId));
             return true;
+        }
+
+        private static void BuildSelectedUnitPartyWalls(
+            ProceduralBuildingRequest request,
+            ProceduralGenerationResult result)
+        {
+            if (request.Archetype != CommercialBuildingArchetype.StripCenterInlineRetail ||
+                result.Units.Count == 0)
+            {
+                return;
+            }
+
+            GeneratedCommercialUnit unit = result.Units[0];
+            HashSet<string> selectedBayIds = new(
+                unit.SourceBayIds,
+                StringComparer.Ordinal);
+            bool hasLeftNeighbor = result.Bays.Any(item =>
+                !selectedBayIds.Contains(item.BayId) &&
+                Mathf.Abs(item.BoundsMeters.MaxX - unit.BoundsMeters.MinX) <= Tolerance);
+            bool hasRightNeighbor = result.Bays.Any(item =>
+                !selectedBayIds.Contains(item.BayId) &&
+                Mathf.Abs(item.BoundsMeters.MinX - unit.BoundsMeters.MaxX) <= Tolerance);
+            float height = result.Profile.structuralHeightMeters;
+
+            if (hasLeftNeighbor)
+            {
+                result.MutableWalls.Add(new GeneratedWallSegment(
+                    $"wall-party-{unit.UnitId}-left",
+                    new Vector2(unit.BoundsMeters.MinX, unit.BoundsMeters.MinZ),
+                    new Vector2(unit.BoundsMeters.MinX, unit.BoundsMeters.MaxZ),
+                    Vector2.left,
+                    FrontageRole.SharedInternal,
+                    CommercialGenerationDimensions.InteriorPartitionThicknessMeters,
+                    height));
+            }
+
+            if (hasRightNeighbor)
+            {
+                result.MutableWalls.Add(new GeneratedWallSegment(
+                    $"wall-party-{unit.UnitId}-right",
+                    new Vector2(unit.BoundsMeters.MaxX, unit.BoundsMeters.MinZ),
+                    new Vector2(unit.BoundsMeters.MaxX, unit.BoundsMeters.MaxZ),
+                    Vector2.right,
+                    FrontageRole.SharedInternal,
+                    CommercialGenerationDimensions.InteriorPartitionThicknessMeters,
+                    height));
+            }
         }
 
         private static void BuildExteriorOpenings(
@@ -1742,7 +1790,10 @@ namespace Margins
             string ignoredParentPlacementId,
             bool exterior)
         {
-            if (!exterior && !result.Footprint.Contains(physical))
+            if (!exterior &&
+                (!result.Footprint.Contains(physical) ||
+                 result.Units.Count == 0 ||
+                 !result.Units[0].BoundsMeters.Contains(physical)))
             {
                 return false;
             }
@@ -1752,7 +1803,8 @@ namespace Margins
                 foreach (GeneratedAssetClearance clearance in clearances.Where(item =>
                              item.Required))
                 {
-                    if (!result.Footprint.Contains(clearance.BoundsMeters))
+                    if (!result.Footprint.Contains(clearance.BoundsMeters) ||
+                        !result.Units[0].BoundsMeters.Contains(clearance.BoundsMeters))
                     {
                         return false;
                     }
@@ -1997,9 +2049,13 @@ namespace Margins
                 }
 
                 bool exterior = placement.MountingMode == ProceduralMountingMode.ExteriorPad;
-                if (!exterior && !result.Footprint.Contains(placement.PhysicalBoundsMeters))
+                if (!exterior &&
+                    (result.Units.Count == 0 ||
+                     !result.Footprint.Contains(placement.PhysicalBoundsMeters) ||
+                     !result.Units[0].BoundsMeters.Contains(
+                         placement.PhysicalBoundsMeters)))
                 {
-                    error = $"Placement '{placement.PlacementId}' overlaps architectural boundaries.";
+                    error = $"Placement '{placement.PlacementId}' overlaps its commercial-unit boundary.";
                     return false;
                 }
 
@@ -2098,6 +2154,13 @@ namespace Margins
             PlanRect bounds = result.Footprint.Bounds;
             int width = Mathf.CeilToInt(bounds.Width / cellSize);
             int depth = Mathf.CeilToInt(bounds.Depth / cellSize);
+            if (result.Units.Count == 0)
+            {
+                error = "Generated layout is missing its selected commercial unit.";
+                return false;
+            }
+
+            PlanRect unitBounds = result.Units[0].BoundsMeters;
             bool[,] walkable = new bool[width, depth];
             for (int z = 0; z < depth; z++)
             {
@@ -2107,6 +2170,7 @@ namespace Margins
                         (x + 0.5f) * cellSize,
                         (z + 0.5f) * cellSize);
                     bool isWalkable = result.Footprint.Contains(point) &&
+                                      unitBounds.Contains(point) &&
                                       !IsBlockedByPartition(point, result.Partitions) &&
                                       !result.Placements.Any(item =>
                                           item.MountingMode != ProceduralMountingMode.Ceiling &&
