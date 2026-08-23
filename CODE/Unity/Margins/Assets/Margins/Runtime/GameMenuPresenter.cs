@@ -6,6 +6,51 @@ using UnityEngine.UIElements;
 
 namespace Margins
 {
+    internal static class PortfolioPlayerLabels
+    {
+        public static string TaskFocus(PortfolioTaskFocus focus)
+        {
+            return focus switch
+            {
+                PortfolioTaskFocus.Service => "Helping customers",
+                PortfolioTaskFocus.Inventory => "Stocking shelves",
+                PortfolioTaskFocus.Standards => "Cleaning and upkeep",
+                _ => "Balanced"
+            };
+        }
+
+        public static string PricingPolicy(PortfolioPricingPolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioPricingPolicy.Value => "Lower prices",
+                PortfolioPricingPolicy.Premium => "Higher margins",
+                _ => "Balanced"
+            };
+        }
+
+        public static string ReorderPolicy(PortfolioReorderPolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioReorderPolicy.Lean => "Keep less back stock",
+                PortfolioReorderPolicy.Resilient => "Keep extra back stock",
+                _ => "Balanced"
+            };
+        }
+
+        public static string MaintenancePolicy(
+            PortfolioMaintenancePolicy policy)
+        {
+            return policy switch
+            {
+                PortfolioMaintenancePolicy.Deferred => "Repair when needed",
+                PortfolioMaintenancePolicy.Preventive => "Prevent problems",
+                _ => "Routine upkeep"
+            };
+        }
+    }
+
     [RequireComponent(typeof(UIDocument))]
     public sealed class GameMenuPresenter : MonoBehaviour
     {
@@ -72,8 +117,6 @@ namespace Margins
         private Button managementAlertsTab;
         private Button managementLocationsTab;
         private Button managementReportsTab;
-        private Button managementSave;
-        private Button managementLoad;
         private Button managementResume;
         private NotificationElements titleNotification;
         private NotificationElements pauseNotification;
@@ -210,8 +253,6 @@ namespace Margins
             managementAlertsTab = Require<Button>("management-alerts-tab");
             managementLocationsTab = Require<Button>("management-locations-tab");
             managementReportsTab = Require<Button>("management-reports-tab");
-            managementSave = Require<Button>("management-save");
-            managementLoad = Require<Button>("management-load");
             managementResume = Require<Button>("management-resume");
 
             titleNotification = Notification(
@@ -280,8 +321,6 @@ namespace Margins
             RegisterButton(
                 managementReportsTab,
                 () => SelectManagementPage(ManagementPage.Reports));
-            RegisterButton(managementSave, controller.SaveBusiness);
-            RegisterButton(managementLoad, controller.RequestLoadBusiness);
             RegisterButton(managementResume, ResumeManagement);
 
             staticTitleButtons.Add(titleNewBusiness);
@@ -302,8 +341,6 @@ namespace Margins
             managementTabButtons.Add(managementPolicyTab);
             managementTabButtons.Add(managementReportsTab);
             managementTabButtons.Add(managementAlertsTab);
-            managementFooterButtons.Add(managementSave);
-            managementFooterButtons.Add(managementLoad);
             managementFooterButtons.Add(managementResume);
         }
 
@@ -805,13 +842,6 @@ namespace Margins
                 menuError ||
                 (!controller.Notification.IsVisible &&
                  !portfolio.LastActionSucceeded));
-            managementLoad.SetEnabled(controller.CanLoadBusiness);
-            managementLoad.text =
-                controller.PendingReplacement ==
-                SessionReplacementAction.LoadBusiness
-                    ? "Confirm Load Game"
-                    : "Load Game";
-
             string activeLocationId = snapshot.company.activeDetailedLocationId;
             managementResume.SetEnabled(snapshot.locations.Count > 0);
             PortfolioLocationSnapshot activeLocation = snapshot.locations
@@ -1144,7 +1174,7 @@ namespace Margins
                 VisualElement card = AddManagementCard(
                     $"{target.displayName} · {FriendlyRole(target.role)}",
                     $"Works {FormatScheduledDays(target.schedule)}   •   " +
-                    $"Focus: {FriendlyTaskFocus(target.taskFocus)}   •   " +
+                    $"Focus: {PortfolioPlayerLabels.TaskFocus(target.taskFocus)}   •   " +
                     $"Pay: {FormatCents(target.dailyWageCents)} each day worked");
 
                 AddManagementCopy(card, "Work days", "management-policy-value");
@@ -1174,7 +1204,8 @@ namespace Margins
                     Enum.GetValues(typeof(PortfolioTaskFocus)).Length);
                 AddManagementButton(
                     actionRow,
-                    $"Change focus to {FriendlyTaskFocus(nextFocus)}",
+                    $"Change focus to " +
+                    $"{PortfolioPlayerLabels.TaskFocus(nextFocus)}",
                     $"management-focus-{target.employeeId}",
                     () => portfolio.TrySetTaskFocus(
                         target.employeeId,
@@ -1301,7 +1332,7 @@ namespace Margins
                 PortfolioPricingPolicy policy = value;
                 AddManagementButton(
                     pricing,
-                    FriendlyPricingPolicy(policy),
+                    PortfolioPlayerLabels.PricingPolicy(policy),
                     $"management-pricing-{policy.ToString().ToLowerInvariant()}",
                     () => portfolio.TrySetPricingPreset(
                         location.locationId,
@@ -1317,7 +1348,7 @@ namespace Margins
                 PortfolioReorderPolicy policy = value;
                 AddManagementButton(
                     reorder,
-                    FriendlyReorderPolicy(policy),
+                    PortfolioPlayerLabels.ReorderPolicy(policy),
                     $"management-reorder-{policy.ToString().ToLowerInvariant()}",
                     () => portfolio.TrySetReorderPolicy(
                         location.locationId,
@@ -1473,7 +1504,7 @@ namespace Margins
                 AddPolicyChange(
                     maintenance,
                     location,
-                    FriendlyMaintenancePolicy(maintenancePolicy),
+                    PortfolioPlayerLabels.MaintenancePolicy(maintenancePolicy),
                     $"maintenance-{maintenancePolicy.ToString().ToLowerInvariant()}",
                     policy => policy.maintenancePolicy = maintenancePolicy,
                     selected: policyState.maintenancePolicy == maintenancePolicy);
@@ -2042,50 +2073,6 @@ namespace Margins
             return string.IsNullOrWhiteSpace(days) ? "No scheduled days" : days;
         }
 
-        private static string FriendlyTaskFocus(PortfolioTaskFocus focus)
-        {
-            return focus switch
-            {
-                PortfolioTaskFocus.Service => "Helping customers",
-                PortfolioTaskFocus.Inventory => "Stocking shelves",
-                PortfolioTaskFocus.Standards => "Cleaning and upkeep",
-                _ => "Balanced"
-            };
-        }
-
-        private static string FriendlyPricingPolicy(
-            PortfolioPricingPolicy policy)
-        {
-            return policy switch
-            {
-                PortfolioPricingPolicy.Value => "Lower prices",
-                PortfolioPricingPolicy.Premium => "Higher margins",
-                _ => "Balanced"
-            };
-        }
-
-        private static string FriendlyReorderPolicy(
-            PortfolioReorderPolicy policy)
-        {
-            return policy switch
-            {
-                PortfolioReorderPolicy.Lean => "Keep less back stock",
-                PortfolioReorderPolicy.Resilient => "Keep extra back stock",
-                _ => "Balanced"
-            };
-        }
-
-        private static string FriendlyMaintenancePolicy(
-            PortfolioMaintenancePolicy policy)
-        {
-            return policy switch
-            {
-                PortfolioMaintenancePolicy.Deferred => "Repair when needed",
-                PortfolioMaintenancePolicy.Preventive => "Prevent problems",
-                _ => "Routine upkeep"
-            };
-        }
-
         private static string FriendlyTenure(
             PortfolioCommercialPropertySnapshot property)
         {
@@ -2283,8 +2270,7 @@ namespace Margins
                    managementPolicyTab == null ||
                    managementAlertsTab == null ||
                    managementLocationsTab == null ||
-                   managementReportsTab == null || managementSave == null ||
-                   managementLoad == null || managementResume == null ||
+                   managementReportsTab == null || managementResume == null ||
                    !titleNotification.IsValid || !pauseNotification.IsValid ||
                    !settingsNotification.IsValid;
         }

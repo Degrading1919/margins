@@ -64,7 +64,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator GameplayStartsLockedAndTabTogglesManagementMode()
+        public IEnumerator GameplayStartsLockedAndTabWaitsForOwnerPhoneUnlock()
         {
             yield return LoadValidationScene();
 
@@ -78,23 +78,11 @@ namespace Margins.Tests
             Assert.That(player.IsGameplayMode, Is.True);
             Assert.That(validation.IsHudModeActive, Is.False);
             Assert.That(portfolio.OwnsManagementDesk, Is.False);
+            Assert.That(portfolio.IsOwnerPhoneUnlocked, Is.False);
             Assert.That(
                 player.RequestedCursorLockState,
                 Is.EqualTo(CursorLockMode.Locked));
             Assert.That(player.IsGameplayInputActive, Is.True);
-
-            Press(keyboard.tabKey, queueEventOnly: true);
-            yield return null;
-            Release(keyboard.tabKey, queueEventOnly: true);
-            yield return null;
-
-            Assert.That(player.IsGameplayMode, Is.False);
-            Assert.That(validation.IsHudModeActive, Is.False);
-            Assert.That(portfolio.OwnsManagementDesk, Is.True);
-            Assert.That(
-                player.RequestedCursorLockState,
-                Is.EqualTo(CursorLockMode.None));
-            Assert.That(player.IsGameplayInputActive, Is.False);
 
             Press(keyboard.tabKey, queueEventOnly: true);
             yield return null;
@@ -397,6 +385,11 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<GamePauseMenuController>();
             FirstPersonController player =
                 Object.FindAnyObjectByType<FirstPersonController>();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+
+            GameMenuPlayModeTests.CompleteManagementFirstShift(portfolio);
+            yield return null;
 
             Press(keyboard.tabKey, queueEventOnly: true);
             yield return null;
@@ -419,6 +412,11 @@ namespace Margins.Tests
         public IEnumerator HudModeSuppressesPickupStockingAndRotation()
         {
             yield return LoadValidationScene();
+
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            GameMenuPlayModeTests.CompleteManagementFirstShift(portfolio);
+            yield return null;
 
             ProductItem loose = RemoveLooseColaUnits(1).Single();
             Camera camera = Camera.main;

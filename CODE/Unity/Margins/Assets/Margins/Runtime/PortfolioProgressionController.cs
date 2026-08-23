@@ -72,8 +72,10 @@ namespace Margins
         public PortfolioProgression Progression => progression;
         public event Action ManagementChanged;
         public bool IsInitialized => progression != null;
+        public bool IsOwnerPhoneUnlocked =>
+            progression?.FirstShiftCompleted == true;
         public bool OwnsManagementDesk =>
-            progression != null &&
+            IsOwnerPhoneUnlocked &&
             firstPersonController != null &&
             !GamePauseMenuController.IsAnyMenuOpen &&
             !firstPersonController.IsGameplayMode;
@@ -1561,7 +1563,8 @@ namespace Margins
                 RecordResult(
                     detailedSuccess,
                     detailedSuccess
-                        ? $"{LocationName(locationId)} pricing set to {preset}."
+                        ? $"{LocationName(locationId)} price approach set to " +
+                          $"{PortfolioPlayerLabels.PricingPolicy(preset)}."
                         : error);
                 return detailedSuccess;
             }
@@ -1573,7 +1576,8 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"{LocationName(locationId)} pricing set to {preset}."
+                    ? $"{LocationName(locationId)} price approach set to " +
+                      $"{PortfolioPlayerLabels.PricingPolicy(preset)}."
                     : error);
             return success;
         }
@@ -1688,9 +1692,17 @@ namespace Margins
                                focus,
                                out error);
             error ??= "Company employee assignments are unavailable.";
+            PortfolioEmployeeSnapshot employee = progression?.Employees
+                .FirstOrDefault(value => string.Equals(
+                    value.employeeId,
+                    employeeId,
+                    StringComparison.Ordinal));
             RecordResult(
                 success,
-                success ? $"Employee task focus set to {focus}." : error);
+                success
+                    ? $"{employee?.displayName ?? employeeId} will focus on " +
+                      $"{PortfolioPlayerLabels.TaskFocus(focus)}."
+                    : error);
             return success;
         }
 
@@ -1766,7 +1778,8 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"{LocationName(locationId)} reordering set to {policy}."
+                    ? $"{LocationName(locationId)} stock approach set to " +
+                      $"{PortfolioPlayerLabels.ReorderPolicy(policy)}."
                     : error);
             return success;
         }
@@ -1786,7 +1799,8 @@ namespace Margins
             RecordResult(
                 success,
                 success
-                    ? $"{LocationName(locationId)} delegation policy updated."
+                    ? $"Updated manager decisions and store standards for " +
+                      $"{LocationName(locationId)}."
                     : error);
             return success;
         }
@@ -1805,7 +1819,7 @@ namespace Margins
             error ??= "Company operating alerts are unavailable.";
             RecordResult(
                 success,
-                success ? "Operating alert acknowledged." : error);
+                success ? "Alert marked as seen." : error);
             return success;
         }
 
@@ -2106,7 +2120,10 @@ namespace Margins
                     out string error);
                 RecordResult(
                     success,
-                    success ? $"Set {employee.displayName}'s focus to {next}." : error);
+                    success
+                        ? $"{employee.displayName} will focus on " +
+                          $"{PortfolioPlayerLabels.TaskFocus(next)}."
+                        : error);
             }
             PortfolioLocationSnapshot other = snapshot.locations.FirstOrDefault(location =>
                 location.locationId != employee.assignedLocationId);
@@ -2148,8 +2165,9 @@ namespace Margins
                      Enum.GetValues(typeof(PortfolioPricingPolicy)))
             {
                 bool selected = IsPricePresetApplied(location, policy);
+                string label = PortfolioPlayerLabels.PricingPolicy(policy);
                 if (GUILayout.Button(
-                        selected ? $"[{policy}]" : policy.ToString()))
+                        selected ? $"[{label}]" : label))
                 {
                     bool success = TrySetPricingPreset(
                         location.locationId,
@@ -2157,7 +2175,9 @@ namespace Margins
                         out string error);
                     RecordResult(
                         success,
-                        success ? $"{location.displayName} pricing set to {policy}." : error);
+                        success
+                            ? $"{location.displayName} price approach set to {label}."
+                            : error);
                 }
             }
             GUILayout.EndHorizontal();
@@ -2170,8 +2190,11 @@ namespace Margins
             foreach (PortfolioReorderPolicy policy in
                      Enum.GetValues(typeof(PortfolioReorderPolicy)))
             {
+                string label = PortfolioPlayerLabels.ReorderPolicy(policy);
                 if (GUILayout.Button(
-                        policy == location.reorderPolicy ? $"[{policy}]" : policy.ToString()))
+                        policy == location.reorderPolicy
+                            ? $"[{label}]"
+                            : label))
                 {
                     bool success = progression.TrySetReorderPolicy(
                         location.locationId,
@@ -2179,7 +2202,9 @@ namespace Margins
                         out string error);
                     RecordResult(
                         success,
-                        success ? $"{location.displayName} reorder policy set to {policy}." : error);
+                        success
+                            ? $"{location.displayName} stock approach set to {label}."
+                            : error);
                 }
             }
             GUILayout.EndHorizontal();
@@ -3276,7 +3301,7 @@ namespace Margins
                 bool selected = IsPricePresetApplied(location, policy);
                 if (DrawHumanButton(
                         new Rect(rect.x + (width + gap) * i, rect.y, width, rect.height),
-                        FriendlyPolicy(policy.ToString()),
+                        PortfolioPlayerLabels.PricingPolicy(policy),
                         selected,
                         true,
                         selected))
@@ -3288,7 +3313,8 @@ namespace Margins
                     RecordResult(
                         success,
                         success
-                            ? $"{location.displayName} pricing changed to {FriendlyPolicy(policy.ToString()).ToLowerInvariant()}."
+                            ? $"{location.displayName} price approach set to " +
+                              $"{PortfolioPlayerLabels.PricingPolicy(policy)}."
                             : error);
                 }
             }
@@ -3308,7 +3334,7 @@ namespace Margins
                 bool selected = policy == location.reorderPolicy;
                 if (DrawHumanButton(
                         new Rect(rect.x + (width + gap) * i, rect.y, width, rect.height),
-                        FriendlyPolicy(policy.ToString()),
+                        PortfolioPlayerLabels.ReorderPolicy(policy),
                         selected,
                         true,
                         selected))
@@ -3320,7 +3346,8 @@ namespace Margins
                     RecordResult(
                         success,
                         success
-                            ? $"{location.displayName} reordering changed to {FriendlyPolicy(policy.ToString()).ToLowerInvariant()}."
+                            ? $"{location.displayName} stock approach set to " +
+                              $"{PortfolioPlayerLabels.ReorderPolicy(policy)}."
                             : error);
                 }
             }
@@ -3590,8 +3617,7 @@ namespace Margins
 
         private static string FriendlyFocus(PortfolioTaskFocus focus)
         {
-            string value = focus.ToString();
-            return FriendlyPolicy(value);
+            return PortfolioPlayerLabels.TaskFocus(focus);
         }
 
         private static string FriendlyPolicy(string value)

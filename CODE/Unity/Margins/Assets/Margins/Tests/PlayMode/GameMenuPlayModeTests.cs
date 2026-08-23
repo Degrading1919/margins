@@ -375,6 +375,116 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator OwnerPhoneUnlocksAfterFirstSaleAndUsesSafeInputAndFriendlyStatus()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GamePauseMenuController menu =
+                Object.FindAnyObjectByType<GamePauseMenuController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+
+            VisualElement root = presenter.Root;
+            Assert.That(portfolio.Progression.FirstShiftCompleted, Is.False);
+            Assert.That(portfolio.IsOwnerPhoneUnlocked, Is.False);
+            Assert.That(root.Q<Button>("management-save"), Is.Null);
+            Assert.That(root.Q<Button>("management-load"), Is.Null);
+            Assert.That(root.Q<Button>("pause-save"), Is.Not.Null);
+            Assert.That(root.Q<Button>("pause-load"), Is.Not.Null);
+
+            Press(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(player.IsGameplayMode, Is.True);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
+            Assert.That(
+                root.resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.None));
+
+            CompleteManagementFirstShift(portfolio);
+            yield return null;
+            Assert.That(portfolio.IsOwnerPhoneUnlocked, Is.True);
+
+            Press(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(player.IsGameplayMode, Is.False);
+            Assert.That(portfolio.OwnsManagementDesk, Is.True);
+            Assert.That(
+                root.Q("management-view").resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.Flex));
+
+            Submit(root.Q<Button>("management-policy-tab"));
+            yield return null;
+            Button premium = root.Q<Button>("management-pricing-premium");
+            Assert.That(premium.text, Is.EqualTo("Higher margins"));
+            Submit(premium);
+            yield return null;
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Contain(premium.text));
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Not.Contain(nameof(PortfolioPricingPolicy.Premium)));
+
+            Button resilient = root.Q<Button>("management-reorder-resilient");
+            Assert.That(resilient.text, Is.EqualTo("Keep extra back stock"));
+            Submit(resilient);
+            yield return null;
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Contain(resilient.text));
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Not.Contain(nameof(PortfolioReorderPolicy.Resilient)));
+
+            Assert.That(
+                portfolio.TryHireCandidate(
+                    "employee-elena-ruiz",
+                    PortfolioProgressionRules.FirstLocationId,
+                    out string error),
+                Is.True,
+                error);
+            Submit(root.Q<Button>("management-team-tab"));
+            yield return null;
+            Button focus = root.Q<Button>(
+                "management-focus-employee-elena-ruiz");
+            Assert.That(focus.text, Does.Contain("Stocking shelves"));
+            Submit(focus);
+            yield return null;
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Contain("Stocking shelves"));
+            Assert.That(root.Q<Label>("management-status").text,
+                Does.Not.Contain(nameof(PortfolioTaskFocus.Inventory)));
+
+            Press(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(player.IsGameplayMode, Is.True);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
+
+            Press(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.tabKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(portfolio.OwnsManagementDesk, Is.True);
+
+            Press(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Release(keyboard.escapeKey, queueEventOnly: true);
+            yield return null;
+            Assert.That(player.IsGameplayMode, Is.True);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
+            Assert.That(menu.IsOpen, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator OwnerPhoneGuidesStoreClosureAndRevealsDetailsOnRequest()
         {
             yield return LoadValidationScene();
@@ -670,7 +780,7 @@ namespace Margins.Tests
             Assert.That(result.IsSuccess, Is.True, result.Failure.ToString());
         }
 
-        private static void CompleteManagementFirstShift(
+        internal static void CompleteManagementFirstShift(
             PortfolioProgressionController portfolio)
         {
             FixturePlacementController placement =
