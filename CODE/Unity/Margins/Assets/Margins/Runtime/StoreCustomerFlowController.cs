@@ -142,6 +142,27 @@ namespace Margins
             StoreCustomerFlowLocationBindings bindings,
             out string error)
         {
+            return TryBindDetailedLocation(
+                bindings,
+                false,
+                out error);
+        }
+
+        public bool TryBindDetailedLocationAfterRestore(
+            StoreCustomerFlowLocationBindings bindings,
+            out string error)
+        {
+            return TryBindDetailedLocation(
+                bindings,
+                true,
+                out error);
+        }
+
+        private bool TryBindDetailedLocation(
+            StoreCustomerFlowLocationBindings bindings,
+            bool allowRestoredCustomers,
+            out string error)
+        {
             if (bindings == null || bindings.EntrancePoint == null ||
                 bindings.ExitPoint == null ||
                 bindings.CheckoutCustomerPoint == null ||
@@ -152,7 +173,8 @@ namespace Margins
                 return false;
             }
 
-            if (customers.Count > 0 || HasActiveCheckout)
+            if (HasActiveCheckout ||
+                (!allowRestoredCustomers && customers.Count > 0))
             {
                 error =
                     "Finish serving and clear current customers before rebinding detailed customer flow.";

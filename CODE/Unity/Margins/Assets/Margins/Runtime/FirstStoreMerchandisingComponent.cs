@@ -296,6 +296,66 @@ namespace Margins
             return true;
         }
 
+        public bool TryResolveDetailedShelfAssignment(
+            string detailedLocationId,
+            string authoredShelfFixtureId,
+            out string assignedProductId,
+            out string detailedInventoryLocationId,
+            out string error)
+        {
+            assignedProductId = null;
+            detailedInventoryLocationId = null;
+            if (portfolioProgression == null ||
+                !FirstStoreIdentifier.IsValid(detailedLocationId) ||
+                !FirstStoreIdentifier.IsValid(authoredShelfFixtureId))
+            {
+                error =
+                    "Detailed shelf reconciliation requires a valid portfolio location and authored shelf.";
+                return false;
+            }
+
+            PortfolioLocationSnapshot location = portfolioProgression
+                .Progression.Locations.FirstOrDefault(value => string.Equals(
+                    value.locationId,
+                    detailedLocationId,
+                    StringComparison.Ordinal));
+            if (location == null ||
+                !TryResolveDetailedShelfAssignment(
+                    location,
+                    authoredShelfFixtureId,
+                    out assignedProductId,
+                    out detailedInventoryLocationId))
+            {
+                error =
+                    $"Authored shelf '{authoredShelfFixtureId}' has no persistent assignment at '{detailedLocationId}'.";
+                return false;
+            }
+            error = null;
+            return true;
+        }
+
+        internal bool TryResolveDetailedShelfAssignment(
+            PortfolioLocationSnapshot location,
+            string authoredShelfFixtureId,
+            out string assignedProductId,
+            out string detailedInventoryLocationId)
+        {
+            assignedProductId = null;
+            detailedInventoryLocationId = null;
+            if (!TryMapAuthoredShelf(
+                    location,
+                    authoredShelfFixtureId,
+                    out ShelfMerchandiseAssignmentSnapshot assignment,
+                    out StockingProductConfiguration physical))
+            {
+                return false;
+            }
+
+            assignedProductId = assignment.assignedProductId;
+            detailedInventoryLocationId = physical.ShelfLocationId;
+            return true;
+        }
+
         public bool TryGetProductPrice(
             string productId,
             out int salePriceCents,

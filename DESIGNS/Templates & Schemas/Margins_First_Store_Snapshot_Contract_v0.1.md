@@ -7,7 +7,7 @@
   aggregate reconciliation, and procurement implementation with focused
   EditMode/PlayMode verification; integrated suites and build are recorded with
   the implementing pull request
-- **File-envelope version:** `3`
+- **File-envelope version:** `4`
 - **First-store snapshot version:** `4`
 - **Portfolio snapshot version:** `4`
 - **Procurement snapshot version:** `1`
@@ -44,11 +44,15 @@ this contract does not choose its migration or compatibility policy.
 
 ## Envelope
 
-The file envelope contains the first-store snapshot, player transform, and
-portfolio snapshot. The portfolio snapshot remains the authority for company
-cash, company/brand/property/unit/location identity, employees, schedules,
-delegation policies, product-level aggregate inventory, procurement, operating
-reports, alerts, and per-location detailed/aggregate reconciliation.
+The file envelope contains the first-store snapshot, player transform, portfolio
+snapshot, and an optional active generated-location snapshot. The generated
+snapshot identifies the persistent business location, carries that location's
+detailed store state, records the parked first-store return transform, and
+preserves whether shared customer and employee work adapters should resume. The
+portfolio snapshot remains the authority for company cash, company/brand/
+property/unit/location identity, employees, schedules, delegation policies,
+product-level aggregate inventory, procurement, operating reports, alerts, and
+per-location detailed/aggregate reconciliation.
 
 The first-store snapshot contains:
 
@@ -135,7 +139,7 @@ The nested procurement snapshot contains:
 - `closed_with_result_pending` requires totals that reconcile to the ledger and
   its captured sale-time unit costs.
 - Unsupported versions reject the snapshot without partial mutation.
-- Legacy first-store versions `2` and `3`, file-envelope versions `1` and `2`,
+- Legacy first-store versions `2` and `3`, file-envelope versions `1` through `3`,
   and portfolio versions `1` through `3` normalize deterministically to the
   current temporary contract before validation and live-state mutation.
 - Every business location resolves by ID to one brand, property, and occupied
@@ -145,6 +149,15 @@ The nested procurement snapshot contains:
 - At most one business location is physically detailed at a time. Its generated
   layout signature must match the deterministic result of its persisted
   generator inputs before player modifications are replayed.
+- An active generated-location envelope must identify the same detailed location
+  as the portfolio, retain a valid parked first-store snapshot, and cannot park
+  active customers in that inactive first-store scene.
+- Restoring a generated location rematerializes its persisted generator inputs,
+  rebinds shared detailed authorities, restores authoritative inventory,
+  employees, customer observations and safe active-customer state, then creates
+  a fresh reconciliation baseline before physical operation resumes. A restored
+  customer position may be projected to the rebuilt NavMesh without changing its
+  stable identity, requested products, reservations, or progress state.
 - Product-level inventory exactly reconciles to the location total; detailed
   sessions post only changes since their captured start baselines.
 - Employee schedules, location assignments, manager authority, spending limits,
@@ -177,22 +190,28 @@ The nested procurement snapshot contains:
    employees, schedules, delegation policies, product inventory, reconciliation
    baselines, reports, alerts, procurement clock, purchase orders, lifecycle
    events, and company cash without mutation.
-3. Validate detailed purchase-order quantities against the first-store physical
-   delivery location before accepting either snapshot.
-4. Restore fixture layout and derived occupancy.
-5. Restore product registry, inventory locations, and quantities.
-6. Restore delivery containers against delivery-type inventory locations.
-7. Restore the bounded transaction ledger against known products without
+3. Validate detailed purchase-order and merchandising quantities against each
+   persisted detailed location before accepting any snapshot.
+4. If a generated location is active, leave its temporary scene instance and
+   restore the parked first-store adapters before applying accepted state.
+5. Restore fixture layout and derived occupancy.
+6. Restore product registry, inventory locations, and quantities.
+7. Restore delivery containers against delivery-type inventory locations.
+8. Restore the bounded transaction ledger against known products without
    consuming inventory.
-8. Restore store operating state and validate totals against the ledger's
+9. Restore store operating state and validate totals against the ledger's
    captured sale-time product unit costs.
-9. Validate the optional cleaning task.
-10. Validate physical-unit counts and shelf placements against the accepted
+10. Validate the optional cleaning task.
+11. Validate physical-unit counts and shelf placements against the accepted
     inventory without mutating the scene.
-11. Validate player position, body yaw, and camera pitch.
-12. Apply the accepted portfolio, reconcile distinct Unity physical-unit objects,
-    restore cumulative customer-flow observations, and apply the validated player
-    transform only after every validation succeeds.
+12. Validate player position, body yaw, and camera pitch.
+13. Apply the accepted portfolio; rematerialize an active generated layout when
+    present; rebind and restore shared detailed adapters; reconcile distinct Unity
+    physical-unit objects; and establish a current per-location reconciliation
+    baseline before detailed operation resumes.
+14. Restore cumulative customer-flow observations and apply the validated player
+    transform only after every validation succeeds. If application fails, restore
+    the captured pre-load store, portfolio, location, and player state.
 
 ## Deferred decisions
 

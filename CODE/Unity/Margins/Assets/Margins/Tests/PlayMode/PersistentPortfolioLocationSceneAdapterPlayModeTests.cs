@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -33,6 +34,7 @@ namespace Margins.Tests.PlayMode
         private sealed class SceneContext
         {
             public PortfolioProgressionController Portfolio;
+            public FirstStoreDiskPersistenceController Disk;
             public PersistentPortfolioLocationSceneAdapter Adapter;
             public PersistentPortfolioLocationController Locations;
             public FirstStorePersistenceMapperComponent Persistence;
@@ -457,6 +459,310 @@ namespace Margins.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator GeneratedLocationSaveRestoresDetailedStateAndReconcilesNextSaleOnce()
+        {
+            string directory = Path.Combine(
+                Application.temporaryCachePath,
+                $"generated-location-save-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "company.json");
+            try
+            {
+                SceneContext context = null;
+                yield return LoadContext(value => context = value);
+                PrepareRiverbendPortfolio(context);
+                Assert.That(
+                    context.Adapter.TryEnterLocation(
+                        RiverbendLocationId,
+                        out string error),
+                    Is.True,
+                    error);
+                yield return null;
+                SuppressAutomaticArrivalForControlledSale(context);
+
+                CheckoutTransactionSummary saleBeforeSave = null;
+                yield return CompleteLiveCustomerSale(
+                    context,
+                    employeeCheckout: false,
+                    value => saleBeforeSave = value);
+                Assert.That(saleBeforeSave, Is.Not.Null);
+                Assert.That(
+                    context.CustomerFlow.TryAdmitCustomerNow(
+                        out string savedCustomerId,
+                        out error),
+                    Is.True,
+                    error);
+                context.CustomerFlow.enabled = false;
+                Assert.That(
+                    context.CustomerFlow.TryCaptureSnapshot(
+                        out StoreCustomerFlowSnapshot customersBeforeSave,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    customersBeforeSave.customers.Select(value =>
+                        value.customerId),
+                    Does.Contain(savedCustomerId));
+
+                FirstStorePlayerTransformSnapshot savedPose =
+                    context.Player.CaptureTransformSnapshot();
+                savedPose.worldPosition +=
+                    context.Locations.ActiveBuilding.transform.right * 0.15f;
+                Assert.That(
+                    context.Player.TryApplyTransformSnapshot(
+                        savedPose,
+                        out error),
+                    Is.True,
+                    error);
+                string signature = context.Locations.ActiveBuilding.LastSignature;
+                Assert.That(
+                    context.Adapter.TryCapturePersistenceState(
+                        out FirstStoreSnapshot parkedStore,
+                        out PersistentGeneratedLocationDiskSnapshot activeStore,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    context.Portfolio.TryCaptureSnapshot(
+                        out PortfolioProgressionSnapshot capturedPortfolio,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    context.Portfolio.TryValidateDetailedMerchandisingReconciliation(
+                        parkedStore,
+                        capturedPortfolio,
+                        out error),
+                    Is.True,
+                    $"Parked first store: {error}");
+                Assert.That(
+                    context.Portfolio.TryValidateDetailedMerchandisingReconciliation(
+                        RiverbendLocationId,
+                        activeStore.detailedStore,
+                        capturedPortfolio,
+                        out error),
+                    Is.True,
+                    $"Active generated store: {error}");
+                Assert.That(
+                    context.Disk.TrySaveToPath(path),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(
+                    FirstStoreDiskSaveCodec.TryFromJson(
+                        File.ReadAllText(path),
+                        out FirstStoreDiskSaveData accepted,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(accepted.version,
+                    Is.EqualTo(FirstStoreDiskPersistenceController.CurrentFileVersion));
+                Assert.That(accepted.generatedLocation, Is.Not.Null);
+                Assert.That(accepted.generatedLocation.locationId,
+                    Is.EqualTo(RiverbendLocationId));
+                Assert.That(
+                    accepted.generatedLocation.detailedStore.customerFlow.customers
+                        .Select(value => value.customerId),
+                    Does.Contain(savedCustomerId));
+
+                string acceptedJson = File.ReadAllText(path);
+                Assert.That(
+                    context.Persistence.TryCapture(
+                        out FirstStoreSnapshot beforeRejectedLoad,
+                        out error),
+                    Is.True,
+                    error);
+                PortfolioProgressionSnapshot portfolioBeforeRejectedLoad =
+                    context.Portfolio.Progression.CreateSnapshot();
+                FirstStorePlayerTransformSnapshot poseBeforeRejectedLoad =
+                    context.Player.CaptureTransformSnapshot();
+                Assert.That(
+                    FirstStoreDiskSaveCodec.TryFromJson(
+                        acceptedJson,
+                        out FirstStoreDiskSaveData contradictory,
+                        out error),
+                    Is.True,
+                    error);
+                contradictory.generatedLocation.locationId = DowntownLocationId;
+                File.WriteAllText(
+                    path,
+                    FirstStoreDiskSaveCodec.ToJson(contradictory));
+                Assert.That(
+                    context.Disk.TryLoadFromPath(path),
+                    Is.False,
+                    "Contradictory active generated-location identity must reject before mutation.");
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(RiverbendLocationId));
+                Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                    Is.EqualTo(signature));
+                Assert.That(
+                    context.Persistence.TryCapture(
+                        out FirstStoreSnapshot afterRejectedLoad,
+                        out error),
+                    Is.True,
+                    error);
+                AssertJsonEqual(
+                    beforeRejectedLoad,
+                    afterRejectedLoad,
+                    "Detailed state after rejected generated-location load");
+                AssertJsonEqual(
+                    portfolioBeforeRejectedLoad,
+                    context.Portfolio.Progression.CreateSnapshot(),
+                    "Portfolio after rejected generated-location load");
+                FirstStorePlayerTransformSnapshot poseAfterRejectedLoad =
+                    context.Player.CaptureTransformSnapshot();
+                Assert.That(
+                    Vector3.Distance(
+                        poseAfterRejectedLoad.worldPosition,
+                        poseBeforeRejectedLoad.worldPosition),
+                    Is.LessThan(0.001f));
+                Assert.That(poseAfterRejectedLoad.bodyYawDegrees,
+                    Is.EqualTo(poseBeforeRejectedLoad.bodyYawDegrees).Within(0.001f));
+                Assert.That(poseAfterRejectedLoad.cameraPitchDegrees,
+                    Is.EqualTo(poseBeforeRejectedLoad.cameraPitchDegrees).Within(0.001f));
+                File.WriteAllText(path, acceptedJson);
+
+                PortfolioLocationSnapshot savedLocation = Location(
+                    accepted.portfolio,
+                    RiverbendLocationId);
+                context.CustomerFlow.ResetTransientStateForRestore();
+                Assert.That(
+                    context.Portfolio.Progression.TrySetReorderPolicy(
+                        RiverbendLocationId,
+                        PortfolioReorderPolicy.Resilient,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    context.Player.TryApplyTransformSnapshot(
+                        new FirstStorePlayerTransformSnapshot(
+                            savedPose.worldPosition + Vector3.forward,
+                            11f,
+                            -9f),
+                        out error),
+                    Is.True,
+                    error);
+
+                Assert.That(
+                    context.Disk.TryLoadFromPath(path),
+                    Is.True,
+                    context.Disk.LastDiagnostic);
+                Assert.That(context.Adapter.ActiveLocationId,
+                    Is.EqualTo(RiverbendLocationId));
+                Assert.That(context.Locations.ActiveBuilding.LastSignature,
+                    Is.EqualTo(signature));
+                Assert.That(context.EmployeeWork.DetailedLocationId,
+                    Is.EqualTo(RiverbendLocationId));
+                Assert.That(context.Adapter.HasActiveGeneratedNavigation,
+                    Is.True);
+                Assert.That(
+                    context.Persistence.TryCapture(
+                        out FirstStoreSnapshot restoredDetailed,
+                        out error),
+                    Is.True,
+                    error);
+                FirstStoreSnapshot expectedDetailed =
+                    accepted.generatedLocation.detailedStore;
+                Assert.That(restoredDetailed.customerFlow.customers.Count,
+                    Is.EqualTo(expectedDetailed.customerFlow.customers.Count));
+                for (int index = 0;
+                     index < expectedDetailed.customerFlow.customers.Count;
+                     index++)
+                {
+                    StoreCustomerSnapshot expectedCustomer =
+                        expectedDetailed.customerFlow.customers[index];
+                    StoreCustomerSnapshot restoredCustomer =
+                        restoredDetailed.customerFlow.customers[index];
+                    Assert.That(restoredCustomer.customerId,
+                        Is.EqualTo(expectedCustomer.customerId));
+                    Assert.That(restoredCustomer.state,
+                        Is.EqualTo(expectedCustomer.state));
+                    Assert.That(restoredCustomer.requestedProductIds,
+                        Is.EqualTo(expectedCustomer.requestedProductIds));
+                    Assert.That(restoredCustomer.reservedPhysicalUnitIds,
+                        Is.EqualTo(expectedCustomer.reservedPhysicalUnitIds));
+                    AssertInsideSelectedUnit(
+                        context.Locations.ActiveBuilding,
+                        new Vector3(
+                            restoredCustomer.positionX,
+                            restoredCustomer.positionY,
+                            restoredCustomer.positionZ));
+                    expectedCustomer.positionX = restoredCustomer.positionX;
+                    expectedCustomer.positionY = restoredCustomer.positionY;
+                    expectedCustomer.positionZ = restoredCustomer.positionZ;
+                }
+                AssertJsonEqual(
+                    expectedDetailed,
+                    restoredDetailed,
+                    "Generated detailed snapshot");
+                FirstStorePlayerTransformSnapshot restoredPose =
+                    context.Player.CaptureTransformSnapshot();
+                Assert.That(
+                    Vector3.Distance(
+                        restoredPose.worldPosition,
+                        savedPose.worldPosition),
+                    Is.LessThan(0.001f));
+                Assert.That(restoredPose.bodyYawDegrees,
+                    Is.EqualTo(savedPose.bodyYawDegrees).Within(0.001f));
+                Assert.That(restoredPose.cameraPitchDegrees,
+                    Is.EqualTo(savedPose.cameraPitchDegrees).Within(0.001f));
+                PortfolioProgressionSnapshot restoredPortfolio =
+                    context.Portfolio.Progression.CreateSnapshot();
+                Location(accepted.portfolio, RiverbendLocationId)
+                    .detailedReconciliation = PortfolioOperationsRules.Clone(
+                    Location(restoredPortfolio, RiverbendLocationId)
+                        .detailedReconciliation);
+                AssertJsonEqual(
+                    accepted.portfolio,
+                    restoredPortfolio,
+                    "Restored generated-location portfolio");
+
+                context.CustomerFlow.enabled = false;
+                context.CustomerFlow.ResetTransientStateForRestore();
+                context.CustomerFlow.enabled = true;
+                SuppressAutomaticArrivalForControlledSale(context);
+                CheckoutTransactionSummary saleAfterLoad = null;
+                yield return CompleteLiveCustomerSale(
+                    context,
+                    employeeCheckout: false,
+                    value => saleAfterLoad = value);
+                Assert.That(
+                    context.Adapter.TrySynchronizeActiveLocation(out error),
+                    Is.True,
+                    error);
+                PortfolioProgressionSnapshot afterSale =
+                    context.Portfolio.Progression.CreateSnapshot();
+                PortfolioLocationSnapshot afterLocation = Location(
+                    afterSale,
+                    RiverbendLocationId);
+                Assert.That(afterSale.cashCents,
+                    Is.EqualTo(accepted.portfolio.cashCents +
+                               saleAfterLoad.subtotalCents));
+                Assert.That(afterLocation.inventoryUnits,
+                    Is.EqualTo(savedLocation.inventoryUnits -
+                               saleAfterLoad.unitsSold));
+                Assert.That(afterLocation.lifetimeGrossSalesCents,
+                    Is.EqualTo(savedLocation.lifetimeGrossSalesCents +
+                               saleAfterLoad.subtotalCents));
+                string once = JsonUtility.ToJson(afterSale);
+                Assert.That(
+                    context.Adapter.TrySynchronizeActiveLocation(out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    JsonUtility.ToJson(
+                        context.Portfolio.Progression.CreateSnapshot()),
+                    Is.EqualTo(once));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        [UnityTest]
         public IEnumerator FailedOverflowMaterializationRollsBackAndRetriesExactlyOnce()
         {
             SceneContext context = null;
@@ -692,6 +998,8 @@ namespace Margins.Tests.PlayMode
             {
                 Portfolio = Object.FindAnyObjectByType<
                     PortfolioProgressionController>(),
+                Disk = Object.FindAnyObjectByType<
+                    FirstStoreDiskPersistenceController>(),
                 Adapter = Object.FindAnyObjectByType<
                     PersistentPortfolioLocationSceneAdapter>(),
                 Locations = Object.FindAnyObjectByType<
@@ -732,6 +1040,7 @@ namespace Margins.Tests.PlayMode
                     .ToArray()
             };
             Assert.That(context.Portfolio, Is.Not.Null);
+            Assert.That(context.Disk, Is.Not.Null);
             Assert.That(context.Adapter, Is.Not.Null);
             Assert.That(context.Locations, Is.Not.Null);
             Assert.That(context.Persistence, Is.Not.Null);
@@ -1139,6 +1448,36 @@ namespace Margins.Tests.PlayMode
                          value.quantityUnits,
                          value.unitCostCents))),
                 message);
+        }
+
+        private static void AssertJsonEqual(
+            object expected,
+            object actual,
+            string label)
+        {
+            string expectedJson = JsonUtility.ToJson(expected);
+            string actualJson = JsonUtility.ToJson(actual);
+            if (string.Equals(
+                    expectedJson,
+                    actualJson,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            int limit = Math.Min(expectedJson.Length, actualJson.Length);
+            int index = 0;
+            while (index < limit && expectedJson[index] == actualJson[index])
+            {
+                index++;
+            }
+            int start = Math.Max(0, index - 90);
+            int expectedLength = Math.Min(220, expectedJson.Length - start);
+            int actualLength = Math.Min(220, actualJson.Length - start);
+            Assert.Fail(
+                $"{label} differs at JSON character {index}. " +
+                $"Expected: {expectedJson.Substring(start, expectedLength)} " +
+                $"Actual: {actualJson.Substring(start, actualLength)}");
         }
 
         private static void AssertCompleteNavigationRoutes(

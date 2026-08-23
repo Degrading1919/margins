@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -8,12 +9,23 @@ using UnityEngine.InputSystem;
 namespace Margins
 {
     [Serializable]
+    public sealed class PersistentGeneratedLocationDiskSnapshot
+    {
+        public string locationId;
+        public FirstStoreSnapshot detailedStore;
+        public FirstStorePlayerTransformSnapshot firstStoreReturnTransform;
+        public bool customerFlowEnabled = true;
+        public bool employeeWorkEnabled = true;
+    }
+
+    [Serializable]
     public sealed class FirstStoreDiskSaveData
     {
         public int version = FirstStoreDiskPersistenceController.CurrentFileVersion;
         public FirstStoreSnapshot firstStore;
         public FirstStorePlayerTransformSnapshot playerTransform;
         public PortfolioProgressionSnapshot portfolio;
+        public PersistentGeneratedLocationDiskSnapshot generatedLocation;
     }
 
     public static class FirstStoreDiskSaveCodec
@@ -76,8 +88,9 @@ namespace Margins
     public sealed class FirstStoreDiskPersistenceController : MonoBehaviour
     {
         public const int LegacyFileVersion = 1;
-        public const int PriorFileVersion = 2;
-        public const int CurrentFileVersion = 3;
+        public const int VersionTwo = 2;
+        public const int PriorFileVersion = 3;
+        public const int CurrentFileVersion = 4;
 
         [SerializeField] private FirstStorePersistenceMapperComponent persistenceMapper;
         [SerializeField] private FirstPersonController firstPersonController;
@@ -246,54 +259,11 @@ namespace Margins
                 return Reject($"Save rejected: {error}");
             }
 
-            if (TryGetGeneratedLocationPersistenceBlocker(
-                    out string travelBlocker))
-            {
-                return Reject($"Save rejected: {travelBlocker}");
-            }
-
-            if (portfolioProgression != null &&
-                !portfolioProgression.TrySynchronizeDetailedShift(out error))
-            {
-                return Reject($"Save rejected: company synchronization failed: {error}");
-            }
-
-            if (persistenceMapper.TryGetDiskSaveBlocker(out string blocker))
-            {
-                return Reject($"Save rejected: {blocker}");
-            }
-
-            if (!persistenceMapper.TryCapture(
-                    out FirstStoreSnapshot firstStore,
+            if (!TryCaptureCurrentSaveData(out FirstStoreDiskSaveData saveData,
                     out error))
             {
                 return Reject($"Save rejected: {error}");
             }
-
-            FirstStorePlayerTransformSnapshot playerTransform =
-                firstPersonController.CaptureTransformSnapshot();
-            if (!firstPersonController.TryPreflightApplyTransformSnapshot(
-                    playerTransform,
-                    out error))
-            {
-                return Reject($"Save rejected: {error}");
-            }
-
-            PortfolioProgressionSnapshot portfolio = null;
-            if (portfolioProgression != null &&
-                !portfolioProgression.TryCaptureSnapshot(
-                    out portfolio,
-                    out error))
-            {
-                return Reject($"Save rejected: {error}");
-            }
-
-            FirstStoreDiskSaveData saveData = new()
-            {
-                firstStore = firstStore,
-                playerTransform = playerTransform,
-                portfolio = portfolio
-            };
 
             string json;
             try
@@ -319,11 +289,6 @@ namespace Margins
                 !TryResolvePath(path, out string acceptedPath, out error))
             {
                 return Reject($"Load rejected: {error}");
-            }
-
-            if (TryGetGeneratedLocationPersistenceBlocker(out string blocker))
-            {
-                return Reject($"Load rejected: {blocker}");
             }
 
             string json;
@@ -397,6 +362,99 @@ namespace Margins
             return true;
         }
 
+        private bool TryCaptureCurrentSaveData(
+            out FirstStoreDiskSaveData saveData,
+            out string error)
+        {
+            saveData = null;
+            FirstStoreSnapshot firstStore;
+            PersistentGeneratedLocationDiskSnapshot generatedLocation = null;
+            PersistentPortfolioLocationSceneAdapter sceneAdapter =
+                portfolioProgression?.LocationSceneAdapter;
+            if (sceneAdapter?.HasActiveGeneratedLocation == true)
+            {
+                if (!sceneAdapter.TryCapturePersistenceState(
+                        out firstStore,
+                        out generatedLocation,
+                        out error))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (portfolioProgression != null &&
+                    !portfolioProgression.TrySynchronizeDetailedShift(out error))
+                {
+                    error = $"Company synchronization failed: {error}";
+                    return false;
+                }
+                if (persistenceMapper.TryGetDiskSaveBlocker(out error) ||
+                    !persistenceMapper.TryCapture(out firstStore, out error))
+                {
+                    return false;
+                }
+            }
+
+            FirstStorePlayerTransformSnapshot playerTransform =
+                firstPersonController.CaptureTransformSnapshot();
+            if (!firstPersonController.TryPreflightApplyTransformSnapshot(
+                    playerTransform,
+                    out error))
+            {
+                return false;
+            }
+
+            PortfolioProgressionSnapshot portfolio = null;
+            if (portfolioProgression != null &&
+                !portfolioProgression.TryCaptureSnapshot(
+                    out portfolio,
+                    out error))
+            {
+                return false;
+            }
+
+            saveData = new FirstStoreDiskSaveData
+            {
+                version = CurrentFileVersion,
+                firstStore = firstStore,
+                playerTransform = playerTransform,
+                portfolio = portfolio,
+                generatedLocation = generatedLocation
+            };
+            if (portfolioProgression != null &&
+                (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
+                     firstStore,
+                     portfolio,
+                     out error) ||
+                 !portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
+                     firstStore,
+                     portfolio,
+                     out error)))
+            {
+                saveData = null;
+                return false;
+            }
+            if (generatedLocation != null &&
+                (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
+                     generatedLocation.locationId,
+                     generatedLocation.detailedStore,
+                     portfolio,
+                     out error) ||
+                 !portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
+                     generatedLocation.locationId,
+                     generatedLocation.detailedStore,
+                     portfolio,
+                     out error)))
+            {
+                saveData = null;
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
         private bool TryRestoreSaveData(
             FirstStoreDiskSaveData saveData,
             bool startingNewBusiness)
@@ -408,26 +466,94 @@ namespace Margins
             {
                 return Reject($"{rejectionPrefix}: {error}");
             }
-
-            if (saveData.version != CurrentFileVersion &&
-                saveData.version != PriorFileVersion &&
-                saveData.version != LegacyFileVersion)
+            if (!TryPrepareRestore(
+                    saveData,
+                    out PortfolioProgressionSnapshot acceptedPortfolio,
+                    out bool migratedLegacyPortfolio,
+                    out error))
             {
-                return Reject(
-                    $"{rejectionPrefix}: unsupported first-store file version {saveData.version}; expected {LegacyFileVersion}, {PriorFileVersion}, or {CurrentFileVersion}.");
+                return Reject($"{rejectionPrefix}: {error}");
             }
 
+            bool priorGameplayMode = firstPersonController.IsGameplayMode;
+            if (!TryCaptureCurrentSaveData(
+                    out FirstStoreDiskSaveData previousState,
+                    out error) ||
+                !TryPrepareRestore(
+                    previousState,
+                    out PortfolioProgressionSnapshot previousPortfolio,
+                    out _,
+                    out error))
+            {
+                return Reject(
+                    $"{rejectionPrefix}: current state could not be protected: {error}");
+            }
+
+            if (!TryApplyAcceptedRestore(
+                    saveData,
+                    acceptedPortfolio,
+                    out error))
+            {
+                string restoreError = error;
+                if (!TryApplyAcceptedRestore(
+                        previousState,
+                        previousPortfolio,
+                        out string rollbackError))
+                {
+                    throw new InvalidOperationException(
+                        $"Persistence restore failed ('{restoreError}') and live-state rollback failed ('{rollbackError}').");
+                }
+
+                firstPersonController.SetGameplayMode(priorGameplayMode);
+                return Reject($"{rejectionPrefix}: {restoreError}");
+            }
+
+            if (!GamePauseMenuController.IsAnyMenuOpen)
+            {
+                firstPersonController.SetGameplayMode(priorGameplayMode);
+            }
+
+            return Accept(
+                startingNewBusiness
+                    ? "Started a clean first-store business. The existing disk save was kept."
+                    : migratedLegacyPortfolio
+                    ? "Loaded first-store state and migrated legacy company progression."
+                    : "Loaded first-store and portfolio state from disk.");
+        }
+
+        private bool TryPrepareRestore(
+            FirstStoreDiskSaveData saveData,
+            out PortfolioProgressionSnapshot acceptedPortfolio,
+            out bool migratedLegacyPortfolio,
+            out string error)
+        {
+            acceptedPortfolio = null;
+            migratedLegacyPortfolio = false;
+            if (saveData == null ||
+                (saveData.version != CurrentFileVersion &&
+                 saveData.version != PriorFileVersion &&
+                 saveData.version != VersionTwo &&
+                 saveData.version != LegacyFileVersion))
+            {
+                error = saveData == null
+                    ? "First-store save state is missing."
+                    : $"Unsupported first-store file version {saveData.version}; expected {LegacyFileVersion}, {VersionTwo}, {PriorFileVersion}, or {CurrentFileVersion}.";
+                return false;
+            }
+
+            error = null;
             if (saveData.firstStore == null ||
-                !persistenceMapper.TryValidateSnapshot(saveData.firstStore, out error) ||
+                !persistenceMapper.TryValidateSnapshot(
+                    saveData.firstStore,
+                    out error) ||
                 !firstPersonController.TryPreflightApplyTransformSnapshot(
                     saveData.playerTransform,
                     out error))
             {
-                return Reject($"{rejectionPrefix}: {error ?? "first-store state is missing."}");
+                error ??= "First-store state is missing.";
+                return false;
             }
 
-            PortfolioProgressionSnapshot acceptedPortfolio = null;
-            bool migratedLegacyPortfolio = false;
             if (portfolioProgression != null)
             {
                 if (saveData.version == LegacyFileVersion)
@@ -437,7 +563,8 @@ namespace Margins
                             out acceptedPortfolio,
                             out error))
                     {
-                        return Reject($"{rejectionPrefix}: legacy company migration failed: {error}");
+                        error = $"Legacy company migration failed: {error}";
+                        return false;
                     }
                     migratedLegacyPortfolio = true;
                 }
@@ -447,14 +574,79 @@ namespace Margins
                              out PortfolioProgression restoredPortfolio,
                              out error))
                 {
-                    return Reject(
-                        $"{rejectionPrefix}: {error ?? "portfolio state is missing."}");
+                    error ??= "Portfolio state is missing.";
+                    return false;
                 }
                 else
                 {
                     acceptedPortfolio = restoredPortfolio.CreateSnapshot();
                 }
+            }
+            else if (saveData.portfolio != null)
+            {
+                error =
+                    "This scene has no portfolio controller for the saved company state.";
+                return false;
+            }
 
+            PersistentGeneratedLocationDiskSnapshot generated =
+                saveData.generatedLocation;
+            if (generated != null)
+            {
+                if (saveData.version != CurrentFileVersion ||
+                    portfolioProgression == null ||
+                    !FirstStoreIdentifier.IsValid(generated.locationId) ||
+                    string.Equals(
+                        generated.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal) ||
+                    generated.detailedStore == null ||
+                    !persistenceMapper.TryValidateSnapshot(
+                        generated.detailedStore,
+                        out error) ||
+                    !firstPersonController.TryPreflightApplyTransformSnapshot(
+                        generated.firstStoreReturnTransform,
+                        out error))
+                {
+                    error ??=
+                        "Generated detailed-location persistence state is invalid.";
+                    return false;
+                }
+                if (!string.Equals(
+                        acceptedPortfolio.company.activeDetailedLocationId,
+                        generated.locationId,
+                        StringComparison.Ordinal) ||
+                    acceptedPortfolio.locations.All(location => !string.Equals(
+                        location.locationId,
+                        generated.locationId,
+                        StringComparison.Ordinal)))
+                {
+                    error =
+                        "Generated detailed-location state contradicts the portfolio's active location.";
+                    return false;
+                }
+                if (saveData.firstStore.customerFlow?.customers?.Count > 0)
+                {
+                    error =
+                        "A generated-location save cannot park active customers in a different first-store location.";
+                    return false;
+                }
+            }
+            else if (acceptedPortfolio != null &&
+                     !string.IsNullOrWhiteSpace(
+                         acceptedPortfolio.company.activeDetailedLocationId) &&
+                     !string.Equals(
+                         acceptedPortfolio.company.activeDetailedLocationId,
+                         PortfolioProgressionRules.FirstLocationId,
+                         StringComparison.Ordinal))
+            {
+                error =
+                    "Portfolio state identifies an active generated location without its detailed scene snapshot.";
+                return false;
+            }
+
+            if (acceptedPortfolio != null)
+            {
                 StoreOperatingSnapshot savedOperating =
                     saveData.firstStore.storeOperating;
                 PortfolioDetailedReconciliationSnapshot reconciliation =
@@ -469,117 +661,86 @@ namespace Margins
                          savedOperating.sessionId,
                          StringComparison.Ordinal)))
                 {
-                    return Reject(
-                        $"{rejectionPrefix}: detailed first-shift result and portfolio posting disagree.");
+                    error =
+                        "Detailed first-shift result and portfolio posting disagree.";
+                    return false;
                 }
-
                 if (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
                         saveData.firstStore,
                         acceptedPortfolio,
-                        out error))
-                {
-                    return Reject(
-                        $"{rejectionPrefix}: procurement reconciliation failed: {error}");
-                }
-
-                if (!portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
+                        out error) ||
+                    !portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
                         saveData.firstStore,
                         acceptedPortfolio,
                         out error))
                 {
-                    return Reject(
-                        $"{rejectionPrefix}: merchandising reconciliation failed: {error}");
+                    return false;
+                }
+                if (generated != null &&
+                    (!portfolioProgression.TryValidateDetailedProcurementReconciliation(
+                         generated.locationId,
+                         generated.detailedStore,
+                         acceptedPortfolio,
+                         out error) ||
+                     !portfolioProgression.TryValidateDetailedMerchandisingReconciliation(
+                         generated.locationId,
+                         generated.detailedStore,
+                         acceptedPortfolio,
+                         out error)))
+                {
+                    return false;
                 }
             }
-            else if (saveData.portfolio != null)
-            {
-                return Reject(
-                    $"{rejectionPrefix}: this scene has no portfolio controller for the saved company state.");
-            }
 
-            if (!persistenceMapper.TryCapture(
-                    out FirstStoreSnapshot previousFirstStore,
-                    out error))
-            {
-                return Reject($"{rejectionPrefix}: current state could not be protected: {error}");
-            }
+            error = null;
+            return true;
+        }
 
-            FirstStorePlayerTransformSnapshot previousPlayerTransform =
-                firstPersonController.CaptureTransformSnapshot();
-            PortfolioProgressionSnapshot previousPortfolio = null;
-            if (portfolioProgression != null &&
-                !portfolioProgression.TryCaptureSnapshot(
-                    out previousPortfolio,
-                    out error))
+        private bool TryApplyAcceptedRestore(
+            FirstStoreDiskSaveData saveData,
+            PortfolioProgressionSnapshot acceptedPortfolio,
+            out string error)
+        {
+            PersistentPortfolioLocationSceneAdapter sceneAdapter =
+                portfolioProgression?.LocationSceneAdapter;
+            if (sceneAdapter != null &&
+                !sceneAdapter.TryResetForPersistenceRestore(out error))
             {
-                return Reject(
-                    $"{rejectionPrefix}: current company state could not be protected: {error}");
+                return false;
             }
             if (!persistenceMapper.TryRestore(saveData.firstStore, out error))
             {
-                return Reject($"{rejectionPrefix}: {error}");
+                return false;
             }
-
             if (portfolioProgression != null &&
                 !portfolioProgression.TryRestoreSnapshot(
                     acceptedPortfolio,
                     out error))
             {
-                string portfolioError = error;
-                bool stateRolledBack = persistenceMapper.TryRestore(
-                    previousFirstStore,
-                    out string rollbackError);
-                bool portfolioRolledBack = portfolioProgression.TryRestoreSnapshot(
-                    previousPortfolio,
-                    out string portfolioRollbackError);
-                if (!stateRolledBack || !portfolioRolledBack)
-                {
-                    throw new InvalidOperationException(
-                        $"Portfolio restore failed ('{portfolioError}') and live-state rollback failed " +
-                        $"(store: '{rollbackError ?? "ok"}', portfolio: '{portfolioRollbackError ?? "ok"}').");
-                }
-
-                return Reject($"{rejectionPrefix}: {portfolioError}");
+                return false;
             }
-
+            if (saveData.generatedLocation != null &&
+                (sceneAdapter == null ||
+                 !sceneAdapter.TryRestorePersistenceState(
+                     saveData.generatedLocation,
+                     out error)))
+            {
+                error ??=
+                    "The scene has no generated-location adapter for the saved detailed location.";
+                return false;
+            }
             if (!firstPersonController.TryApplyTransformSnapshot(
                     saveData.playerTransform,
                     out error))
             {
-                string playerError = error;
-                bool stateRolledBack = persistenceMapper.TryRestore(
-                    previousFirstStore,
-                    out string rollbackError);
-                string portfolioRollbackError = null;
-                bool portfolioRolledBack = portfolioProgression == null ||
-                    portfolioProgression.TryRestoreSnapshot(
-                        previousPortfolio,
-                        out portfolioRollbackError);
-                bool playerRolledBack = firstPersonController.TryApplyTransformSnapshot(
-                    previousPlayerTransform,
-                    out string playerRollbackError);
-                if (!stateRolledBack || !portfolioRolledBack || !playerRolledBack)
-                {
-                    throw new InvalidOperationException(
-                        $"Player restore failed ('{playerError}') and live-state rollback failed " +
-                        $"(state: '{rollbackError ?? "ok"}', portfolio: " +
-                        $"'{(portfolioProgression == null ? "ok" : portfolioRollbackError ?? "ok")}', " +
-                        $"player: '{playerRollbackError ?? "ok"}').");
-                }
-
-                return Reject($"{rejectionPrefix}: {playerError}");
+                return false;
             }
 
             stagedCheckout.ResetTransientStateAfterRestore();
             stagedCheckoutWorldTarget.ResetTransientStateAfterRestore();
             interactionController.ResetTransientStateAfterRestore();
-
-            return Accept(
-                startingNewBusiness
-                    ? "Started a clean first-store business. The existing disk save was kept."
-                    : migratedLegacyPortfolio
-                    ? "Loaded first-store state and migrated legacy company progression."
-                    : "Loaded first-store and portfolio state from disk.");
+            error = null;
+            return true;
         }
 
         private static bool TryResolvePath(
@@ -621,7 +782,7 @@ namespace Margins
             if (sceneAdapter?.HasActiveGeneratedLocation == true)
             {
                 blocker =
-                    "Leave the generated location before saving, loading, or starting a new business.";
+                    "Leave the generated location before starting a new business.";
                 return true;
             }
 
