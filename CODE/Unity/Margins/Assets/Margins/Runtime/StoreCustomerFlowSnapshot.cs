@@ -135,6 +135,11 @@ namespace Margins
         public int nextCustomerOrdinal = 1;
         public float secondsUntilNextArrival;
         public List<StoreCustomerSnapshot> customers = new();
+        public int lifetimeCustomerVisits;
+        public int lifetimeCustomersServed;
+        public int lifetimeCustomersAbandoned;
+        public int lifetimeRequestedProductUnits;
+        public int lifetimeUnavailableProductUnits;
 
         public StoreCustomerFlowSnapshot()
         {
@@ -143,13 +148,24 @@ namespace Margins
         public StoreCustomerFlowSnapshot(
             int nextCustomerOrdinal,
             float secondsUntilNextArrival,
-            IEnumerable<StoreCustomerSnapshot> customers)
+            IEnumerable<StoreCustomerSnapshot> customers,
+            int lifetimeCustomerVisits = 0,
+            int lifetimeCustomersServed = 0,
+            int lifetimeCustomersAbandoned = 0,
+            int lifetimeRequestedProductUnits = 0,
+            int lifetimeUnavailableProductUnits = 0)
         {
             this.nextCustomerOrdinal = nextCustomerOrdinal;
             this.secondsUntilNextArrival = secondsUntilNextArrival;
             this.customers = customers == null
                 ? new List<StoreCustomerSnapshot>()
                 : new List<StoreCustomerSnapshot>(customers);
+            this.lifetimeCustomerVisits = lifetimeCustomerVisits;
+            this.lifetimeCustomersServed = lifetimeCustomersServed;
+            this.lifetimeCustomersAbandoned = lifetimeCustomersAbandoned;
+            this.lifetimeRequestedProductUnits = lifetimeRequestedProductUnits;
+            this.lifetimeUnavailableProductUnits =
+                lifetimeUnavailableProductUnits;
         }
 
         public bool Equals(StoreCustomerFlowSnapshot other)
@@ -157,6 +173,14 @@ namespace Margins
             if (other == null ||
                 nextCustomerOrdinal != other.nextCustomerOrdinal ||
                 !secondsUntilNextArrival.Equals(other.secondsUntilNextArrival) ||
+                lifetimeCustomerVisits != other.lifetimeCustomerVisits ||
+                lifetimeCustomersServed != other.lifetimeCustomersServed ||
+                lifetimeCustomersAbandoned !=
+                other.lifetimeCustomersAbandoned ||
+                lifetimeRequestedProductUnits !=
+                other.lifetimeRequestedProductUnits ||
+                lifetimeUnavailableProductUnits !=
+                other.lifetimeUnavailableProductUnits ||
                 customers == null || other.customers == null ||
                 customers.Count != other.customers.Count)
             {
@@ -183,6 +207,11 @@ namespace Margins
             HashCode hash = new();
             hash.Add(nextCustomerOrdinal);
             hash.Add(secondsUntilNextArrival);
+            hash.Add(lifetimeCustomerVisits);
+            hash.Add(lifetimeCustomersServed);
+            hash.Add(lifetimeCustomersAbandoned);
+            hash.Add(lifetimeRequestedProductUnits);
+            hash.Add(lifetimeUnavailableProductUnits);
             if (customers != null)
             {
                 foreach (StoreCustomerSnapshot customer in customers)

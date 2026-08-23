@@ -6,8 +6,9 @@ using UnityEngine;
 namespace Margins
 {
     /// <summary>
-    /// Runtime/editor host for a generated graybox commercial building. Existing
-    /// first-store state and persistence do not depend on this component.
+    /// Runtime/editor host for a generated graybox commercial building. Persistent
+    /// portfolio identity is supplied by PersistentPortfolioLocationController;
+    /// this component remains a stateless renderer of one explicit request.
     /// </summary>
     public sealed class ProceduralCommercialBuilding : MonoBehaviour
     {

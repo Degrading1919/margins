@@ -166,7 +166,10 @@ namespace Margins
                     .Where(employee => string.Equals(
                         employee.assignedLocationId,
                         PortfolioProgressionRules.FirstLocationId,
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal) &&
+                        PortfolioOperationsRules.IsScheduled(
+                            employee.schedule,
+                            progression.CurrentDay))
                     .Sum(employee => employee.dailyWageCents);
             }
             catch (OverflowException)
@@ -220,11 +223,12 @@ namespace Margins
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal));
-            if (firstLocation != null && firstLocation.delegatedDaysOperating > 0)
+            if (RequiresDetailedReturnRebase(
+                    firstLocation,
+                    progression.CurrentDay) &&
+                firstPersonController != null &&
+                !firstPersonController.IsGameplayMode)
             {
-                // Once an off-site day has advanced, its aggregate inventory and
-                // report are authoritative. Do not repost the still-loaded detailed
-                // scene on top of delegated sales, purchasing, payroll, or rent.
                 error = null;
                 return true;
             }
@@ -239,20 +243,51 @@ namespace Margins
             if (!TryGetDetailedInventory(
                     firstStoreInventory.Inventory?.CreateSnapshot(),
                     firstStore.Checkout.ProductUnitCostsCents,
-                    out int remainingInventoryUnits,
-                    out long inventoryAssetValueCents,
-                    out error))
+                     out int remainingInventoryUnits,
+                     out long inventoryAssetValueCents,
+                     out List<PortfolioProductInventorySnapshot>
+                         productInventory,
+                     out error))
             {
                 return false;
             }
 
+            DetailedOperationMetricsSnapshot metrics =
+                firstStore.CustomerFlow?.CreateDetailedOperationMetrics(
+                    firstStore.CleaningTask == null ||
+                    firstStore.CleaningTask.IsComplete);
+            if (RequiresDetailedReturnRebase(
+                    firstLocation,
+                    progression.CurrentDay))
+            {
+                bool rebased = progression.TryRebaseDetailedOperation(
+                    PortfolioProgressionRules.FirstLocationId,
+                    firstStore.StableSessionId,
+                    totals,
+                    remainingInventoryUnits,
+                    inventoryAssetValueCents,
+                    productInventory,
+                    metrics,
+                    out error);
+                if (rebased)
+                {
+                    Record(
+                        "Returned to Mile 7 Market; aggregate state is preserved and the loaded detailed scene now has a fresh reconciliation baseline.",
+                        true);
+                }
+                return rebased;
+            }
+
             bool success = progression.TryReconcileDetailedOperation(
+                PortfolioProgressionRules.FirstLocationId,
                 firstStore.StableSessionId,
                 totals,
                 remainingInventoryUnits,
                 inventoryAssetValueCents,
+                productInventory,
                 MerchandisingRules.AggregateCompletedSales(
                     firstStore.Checkout.CompletedTransactions),
+                metrics,
                 out bool unchanged,
                 out error);
             if (success && !unchanged && totals.transactionCount > 0)
@@ -284,9 +319,12 @@ namespace Margins
                 return false;
             }
 
-            if (firstLocation.delegatedDaysOperating > 0)
+            if (!HasCurrentDetailedBaseline(
+                    firstLocation,
+                    progression.CurrentDay))
             {
-                // Aggregate inventory is authoritative after delegated operation.
+                // The saved aggregate state remains authoritative until the
+                // loaded scene establishes its return baseline.
                 error = null;
                 return true;
             }
@@ -386,7 +424,9 @@ namespace Margins
                     locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal) &&
-                location.delegatedDaysOperating == 0;
+                HasCurrentDetailedBaseline(
+                    location,
+                    progression.CurrentDay);
             if (detailedFirstLocation)
             {
                 lines = ConvenienceStoreProcurement.DetailedCase;
@@ -473,7 +513,9 @@ namespace Margins
                     value.locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal));
-            if (location.delegatedDaysOperating > 0 ||
+            if (!HasCurrentDetailedBaseline(
+                    location,
+                    progression.CurrentDay) ||
                 progression.PurchaseOrders.Any(order =>
                     !order.IsTerminal &&
                     string.Equals(
@@ -689,7 +731,9 @@ namespace Margins
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal));
-            if (firstLocation.delegatedDaysOperating > 0)
+            if (!HasCurrentDetailedBaseline(
+                    firstLocation,
+                    restored.CurrentDay))
             {
                 error = null;
                 return true;
@@ -891,20 +935,41 @@ namespace Margins
                 if (!TryGetDetailedInventory(
                         firstStoreSnapshot.inventory,
                         firstStore.Checkout.ProductUnitCostsCents,
-                        out int remainingInventoryUnits,
-                        out long inventoryAssetValueCents,
-                        out error))
+                         out int remainingInventoryUnits,
+                         out long inventoryAssetValueCents,
+                         out List<PortfolioProductInventorySnapshot>
+                             productInventory,
+                         out error))
                 {
                     migrated = null;
                     return false;
                 }
+                StoreCustomerFlowSnapshot flow = firstStoreSnapshot.customerFlow;
+                DetailedOperationMetricsSnapshot metrics = flow == null
+                    ? null
+                    : new DetailedOperationMetricsSnapshot
+                    {
+                        customerVisits = flow.lifetimeCustomerVisits,
+                        customersServed = flow.lifetimeCustomersServed,
+                        customersAbandoned =
+                            flow.lifetimeCustomersAbandoned,
+                        requestedProductUnits =
+                            flow.lifetimeRequestedProductUnits,
+                        unavailableProductUnits =
+                            flow.lifetimeUnavailableProductUnits,
+                        standardsTaskComplete =
+                            firstStoreSnapshot.cleaningTask?.IsComplete ?? true
+                    };
                 if (!migration.TryReconcileDetailedOperation(
+                        PortfolioProgressionRules.FirstLocationId,
                         operating.sessionId,
                         migratedTotals,
                         remainingInventoryUnits,
                         inventoryAssetValueCents,
+                        productInventory,
                         MerchandisingRules.AggregateCompletedSales(
                             firstStoreSnapshot.transactionLedger?.transactions),
+                        metrics,
                         out _,
                         out error))
                 {
@@ -918,21 +983,46 @@ namespace Margins
             return true;
         }
 
+        private static bool RequiresDetailedReturnRebase(
+            PortfolioLocationSnapshot location,
+            int currentDay)
+        {
+            return location?.detailedReconciliation?.initialized == true &&
+                   location.detailedReconciliation.sessionStartedDay <
+                   currentDay &&
+                   location.hasLastReport && location.lastReport != null &&
+                   location.lastReport.day == currentDay &&
+                   !location.lastReport.isDetailedOperation;
+        }
+
+        private static bool HasCurrentDetailedBaseline(
+            PortfolioLocationSnapshot location,
+            int currentDay)
+        {
+            return location?.detailedReconciliation?.initialized == true &&
+                   location.detailedReconciliation.sessionStartedDay ==
+                   currentDay;
+        }
+
         private static bool TryGetDetailedInventory(
             FirstStoreInventorySnapshot inventory,
             System.Collections.Generic.IReadOnlyDictionary<string, int> unitCostsCents,
             out int totalUnits,
             out long inventoryAssetValueCents,
+            out List<PortfolioProductInventorySnapshot> productInventory,
             out string error)
         {
             totalUnits = 0;
             inventoryAssetValueCents = 0;
+            productInventory = null;
             if (inventory?.locations == null || unitCostsCents == null)
             {
                 error = "Detailed first-store inventory is missing.";
                 return false;
             }
 
+            Dictionary<string, int> quantityByProduct = unitCostsCents.Keys
+                .ToDictionary(value => value, _ => 0, StringComparer.Ordinal);
             try
             {
                 foreach (InventoryLocationSnapshot location in inventory.locations)
@@ -959,6 +1049,9 @@ namespace Margins
                             return false;
                         }
                         totalUnits = checked(totalUnits + quantity.quantityUnits);
+                        quantityByProduct[quantity.productId] = checked(
+                            quantityByProduct[quantity.productId] +
+                            quantity.quantityUnits);
                         inventoryAssetValueCents = checked(
                             inventoryAssetValueCents +
                             (long)quantity.quantityUnits * unitCostCents);
@@ -971,6 +1064,15 @@ namespace Margins
                 return false;
             }
 
+            productInventory = quantityByProduct
+                .OrderBy(value => value.Key, StringComparer.Ordinal)
+                .Select(value => new PortfolioProductInventorySnapshot
+                {
+                    productId = value.Key,
+                    quantityUnits = value.Value,
+                    unitCostCents = unitCostsCents[value.Key]
+                })
+                .ToList();
             error = null;
             return true;
         }
@@ -1113,7 +1215,7 @@ namespace Margins
                 new Rect(45f, 57f, 760f, 24f),
                 $"DAY {snapshot.currentDay}   CASH {FormatCents(snapshot.cashCents)}   " +
                 $"REPUTATION {snapshot.companyReputation}/100   " +
-                $"LOCATIONS {snapshot.locations.Count}/2");
+                $"LOCATIONS {snapshot.locations.Count}");
             GUI.Label(
                 new Rect(width - 470f, 38f, 430f, 28f),
                 "TAB return to store  |  F5 save  |  F9 load");

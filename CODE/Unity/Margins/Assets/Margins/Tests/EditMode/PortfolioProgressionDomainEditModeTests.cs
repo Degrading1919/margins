@@ -284,10 +284,12 @@ namespace Margins.Tests.EditMode
                 report.operatingProfitCents,
                 Is.EqualTo(
                     report.grossSalesCents -
-                    report.costOfGoodsSoldCents -
-                    report.payrollCents -
-                    report.rentCents -
-                    report.deliveryFeesCents));
+                     report.costOfGoodsSoldCents -
+                     report.payrollCents -
+                     report.rentCents -
+                     report.baseOperatingCostsCents -
+                     report.maintenanceCostsCents -
+                     report.deliveryFeesCents));
             Assert.That(
                 after.cashCents,
                 Is.EqualTo(beforeCash + report.cashChangeCents));
@@ -793,7 +795,7 @@ namespace Margins.Tests.EditMode
                 Is.True,
                 presetError);
             PortfolioProgressionSnapshot legacy = source.CreateSnapshot();
-            legacy.version = PortfolioProgressionSnapshot.PriorVersion;
+            legacy.version = PortfolioProgressionSnapshot.VersionTwo;
             legacy.locations[0].merchandisePrices = null;
             legacy.locations[0].shelfMerchandiseAssignments = null;
 
