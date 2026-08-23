@@ -74,10 +74,11 @@ namespace Margins.Tests
             Assert.That(snapshot.locations.Count, Is.EqualTo(1));
             Assert.That(snapshot.locations[0].inventoryUnits, Is.EqualTo(8));
             Assert.That(snapshot.employees, Is.Empty);
+            Assert.That(portfolio.IsOwnerPhoneUnlocked, Is.False);
             Assert.That(portfolio.OwnsManagementDesk, Is.False);
 
             player.SetGameplayMode(false);
-            Assert.That(portfolio.OwnsManagementDesk, Is.True);
+            Assert.That(portfolio.OwnsManagementDesk, Is.False);
             yield return null;
         }
 

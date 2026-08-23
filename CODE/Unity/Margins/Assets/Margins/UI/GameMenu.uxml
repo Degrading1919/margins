@@ -121,8 +121,6 @@
 
                     <ui:VisualElement class="management-footer">
                         <ui:Label name="management-status" class="management-status" />
-                        <ui:Button name="management-save" text="Save Game" class="quiet-button management-footer-button" />
-                        <ui:Button name="management-load" text="Load Game" class="quiet-button management-footer-button" />
                         <ui:Button name="management-resume" text="Back to Store" class="apply-button management-footer-button" />
                     </ui:VisualElement>
                 </ui:VisualElement>

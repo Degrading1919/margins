@@ -31,6 +31,7 @@ namespace Margins
         [SerializeField] private CharacterController characterController;
         [SerializeField] private Transform cameraPivot;
         [SerializeField] private InputActionAsset inputActions;
+        [SerializeField] private PortfolioProgressionController portfolioProgression;
         [SerializeField] private string inputActionMapName = "Player";
         [SerializeField] private string moveActionName = "Move";
         [SerializeField] private string lookActionName = "Look";
@@ -173,6 +174,8 @@ namespace Margins
 
         private void OnEnable()
         {
+            portfolioProgression ??=
+                FindAnyObjectByType<PortfolioProgressionController>();
             EnsureCameraState();
             if (characterController != null)
             {
@@ -344,6 +347,13 @@ namespace Margins
 
             if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
             {
+                portfolioProgression ??=
+                    FindAnyObjectByType<PortfolioProgressionController>();
+                if (portfolioProgression != null &&
+                    !portfolioProgression.IsOwnerPhoneUnlocked)
+                {
+                    return;
+                }
                 SetGameplayMode(!IsGameplayMode);
             }
 

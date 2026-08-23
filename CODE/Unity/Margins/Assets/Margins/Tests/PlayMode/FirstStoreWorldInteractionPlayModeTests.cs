@@ -270,6 +270,11 @@ namespace Margins.Tests
         {
             yield return LoadValidationScene();
 
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            GameMenuPlayModeTests.CompleteManagementFirstShift(portfolio);
+            yield return null;
+
             FirstStoreInteractionController interaction =
                 Object.FindAnyObjectByType<FirstStoreInteractionController>();
             CleaningTaskComponent cleaning =
