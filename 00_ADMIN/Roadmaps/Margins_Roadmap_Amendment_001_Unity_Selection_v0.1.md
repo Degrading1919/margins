@@ -4,9 +4,9 @@
 
 - **Status:** Current engine-selection amendment to `Margins_Master_Roadmap_v0.1.md`
 - **Effective date:** July 27, 2026
-- **Progress synchronized:** August 6, 2026
+- **Progress synchronized:** August 23, 2026
 - **Authority:** Applies `00_ADMIN/Decisions/Margins_Engine_Selection_Decision_v1.0.md` and `00_ADMIN/Decisions/Margins_Unity_Foundation_Baseline_Decision_v1.0.md` to the roadmap baseline.
-- **Scope:** This amendment changes the engine-selection path only. It does not approve a new full-project schedule.
+- **Scope:** This amendment changes the engine-selection path only. The active full-project schedule is now maintained in the master roadmap's August 23 evidence-based reforecast.
 
 ## Reason for amendment
 
@@ -70,7 +70,7 @@ Completed proof:
 - [x] Runnable Windows x64 build
 - [x] No project-blocking Unity limitation identified
 
-PR #12 merged this foundation spike. Later merged work expanded it into the first-store interaction, customer, employee, persistence, delegation, reporting, and reusable business-operation systems now reflected in the master roadmap progress checklist.
+PR #12 merged this foundation spike. Later merged work expanded it into the first-store interaction, customer, employee, persistence, procurement, pricing, delegation, procedural-building, portfolio/property, reporting, and generated-location systems now reflected in the master roadmap.
 
 ### Stage 3 exit gate
 
@@ -85,18 +85,14 @@ Continued playtesting may reveal defects or feel problems, but those are handled
 
 ## Schedule disposition
 
-The dates in the original `Margins_Master_Roadmap_v0.1.md` remain historical proposals and were already identified as substantially inaccurate. The August 6 progress synchronization records completed work but does not establish a new full-project forecast.
+The original roadmap's late-2026 engine-selection and later dependent schedule assumptions are historical only.
 
-Do not issue a new release schedule without recording:
+The **August 23, 2026 evidence-based reforecast in `Margins_Master_Roadmap_v0.1.md` now owns active schedule planning**. It uses observed repository and milestone velocity while separately treating final art, owner playtesting, tuning, onboarding, external validation, and commercial presentation as slower human-bottleneck work.
 
-- actual implementation and review hours where available;
-- local test and build velocity;
-- owner playtest and bug-fix burden;
-- asset-production and integration throughput;
-- remaining Stage 5–8 dependencies;
-- revised aggressive, planning, and conservative scenarios;
-- project-owner approval.
+This amendment should not carry a competing release schedule. Future schedule changes belong in the master roadmap unless they are caused specifically by reopening the engine decision.
 
 ## Current disposition
 
-The Unity selection and foundation-spike sequence is complete. Current execution should continue from the merged first-store and portfolio foundation, close remaining gameplay gaps, integrate production presentation, and perform bounded playtest-driven fixes. Engine reconsideration requires a concrete project-blocking Unity limitation or a new project-owner decision.
+The Unity selection and foundation-spike sequence is complete. Engine reconsideration requires a concrete project-blocking Unity limitation or a new project-owner decision.
+
+Current execution has advanced beyond the original amendment into first-store operation, reusable business simulation, procedural commercial generation, persistent portfolio/property state, and generated-location detailed handoff. Those systems are governed by their current implementation and approved decision records, not by expanding the scope of this engine-selection amendment.
