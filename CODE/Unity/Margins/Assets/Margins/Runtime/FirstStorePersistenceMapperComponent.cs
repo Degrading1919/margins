@@ -356,6 +356,41 @@ namespace Margins
             return false;
         }
 
+        public bool TryGetLoadRollbackBlocker(out string blocker)
+        {
+            if (!TryValidateConfiguration(out string configurationError))
+            {
+                blocker = configurationError;
+                return true;
+            }
+
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                if (deliveryBox.IsCarried)
+                {
+                    blocker =
+                        "Set down the carried delivery box before loading.";
+                    return true;
+                }
+            }
+            if (employeeWork != null && employeeWork.IsHandlingInventory)
+            {
+                blocker =
+                    "Wait for the employee to set down or stock carried inventory before loading.";
+                return true;
+            }
+            if (customerFlow != null &&
+                customerFlow.TryGetRestoreBlocker(out blocker))
+            {
+                return true;
+            }
+
+            // The staged owner checkout is intentionally transient. A
+            // successful load discards it, matching the established contract.
+            blocker = null;
+            return false;
+        }
+
         private bool TryPrepareRestore(
             FirstStoreSnapshot snapshot,
             out RestoredFirstStoreState restored,

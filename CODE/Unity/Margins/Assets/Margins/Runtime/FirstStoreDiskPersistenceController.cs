@@ -25,6 +25,7 @@ namespace Margins
         public FirstStoreSnapshot firstStore;
         public FirstStorePlayerTransformSnapshot playerTransform;
         public PortfolioProgressionSnapshot portfolio;
+        public bool hasGeneratedLocation;
         public PersistentGeneratedLocationDiskSnapshot generatedLocation;
     }
 
@@ -74,6 +75,14 @@ namespace Margins
             {
                 error = "First-store save JSON did not contain an object.";
                 return false;
+            }
+
+            if (!saveData.hasGeneratedLocation)
+            {
+                // JsonUtility may materialize a null nested class as an empty
+                // instance. The explicit presence bit is authoritative and
+                // also leaves file-envelope versions 1-3 unambiguous.
+                saveData.generatedLocation = null;
             }
 
             error = null;
@@ -420,6 +429,7 @@ namespace Margins
                 firstStore = firstStore,
                 playerTransform = playerTransform,
                 portfolio = portfolio,
+                hasGeneratedLocation = generatedLocation != null,
                 generatedLocation = generatedLocation
             };
             if (portfolioProgression != null &&
@@ -455,6 +465,81 @@ namespace Margins
             return true;
         }
 
+        private bool TryCaptureRollbackState(
+            out FirstStoreDiskSaveData saveData,
+            out PortfolioProgressionSnapshot portfolio,
+            out string error)
+        {
+            saveData = null;
+            portfolio = null;
+            PersistentPortfolioLocationSceneAdapter sceneAdapter =
+                portfolioProgression?.LocationSceneAdapter;
+            if (sceneAdapter?.HasActiveGeneratedLocation == true)
+            {
+                if (!sceneAdapter.TryCapturePersistenceRollbackState(
+                        out FirstStoreSnapshot parkedFirstStore,
+                        out PersistentGeneratedLocationDiskSnapshot generated,
+                        out error))
+                {
+                    return false;
+                }
+                FirstStorePlayerTransformSnapshot activePlayerTransform =
+                    firstPersonController.CaptureTransformSnapshot();
+                if (!firstPersonController.TryPreflightApplyTransformSnapshot(
+                        activePlayerTransform,
+                        out error) ||
+                    (portfolioProgression != null &&
+                     !portfolioProgression.TryCaptureSnapshot(
+                         out portfolio,
+                         out error)))
+                {
+                    return false;
+                }
+                saveData = new FirstStoreDiskSaveData
+                {
+                    version = CurrentFileVersion,
+                    firstStore = parkedFirstStore,
+                    playerTransform = activePlayerTransform,
+                    portfolio = portfolio,
+                    hasGeneratedLocation = true,
+                    generatedLocation = generated
+                };
+                return true;
+            }
+
+            if (persistenceMapper.TryGetLoadRollbackBlocker(out error) ||
+                !persistenceMapper.TryCapture(
+                    out FirstStoreSnapshot firstStore,
+                    out error))
+            {
+                return false;
+            }
+            FirstStorePlayerTransformSnapshot playerTransform =
+                firstPersonController.CaptureTransformSnapshot();
+            if (!firstPersonController.TryPreflightApplyTransformSnapshot(
+                    playerTransform,
+                    out error) ||
+                (portfolioProgression != null &&
+                 !portfolioProgression.TryCaptureSnapshot(
+                     out portfolio,
+                     out error)))
+            {
+                return false;
+            }
+
+            saveData = new FirstStoreDiskSaveData
+            {
+                version = CurrentFileVersion,
+                firstStore = firstStore,
+                playerTransform = playerTransform,
+                portfolio = portfolio,
+                hasGeneratedLocation = false,
+                generatedLocation = null
+            };
+            error = null;
+            return true;
+        }
+
         private bool TryRestoreSaveData(
             FirstStoreDiskSaveData saveData,
             bool startingNewBusiness)
@@ -476,13 +561,9 @@ namespace Margins
             }
 
             bool priorGameplayMode = firstPersonController.IsGameplayMode;
-            if (!TryCaptureCurrentSaveData(
+            if (!TryCaptureRollbackState(
                     out FirstStoreDiskSaveData previousState,
-                    out error) ||
-                !TryPrepareRestore(
-                    previousState,
                     out PortfolioProgressionSnapshot previousPortfolio,
-                    out _,
                     out error))
             {
                 return Reject(
