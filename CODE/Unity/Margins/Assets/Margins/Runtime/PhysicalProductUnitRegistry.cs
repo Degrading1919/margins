@@ -93,6 +93,9 @@ namespace Margins
         private int nextUnitOrdinal = 1;
 
         public int VisibleUnitCount => unitsById.Count;
+        public IReadOnlyList<PhysicalProductUnitConfiguration>
+            ProductConfigurations =>
+            products ?? Array.Empty<PhysicalProductUnitConfiguration>();
 
         public IReadOnlyList<ProductItem> VisibleUnits
         {

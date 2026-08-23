@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Margins
 {
@@ -24,6 +26,12 @@ namespace Margins
         [SerializeField] private StagedCheckoutInteractionComponent stagedCheckout;
         [SerializeField] private StoreCustomerFlowController customerFlow;
         [SerializeField] private InStoreEmployeeWorkController employeeWork;
+        [SerializeField] private DeliveryBoxComponent deliveryBox;
+        [SerializeField] private CleaningTaskComponent cleaningTask;
+        [SerializeField] private CleaningWorldInteractionTarget cleaningTarget;
+        [SerializeField] private CarryableToolComponent cleaningTool;
+        [SerializeField] private StoreOperatingWorldInteractionTarget
+            operatingControl;
         [SerializeField] private FirstPersonController player;
 
         private readonly Dictionary<string, int> localInventoryBaseline =
@@ -42,6 +50,21 @@ namespace Margins
         private long firstStorePayrollCents;
         private bool capturedFirstStoreAdapters;
         private string lastSynchronizationError;
+        private StoreCustomerFlowLocationBindings firstStoreCustomerBindings;
+        private InStoreEmployeeLocationBindings firstStoreEmployeeBindings;
+        private readonly List<TransformState> firstStoreTransformStates = new();
+        private GeneratedDetailedLocationBindings activeBindings;
+        private NavMeshSurface activeNavigationSurface;
+
+        private sealed class TransformState
+        {
+            public Transform Target;
+            public Transform Parent;
+            public Vector3 Position;
+            public Quaternion Rotation;
+            public Vector3 LocalScale;
+            public bool ActiveSelf;
+        }
 
         public string ActiveLocationId => activeLocationId;
         public bool HasActiveGeneratedLocation =>
@@ -51,6 +74,11 @@ namespace Margins
                 PortfolioProgressionRules.FirstLocationId,
                 StringComparison.Ordinal);
         public string LastSynchronizationError => lastSynchronizationError;
+        public GeneratedDetailedLocationBindings ActiveBindings =>
+            activeBindings;
+        public bool HasActiveGeneratedNavigation =>
+            activeNavigationSurface != null &&
+            activeNavigationSurface.navMeshData != null;
 
         public void Configure(
             PortfolioProgressionController progression,
@@ -64,6 +92,11 @@ namespace Margins
             StagedCheckoutInteractionComponent stagedInteraction,
             StoreCustomerFlowController customerController,
             InStoreEmployeeWorkController employeeController,
+            DeliveryBoxComponent detailedDeliveryBox,
+            CleaningTaskComponent detailedCleaningTask,
+            CleaningWorldInteractionTarget detailedCleaningTarget,
+            CarryableToolComponent detailedCleaningTool,
+            StoreOperatingWorldInteractionTarget detailedOperatingControl,
             FirstPersonController firstPerson)
         {
             portfolio = progression;
@@ -77,17 +110,26 @@ namespace Margins
             stagedCheckout = stagedInteraction;
             customerFlow = customerController;
             employeeWork = employeeController;
+            deliveryBox = detailedDeliveryBox;
+            cleaningTask = detailedCleaningTask;
+            cleaningTarget = detailedCleaningTarget;
+            cleaningTool = detailedCleaningTool;
+            operatingControl = detailedOperatingControl;
             player = firstPerson;
         }
 
         public bool TryValidateConfiguration(out string error)
         {
+            error = null;
             if (portfolio == null || !portfolio.IsInitialized ||
                 locations == null || storePersistence == null ||
                 detailedStore == null || detailedInventory == null ||
                 physicalUnits == null || stocking == null ||
                 merchandising == null || stagedCheckout == null ||
-                player == null)
+                customerFlow == null || employeeWork == null ||
+                deliveryBox == null || cleaningTask == null ||
+                cleaningTarget == null || cleaningTool == null ||
+                operatingControl == null || player == null)
             {
                 error =
                     "Persistent location travel requires the existing portfolio, generator, persistence, store, inventory, stocking, checkout, and player adapters.";
@@ -105,6 +147,22 @@ namespace Margins
             {
                 error =
                     "Persistent location travel must reuse one coherent detailed-store authority path.";
+                return false;
+            }
+
+            if (detailedStore.CustomerFlow != customerFlow ||
+                detailedStore.EmployeeWork != employeeWork ||
+                detailedStore.CleaningTask != cleaningTask ||
+                employeeWork.CustomerFlow != customerFlow ||
+                deliveryBox.InventoryComponent != detailedInventory ||
+                deliveryBox.PhysicalUnits != physicalUnits ||
+                !customerFlow.TryValidateConfiguration(out error) ||
+                !employeeWork.TryValidateConfiguration(out error) ||
+                !deliveryBox.TryValidateConfiguration(out error) ||
+                !cleaningTool.TryValidateConfiguration(out error))
+            {
+                error ??=
+                    "Generated detailed operation must reuse the configured customer, employee, delivery, cleaning, and tool authorities.";
                 return false;
             }
 
@@ -257,6 +315,11 @@ namespace Margins
                 return RollBackToFirstStore(error, out error);
             }
 
+            if (!TryActivateGeneratedDetailedRig(locationId, out error))
+            {
+                return RollBackToFirstStore(error, out error);
+            }
+
             CreateGeneratedInteractionViews();
             TeleportPlayerToGeneratedEntrance();
             player.SetGameplayMode(true);
@@ -321,6 +384,95 @@ namespace Margins
                 out error);
         }
 
+        internal bool TryStageDetailedDeliveryOverflow(
+            string locationId,
+            IReadOnlyDictionary<string, int> overflowByProduct,
+            out string error)
+        {
+            error = null;
+            if (!HasActiveGeneratedLocation ||
+                !string.Equals(
+                    activeLocationId,
+                    locationId,
+                    StringComparison.Ordinal) ||
+                overflowByProduct == null)
+            {
+                error =
+                    "Detailed delivery overflow requires the matching active generated location.";
+                return false;
+            }
+
+            List<PortfolioProductInventorySnapshot> candidate =
+                portfolioInventoryBaseline
+                    .Select(PortfolioOperationsRules.Clone)
+                    .ToList();
+            try
+            {
+                foreach (KeyValuePair<string, int> overflow in
+                         overflowByProduct)
+                {
+                    if (overflow.Value < 0)
+                    {
+                        error =
+                            $"Detailed delivery overflow for '{overflow.Key}' is negative.";
+                        return false;
+                    }
+                    if (overflow.Value == 0)
+                    {
+                        continue;
+                    }
+
+                    PortfolioProductInventorySnapshot product = candidate
+                        .FirstOrDefault(value => string.Equals(
+                            value.productId,
+                            overflow.Key,
+                            StringComparison.Ordinal));
+                    if (product == null)
+                    {
+                        error =
+                            $"Detailed delivery overflow product '{overflow.Key}' is outside the active merchandise catalog.";
+                        return false;
+                    }
+                    product.quantityUnits = checked(
+                        product.quantityUnits + overflow.Value);
+                }
+
+                PortfolioLocationSnapshot location = portfolio.Progression
+                    .Locations.FirstOrDefault(value => string.Equals(
+                        value.locationId,
+                        locationId,
+                        StringComparison.Ordinal));
+                if (location == null ||
+                    !TryCreateLocalProductInventory(
+                        out List<PortfolioProductInventorySnapshot> local,
+                        out error))
+                {
+                    error ??=
+                        "The active detailed inventory is unavailable for delivery overflow.";
+                    return false;
+                }
+                int reconciledUnits = checked(
+                    candidate.Sum(value => value.quantityUnits) +
+                    local.Sum(value => value.quantityUnits) -
+                    localInventoryBaseline.Values.Sum());
+                if (reconciledUnits > location.inventoryCapacityUnits)
+                {
+                    error =
+                        "Detailed delivery overflow exceeds the persistent location's inventory capacity.";
+                    return false;
+                }
+            }
+            catch (OverflowException)
+            {
+                error = "Detailed delivery overflow exceeded integer storage.";
+                return false;
+            }
+
+            portfolioInventoryBaseline.Clear();
+            portfolioInventoryBaseline.AddRange(candidate);
+            return true;
+        }
+
         private bool TryEnterFirstStore(out string error)
         {
             if (HasActiveGeneratedLocation)
@@ -361,6 +513,22 @@ namespace Margins
 
         private bool TryCaptureFirstStoreForTravel(out string error)
         {
+            if (employeeWork.IsHandlingInventory)
+            {
+                error =
+                    "Wait for the current employee inventory move to finish before changing locations.";
+                return false;
+            }
+            if (deliveryBox.IsCarried)
+            {
+                error = "Set down the delivery container before changing locations.";
+                return false;
+            }
+            if (cleaningTool.IsCarried)
+            {
+                error = "Set down the cleaning tool before changing locations.";
+                return false;
+            }
             if (!portfolio.TrySynchronizeDetailedShift(out error))
             {
                 return false;
@@ -383,6 +551,12 @@ namespace Margins
             firstStorePayrollCents = detailedStore.LivePayrollCents;
             customerFlowWasEnabled = customerFlow != null && customerFlow.enabled;
             employeeWorkWasEnabled = employeeWork != null && employeeWork.enabled;
+            firstStoreCustomerBindings = customerFlow.CaptureLocationBindings();
+            firstStoreEmployeeBindings = employeeWork.CaptureLocationBindings();
+            if (!TryCaptureFirstStoreTransformStates(out error))
+            {
+                return false;
+            }
             capturedFirstStoreAdapters = true;
 
             string active = portfolio.Progression.CreateSnapshot().company
@@ -408,6 +582,41 @@ namespace Margins
             bool openManagement,
             out string error)
         {
+            if (customerFlow.TryGetDetailedLocationChangeBlocker(
+                    out string customerBlocker))
+            {
+                error = customerBlocker;
+                return false;
+            }
+            if (employeeWork.IsHandlingInventory || deliveryBox.IsCarried)
+            {
+                error =
+                    "Finish the current delivery or stocking move before leaving this location.";
+                return false;
+            }
+            if (cleaningTool.IsCarried)
+            {
+                error = "Set down the cleaning tool before leaving this location.";
+                return false;
+            }
+            if (!portfolio.TrySynchronizeDetailedProcurement(out error))
+            {
+                return false;
+            }
+            PurchaseOrderSnapshot receivingOrder = portfolio.Progression
+                .PurchaseOrders.FirstOrDefault(value =>
+                    string.Equals(
+                        value.locationId,
+                        activeLocationId,
+                        StringComparison.Ordinal) &&
+                    (value.status == PurchaseOrderStatus.Delivered ||
+                     value.status == PurchaseOrderStatus.PartiallyReceived));
+            if (receivingOrder != null)
+            {
+                error =
+                    $"Receive every unit in {receivingOrder.orderId} before leaving this detailed location.";
+                return false;
+            }
             if (!TrySynchronizeActiveLocation(out error))
             {
                 return false;
@@ -428,6 +637,7 @@ namespace Margins
                 return false;
             }
 
+            TeardownGeneratedDetailedRig();
             activeLocationId = null;
             localInventoryBaseline.Clear();
             portfolioInventoryBaseline.Clear();
@@ -471,7 +681,17 @@ namespace Margins
 
         private bool TryRestoreFirstStoreRig(out string error)
         {
-            if (!merchandising.TryBindDetailedLocation(
+            error = null;
+            if (firstStoreCustomerBindings == null ||
+                firstStoreEmployeeBindings == null ||
+                !customerFlow.TryBindDetailedLocation(
+                    firstStoreCustomerBindings,
+                    out error) ||
+                !employeeWork.TryBindDetailedLocation(
+                    PortfolioProgressionRules.FirstLocationId,
+                    firstStoreEmployeeBindings,
+                    out error) ||
+                !merchandising.TryBindDetailedLocation(
                     PortfolioProgressionRules.FirstLocationId,
                     out error) ||
                 !detailedStore.TrySetIncludedOperatingExpensesCents(
@@ -486,6 +706,7 @@ namespace Margins
             }
 
             stagedCheckout.ResetTransientStateAfterRestore();
+            employeeWork.PlaceAvatarsAtBoundWorkplaces();
             if (customerFlow != null)
             {
                 customerFlow.enabled = customerFlowWasEnabled;
@@ -506,6 +727,7 @@ namespace Margins
             {
                 locations.TryLeaveActiveLocation(out _);
             }
+            TeardownGeneratedDetailedRig();
             activeLocationId = null;
             localInventoryBaseline.Clear();
             portfolioInventoryBaseline.Clear();
@@ -526,6 +748,400 @@ namespace Margins
             error =
                 $"{failure} First-store rollback also failed: {rollbackError}";
             return false;
+        }
+
+        private bool TryCaptureFirstStoreTransformStates(out string error)
+        {
+            firstStoreTransformStates.Clear();
+            PlaceableFixtureComponent checkoutFixture =
+                firstStoreCustomerBindings?.CheckoutCustomerPoint?
+                    .GetComponentInParent<PlaceableFixtureComponent>();
+            if (checkoutFixture == null)
+            {
+                error =
+                    "The reusable customer checkout is not attached to an authored fixture.";
+                return false;
+            }
+
+            List<Transform> targets = new()
+            {
+                checkoutFixture.transform,
+                deliveryBox.transform,
+                cleaningTarget.transform,
+                cleaningTool.transform,
+                operatingControl.transform
+            };
+            targets.AddRange(stocking.AuthoredProductMappings
+                .Where(value => value?.ShelfFixture != null)
+                .Select(value => value.ShelfFixture.transform)
+                .Distinct());
+            targets.AddRange(physicalUnits.ProductConfigurations
+                .Where(value => value?.LooseSpawnPoint != null)
+                .Select(value => value.LooseSpawnPoint));
+
+            foreach (Transform target in targets.Distinct())
+            {
+                firstStoreTransformStates.Add(new TransformState
+                {
+                    Target = target,
+                    Parent = target.parent,
+                    Position = target.position,
+                    Rotation = target.rotation,
+                    LocalScale = target.localScale,
+                    ActiveSelf = target.gameObject.activeSelf
+                });
+            }
+
+            error = null;
+            return true;
+        }
+
+        private bool TryActivateGeneratedDetailedRig(
+            string locationId,
+            out string error)
+        {
+            error = null;
+            RestoreFirstStoreTransformStates();
+            List<StockingProductConfiguration> shelfSlots = stocking
+                .AuthoredProductMappings
+                .Where(value => value?.ShelfFixture != null)
+                .GroupBy(
+                    value => value.ShelfFixture.StableFixtureId,
+                    StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(
+                    value => value.ShelfFixture.StableFixtureId,
+                    StringComparer.Ordinal)
+                .ToList();
+            if (!GeneratedDetailedLocationBindings.TryCreate(
+                    locations.ActiveBuilding,
+                    shelfSlots.Count,
+                    out activeBindings,
+                    out error))
+            {
+                return false;
+            }
+
+            PlaceableFixtureComponent checkoutFixture =
+                firstStoreCustomerBindings.CheckoutCustomerPoint
+                    .GetComponentInParent<PlaceableFixtureComponent>();
+            if (checkoutFixture == null ||
+                !TryMoveFixture(
+                    checkoutFixture,
+                    activeBindings.CheckoutFixture,
+                    out error))
+            {
+                error ??=
+                    "The authored checkout could not bind to the generated payment asset.";
+                return false;
+            }
+
+            for (int index = 0; index < shelfSlots.Count; index++)
+            {
+                if (!TryMoveFixture(
+                        shelfSlots[index].ShelfFixture
+                            .GetComponent<PlaceableFixtureComponent>(),
+                        activeBindings.DisplayFixtures[index],
+                        out error))
+                {
+                    error ??=
+                        $"Authored shelf '{shelfSlots[index].ShelfFixture.StableFixtureId}' could not bind to generated display metadata.";
+                    return false;
+                }
+            }
+
+            deliveryBox.transform.SetPositionAndRotation(
+                activeBindings.DeliveryDropPoint.position,
+                locations.ActiveBuilding.transform.rotation);
+            int looseSpawnIndex = 0;
+            foreach (PhysicalProductUnitConfiguration configuration in
+                     physicalUnits.ProductConfigurations
+                         .Where(value => value?.LooseSpawnPoint != null)
+                         .OrderBy(
+                             value => value.ProductDefinition.StableProductId,
+                             StringComparer.Ordinal))
+            {
+                configuration.LooseSpawnPoint.SetPositionAndRotation(
+                    activeBindings.DeliveryWorkPoint.position +
+                    locations.ActiveBuilding.transform.right *
+                    (looseSpawnIndex * 0.35f - 0.175f),
+                    locations.ActiveBuilding.transform.rotation);
+                looseSpawnIndex++;
+            }
+            Physics.SyncTransforms();
+            if (!TryBuildGeneratedNavigation(out error))
+            {
+                return false;
+            }
+
+            cleaningTarget.transform.SetPositionAndRotation(
+                activeBindings.CleaningPoint.position,
+                locations.ActiveBuilding.transform.rotation);
+            cleaningTool.transform.SetPositionAndRotation(
+                activeBindings.ToolRestPoint.position,
+                locations.ActiveBuilding.transform.rotation);
+            operatingControl.transform.SetPositionAndRotation(
+                activeBindings.OperatingControlPoint.position,
+                locations.ActiveBuilding.transform.rotation);
+
+            StoreCustomerFlowLocationBindings customerBindings = new(
+                activeBindings.EntrancePoint,
+                activeBindings.ExitPoint,
+                activeBindings.CheckoutCustomerPoint,
+                activeBindings.CheckoutItemPoints,
+                activeBindings.BrowsePoints,
+                activeBindings.QueuePoints);
+            InStoreEmployeeLocationBindings employeeBindings = new(
+                activeBindings.CashierWorkPoint,
+                activeBindings.DeliveryWorkPoint,
+                activeBindings.DeliveryDropPoint,
+                activeBindings.BrowsePoints[0],
+                activeBindings.ManagerWorkPoint);
+            if (!customerFlow.TryBindDetailedLocation(
+                    customerBindings,
+                    out error) ||
+                !employeeWork.TryBindDetailedLocation(
+                    locationId,
+                    employeeBindings,
+                    out error))
+            {
+                return false;
+            }
+
+            employeeWork.PlaceAvatarsAtBoundWorkplaces();
+            if (!TryValidateActiveNavigation(out error))
+            {
+                return false;
+            }
+
+            customerFlow.enabled = customerFlowWasEnabled;
+            employeeWork.enabled = employeeWorkWasEnabled;
+            error = null;
+            return true;
+        }
+
+        private bool TryMoveFixture(
+            PlaceableFixtureComponent fixture,
+            GeneratedDetailedLocationBindings.FixtureBinding destination,
+            out string error)
+        {
+            if (fixture == null || destination?.Instance == null ||
+                destination.Metadata == null)
+            {
+                error = "A valid authored fixture and generated destination are required.";
+                return false;
+            }
+
+            TransformState original = firstStoreTransformStates.FirstOrDefault(
+                value => value.Target == fixture.transform);
+            if (original == null)
+            {
+                error =
+                    $"Fixture '{fixture.StableFixtureInstanceId}' has no parked first-store transform.";
+                return false;
+            }
+
+            float sourceWidth = fixture.Footprint.width *
+                                FixturePlacementGrid.PlacementIncrementMeters;
+            float sourceDepth = fixture.Footprint.depth *
+                                FixturePlacementGrid.PlacementIncrementMeters;
+            Vector3 targetSize = destination.Metadata.PhysicalSizeMeters;
+            fixture.transform.SetPositionAndRotation(
+                destination.Instance.position,
+                destination.Instance.rotation);
+            fixture.transform.localScale = new Vector3(
+                original.LocalScale.x * targetSize.x / sourceWidth,
+                original.LocalScale.y,
+                original.LocalScale.z * targetSize.z / sourceDepth);
+            fixture.gameObject.SetActive(true);
+
+            if (destination.Metadata.PrimaryCollider != null)
+            {
+                destination.Metadata.PrimaryCollider.enabled = false;
+            }
+            if (destination.Metadata.VisualRoot != null)
+            {
+                destination.Metadata.VisualRoot.gameObject.SetActive(false);
+            }
+
+            error = null;
+            return true;
+        }
+
+        private bool TryBuildGeneratedNavigation(out string error)
+        {
+            ProceduralCommercialBuilding building = locations.ActiveBuilding;
+            if (building == null || activeBindings?.SelectedUnit == null)
+            {
+                error = "Generated navigation requires an active selected unit.";
+                return false;
+            }
+
+            DisableRenderOnlyColliders(
+                building.transform.Find(
+                    "Generated Procedural Layout/Opening Placeholders"));
+            DisableRenderOnlyColliders(
+                building.transform.Find(
+                    "Generated Procedural Layout/Debug Overlays"));
+            Physics.SyncTransforms();
+
+            activeNavigationSurface =
+                building.GetComponent<NavMeshSurface>() ??
+                building.gameObject.AddComponent<NavMeshSurface>();
+            PlanRect unit = activeBindings.SelectedUnit.BoundsMeters;
+            activeNavigationSurface.collectObjects = CollectObjects.Volume;
+            activeNavigationSurface.useGeometry =
+                NavMeshCollectGeometry.PhysicsColliders;
+            activeNavigationSurface.layerMask = ~0;
+            activeNavigationSurface.center = new Vector3(
+                unit.Center.x,
+                1.5f,
+                unit.Center.y);
+            activeNavigationSurface.size = new Vector3(
+                unit.Width,
+                4f,
+                unit.Depth);
+
+            try
+            {
+                activeNavigationSurface.BuildNavMesh();
+            }
+            catch (Exception exception)
+            {
+                error =
+                    $"Generated navigation build failed: {exception.Message}";
+                return false;
+            }
+
+            if (activeNavigationSurface.navMeshData == null)
+            {
+                error = "Generated navigation did not produce NavMesh data.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        private static void DisableRenderOnlyColliders(Transform root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+            foreach (Collider collider in root.GetComponentsInChildren<Collider>(
+                         true))
+            {
+                if (collider != null)
+                {
+                    collider.enabled = false;
+                }
+            }
+        }
+
+        public bool TryValidateActiveNavigation(out string error)
+        {
+            if (activeBindings == null || activeNavigationSurface == null ||
+                activeNavigationSurface.navMeshData == null ||
+                !NavMesh.SamplePosition(
+                    activeBindings.EntrancePoint.position,
+                    out NavMeshHit origin,
+                    1.25f,
+                    NavMesh.AllAreas))
+            {
+                error =
+                    "The active generated location has no traversable entrance NavMesh.";
+                return false;
+            }
+
+            NavMeshPath path = new();
+            foreach (Transform target in activeBindings.RequiredNavigationPoints)
+            {
+                Vector3 local = locations.ActiveBuilding.transform
+                    .InverseTransformPoint(target.position);
+                if (!activeBindings.SelectedUnit.BoundsMeters.Contains(
+                        new Vector2(local.x, local.z),
+                        0.05f))
+                {
+                    error =
+                        $"Generated detailed anchor '{target.name}' lies outside selected unit bounds at ({local.x:0.00}, {local.z:0.00}).";
+                    return false;
+                }
+                if (!NavMesh.SamplePosition(
+                        target.position,
+                        out NavMeshHit destination,
+                        1.25f,
+                        NavMesh.AllAreas))
+                {
+                    error =
+                        $"Generated detailed anchor '{target.name}' has no NavMesh within 1.25 m at ({local.x:0.00}, {local.z:0.00}).";
+                    return false;
+                }
+                if (!NavMesh.CalculatePath(
+                        origin.position,
+                        destination.position,
+                        NavMesh.AllAreas,
+                        path) ||
+                    path.status != NavMeshPathStatus.PathComplete)
+                {
+                    string corners = string.Join(
+                        "; ",
+                        path.corners.Select(value =>
+                        {
+                            Vector3 corner = locations.ActiveBuilding.transform
+                                .InverseTransformPoint(value);
+                            return $"({corner.x:0.00},{corner.z:0.00})";
+                        }));
+                    Vector3 originLocal = locations.ActiveBuilding.transform
+                        .InverseTransformPoint(origin.position);
+                    Vector3 destinationLocal = locations.ActiveBuilding.transform
+                        .InverseTransformPoint(destination.position);
+                    error =
+                        $"Generated detailed anchor '{target.name}' has no complete path from entrance ({originLocal.x:0.00}, {originLocal.z:0.00}) to ({destinationLocal.x:0.00}, {destinationLocal.z:0.00}) (status {path.status}; corners {corners}).";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
+        private void TeardownGeneratedDetailedRig()
+        {
+            if (customerFlow != null)
+            {
+                customerFlow.enabled = false;
+                customerFlow.ResetTransientStateForRestore();
+            }
+            if (employeeWork != null)
+            {
+                employeeWork.enabled = false;
+            }
+            if (activeNavigationSurface != null)
+            {
+                activeNavigationSurface.RemoveData();
+                activeNavigationSurface = null;
+            }
+            RestoreFirstStoreTransformStates();
+            activeBindings = null;
+        }
+
+        private void RestoreFirstStoreTransformStates()
+        {
+            foreach (TransformState state in firstStoreTransformStates)
+            {
+                if (state?.Target == null)
+                {
+                    continue;
+                }
+                state.Target.SetParent(state.Parent, true);
+                state.Target.SetPositionAndRotation(
+                    state.Position,
+                    state.Rotation);
+                state.Target.localScale = state.LocalScale;
+                state.Target.gameObject.SetActive(state.ActiveSelf);
+            }
+            Physics.SyncTransforms();
         }
 
         private bool TryCreateLocationSnapshot(
@@ -573,11 +1189,19 @@ namespace Margins
                 null);
             if (snapshot.cleaningTask != null)
             {
+                bool standardsNeedAttention = location.detailedReconciliation?
+                    .initialized == true &&
+                    location.detailedReconciliation.metrics != null &&
+                    !location.detailedReconciliation.metrics
+                        .standardsTaskComplete;
                 snapshot.cleaningTask.completedProgressUnits =
-                    snapshot.cleaningTask.requiredProgressUnits;
+                    standardsNeedAttention
+                        ? 0
+                        : snapshot.cleaningTask.requiredProgressUnits;
+                snapshot.cleaningTask.isActive = standardsNeedAttention;
             }
             snapshot.customerFlow = StoreCustomerFlowSnapshot.Empty();
-            snapshot.customerFlow.secondsUntilNextArrival = 3_600f;
+            snapshot.customerFlow.secondsUntilNextArrival = 0.75f;
             snapshot.physicalProductUnits.Clear();
             localInventoryBaseline.Clear();
 
@@ -817,47 +1441,6 @@ namespace Margins
                 return;
             }
 
-            GeneratedAssetPlacement checkoutPlacement = building.LastResult
-                .Placements.FirstOrDefault(value =>
-                    value.Category == ProceduralAssetCategory.Transaction);
-            Transform checkoutRoot = checkoutPlacement == null
-                ? building.transform
-                : building.GetComponentsInChildren<Transform>(true)
-                    .FirstOrDefault(value => string.Equals(
-                        value.name,
-                        checkoutPlacement.PlacementId,
-                        StringComparison.Ordinal)) ?? building.transform;
-            StagedCheckoutWorldInteractionTarget checkoutTarget =
-                checkoutRoot.gameObject.GetComponent<
-                    StagedCheckoutWorldInteractionTarget>() ??
-                checkoutRoot.gameObject.AddComponent<
-                    StagedCheckoutWorldInteractionTarget>();
-            checkoutTarget.Configure(
-                $"target-persistent-checkout-{activeLocationId}",
-                stagedCheckout,
-                detailedStore);
-
-            int productIndex = 0;
-            foreach (ProductDefinition product in merchandising.ProductCatalog)
-            {
-                GameObject prop = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                prop.name = $"Persistent Checkout Item {product.StableProductId}";
-                prop.transform.SetParent(checkoutRoot, false);
-                prop.transform.localPosition = new Vector3(
-                    -0.22f + productIndex * 0.44f,
-                    0.95f,
-                    -0.2f);
-                prop.transform.localScale = new Vector3(0.22f, 0.28f, 0.18f);
-                CheckoutProductWorldInteractionTarget productTarget =
-                    prop.AddComponent<CheckoutProductWorldInteractionTarget>();
-                productTarget.Configure(
-                    $"target-persistent-item-{productIndex + 1:D2}",
-                    product,
-                    stagedCheckout,
-                    detailedStore);
-                productIndex++;
-            }
-
             if (!TryGetEntrancePose(
                     building,
                     0.55f,
@@ -871,6 +1454,11 @@ namespace Margins
             exit.transform.SetParent(building.transform, false);
             exit.transform.SetPositionAndRotation(exitPosition, exitRotation);
             exit.transform.localScale = new Vector3(1.1f, 2f, 0.12f);
+            Collider exitCollider = exit.GetComponent<Collider>();
+            if (exitCollider != null)
+            {
+                exitCollider.isTrigger = true;
+            }
             PersistentLocationExitWorldInteractionTarget exitTarget =
                 exit.AddComponent<PersistentLocationExitWorldInteractionTarget>();
             exitTarget.Configure(
