@@ -331,6 +331,31 @@ namespace Margins
             out PersistentGeneratedLocationDiskSnapshot generatedLocation,
             out string error)
         {
+            return TryCapturePersistenceState(
+                true,
+                out parkedFirstStore,
+                out generatedLocation,
+                out error);
+        }
+
+        public bool TryCapturePersistenceRollbackState(
+            out FirstStoreSnapshot parkedFirstStore,
+            out PersistentGeneratedLocationDiskSnapshot generatedLocation,
+            out string error)
+        {
+            return TryCapturePersistenceState(
+                false,
+                out parkedFirstStore,
+                out generatedLocation,
+                out error);
+        }
+
+        private bool TryCapturePersistenceState(
+            bool requireDiskSaveSafeState,
+            out FirstStoreSnapshot parkedFirstStore,
+            out PersistentGeneratedLocationDiskSnapshot generatedLocation,
+            out string error)
+        {
             parkedFirstStore = null;
             generatedLocation = null;
             if (!HasActiveGeneratedLocation)
@@ -345,7 +370,10 @@ namespace Margins
                 error = "Set down the cleaning tool before saving.";
                 return false;
             }
-            if (storePersistence.TryGetDiskSaveBlocker(out error) ||
+            bool hasBlocker = requireDiskSaveSafeState
+                ? storePersistence.TryGetDiskSaveBlocker(out error)
+                : storePersistence.TryGetLoadRollbackBlocker(out error);
+            if (hasBlocker ||
                 !portfolio.TrySynchronizeDetailedProcurement(out error) ||
                 !TrySynchronizeActiveLocation(out error) ||
                 !storePersistence.TryCapture(

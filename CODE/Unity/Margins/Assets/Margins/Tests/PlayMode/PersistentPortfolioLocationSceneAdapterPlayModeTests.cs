@@ -556,6 +556,7 @@ namespace Margins.Tests.PlayMode
                     error);
                 Assert.That(accepted.version,
                     Is.EqualTo(FirstStoreDiskPersistenceController.CurrentFileVersion));
+                Assert.That(accepted.hasGeneratedLocation, Is.True);
                 Assert.That(accepted.generatedLocation, Is.Not.Null);
                 Assert.That(accepted.generatedLocation.locationId,
                     Is.EqualTo(RiverbendLocationId));
@@ -641,6 +642,25 @@ namespace Margins.Tests.PlayMode
                         out error),
                     Is.True,
                     error);
+                StagedCheckoutInteractionComponent transientCheckout =
+                    Object.FindAnyObjectByType<
+                        StagedCheckoutInteractionComponent>();
+                Assert.That(
+                    transientCheckout.TryPrimary(
+                        out _,
+                        out CheckoutFailure transientFailure,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(transientFailure, Is.EqualTo(CheckoutFailure.None));
+                Assert.That(
+                    transientCheckout.TryPrimary(
+                        out _,
+                        out transientFailure,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(context.Checkout.HasActiveIncompleteSession, Is.True);
 
                 Assert.That(
                     context.Disk.TryLoadFromPath(path),
@@ -648,6 +668,7 @@ namespace Margins.Tests.PlayMode
                     context.Disk.LastDiagnostic);
                 Assert.That(context.Adapter.ActiveLocationId,
                     Is.EqualTo(RiverbendLocationId));
+                Assert.That(context.Checkout.HasActiveIncompleteSession, Is.False);
                 Assert.That(context.Locations.ActiveBuilding.LastSignature,
                     Is.EqualTo(signature));
                 Assert.That(context.EmployeeWork.DetailedLocationId,

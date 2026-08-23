@@ -49,7 +49,10 @@ snapshot, and an optional active generated-location snapshot. The generated
 snapshot identifies the persistent business location, carries that location's
 detailed store state, records the parked first-store return transform, and
 preserves whether shared customer and employee work adapters should resume. The
-portfolio snapshot remains the authority for company cash, company/brand/
+envelope carries an explicit generated-location presence bit because Unity's
+JSON serializer can otherwise materialize a null nested object as an empty
+instance. The presence bit is authoritative and is false for legacy envelopes.
+The portfolio snapshot remains the authority for company cash, company/brand/
 property/unit/location identity, employees, schedules, delegation policies,
 product-level aggregate inventory, procurement, operating reports, alerts, and
 per-location detailed/aggregate reconciliation.
