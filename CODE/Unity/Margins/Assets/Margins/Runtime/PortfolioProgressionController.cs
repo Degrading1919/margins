@@ -467,29 +467,24 @@ namespace Margins
 
             string activeLocationId = progression.CreateSnapshot().company
                 .activeDetailedLocationId;
-            if (!string.IsNullOrWhiteSpace(activeLocationId) &&
-                !string.Equals(
-                    activeLocationId,
-                    PortfolioProgressionRules.FirstLocationId,
-                    StringComparison.Ordinal))
-            {
-                error = null;
-                return true;
-            }
-
-            PortfolioLocationSnapshot firstLocation = progression.Locations
+            string detailedLocationId = string.IsNullOrWhiteSpace(
+                activeLocationId)
+                ? PortfolioProgressionRules.FirstLocationId
+                : activeLocationId;
+            PortfolioLocationSnapshot detailedLocation = progression.Locations
                 .FirstOrDefault(location => string.Equals(
                     location.locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    detailedLocationId,
                     StringComparison.Ordinal));
-            if (firstLocation == null)
+            if (detailedLocation == null)
             {
-                error = "The first location is unavailable for procurement reconciliation.";
+                error =
+                    "The active detailed location is unavailable for procurement reconciliation.";
                 return false;
             }
 
             if (!HasCurrentDetailedBaseline(
-                    firstLocation,
+                    detailedLocation,
                     progression.CurrentDay))
             {
                 // The saved aggregate state remains authoritative until the
@@ -503,7 +498,7 @@ namespace Margins
                     !value.IsTerminal &&
                     string.Equals(
                         value.locationId,
-                        PortfolioProgressionRules.FirstLocationId,
+                        detailedLocationId,
                         StringComparison.Ordinal));
             if (order == null || order.status == PurchaseOrderStatus.Pending)
             {
@@ -588,15 +583,21 @@ namespace Margins
             }
 
             IReadOnlyList<ProcurementOrderRequestLine> lines;
-            bool detailedFirstLocation =
+            string activeDetailedLocationId = progression.CreateSnapshot()
+                .company.activeDetailedLocationId;
+            string detailedLocationId = string.IsNullOrWhiteSpace(
+                activeDetailedLocationId)
+                ? PortfolioProgressionRules.FirstLocationId
+                : activeDetailedLocationId;
+            bool detailedLocation =
                 string.Equals(
                     locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    detailedLocationId,
                     StringComparison.Ordinal) &&
                 HasCurrentDetailedBaseline(
                     location,
                     progression.CurrentDay);
-            if (detailedFirstLocation)
+            if (detailedLocation)
             {
                 lines = ConvenienceStoreProcurement.DetailedCase;
             }
@@ -677,11 +678,22 @@ namespace Margins
                 return true;
             }
 
+            string activeLocationId = progression.CreateSnapshot().company
+                .activeDetailedLocationId;
+            string detailedLocationId = string.IsNullOrWhiteSpace(
+                activeLocationId)
+                ? PortfolioProgressionRules.FirstLocationId
+                : activeLocationId;
             PortfolioLocationSnapshot location = progression.Locations
-                .First(value => string.Equals(
+                .FirstOrDefault(value => string.Equals(
                     value.locationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    detailedLocationId,
                     StringComparison.Ordinal));
+            if (location == null)
+            {
+                error = "The active detailed reorder location is unavailable.";
+                return false;
+            }
             if (!HasCurrentDetailedBaseline(
                     location,
                     progression.CurrentDay) ||
@@ -762,10 +774,39 @@ namespace Margins
                 return true;
             }
 
-            Dictionary<string, int> received = new(StringComparer.Ordinal);
-            foreach (PurchaseOrderLineSnapshot line in order.lines)
+            int availableCapacity = deliveryLocation.capacityUnits < 0
+                ? order.OrderedQuantityUnits
+                : deliveryLocation.capacityUnits;
+            Dictionary<string, int> physicalBatch =
+                new(StringComparer.Ordinal);
+            Dictionary<string, int> generatedLocationOverflow =
+                new(StringComparer.Ordinal);
+            foreach (PurchaseOrderLineSnapshot line in order.lines
+                         .OrderBy(value => value.resourceId, StringComparer.Ordinal))
             {
-                received.Add(line.resourceId, line.orderedQuantityUnits);
+                int unreceived = line.orderedQuantityUnits -
+                                 line.receivedQuantityUnits;
+                int physicalQuantity = Math.Min(
+                    unreceived,
+                    availableCapacity);
+                if (physicalQuantity > 0)
+                {
+                    physicalBatch.Add(line.resourceId, physicalQuantity);
+                }
+                generatedLocationOverflow.Add(
+                    line.resourceId,
+                    unreceived - physicalQuantity);
+                availableCapacity -= physicalQuantity;
+            }
+
+            bool hasOverflow = generatedLocationOverflow.Values.Any(value =>
+                value > 0);
+            if (hasOverflow &&
+                locationSceneAdapter?.HasActiveGeneratedLocation != true)
+            {
+                error =
+                    $"Order '{order.orderId}' exceeds the physical receiving container capacity.";
+                return false;
             }
 
             InventoryReceiptFailure receiptFailure = InventoryReceiptFailure.None;
@@ -775,7 +816,7 @@ namespace Margins
                     out error) ||
                 !candidateInventory.TryReceiveDelivery(
                     firstStoreDeliveryBox.InventoryLocationId,
-                    received,
+                    physicalBatch,
                     out receiptFailure))
             {
                 error ??=
@@ -787,6 +828,16 @@ namespace Margins
                 progression.CreateSnapshot();
             DeliveryContainerSnapshot previousContainer =
                 firstStoreDeliveryBox.Container.CreateSnapshot();
+            List<PortfolioProductInventorySnapshot>
+                previousGeneratedInventoryBaseline = null;
+            if (locationSceneAdapter?.HasActiveGeneratedLocation == true &&
+                !locationSceneAdapter.TryCaptureDetailedDeliveryInventoryBaseline(
+                    order.locationId,
+                    out previousGeneratedInventoryBaseline,
+                    out error))
+            {
+                return false;
+            }
             if (!firstStoreInventory.TryApplyRestoredInventory(
                     candidateInventory,
                     out error) ||
@@ -796,13 +847,20 @@ namespace Margins
                     out _,
                     out _,
                     out error) ||
-                !TrySynchronizeDetailedShift(out error))
+                (hasOverflow &&
+                 !locationSceneAdapter.TryStageDetailedDeliveryOverflow(
+                     order.locationId,
+                     generatedLocationOverflow,
+                     out error)) ||
+                !TrySynchronizeMaterializedDetailedDelivery(out error))
             {
                 string materializationError = error;
                 if (!TryRollbackDetailedDelivery(
+                        order.locationId,
                         previousInventory,
                         previousContainer,
                         previousPortfolio,
+                        previousGeneratedInventoryBaseline,
                         out string rollbackError))
                 {
                     throw new InvalidOperationException(
@@ -813,43 +871,89 @@ namespace Margins
                 return false;
             }
 
-            Record($"{order.orderId} arrived in a sealed physical container.", true);
+            Record(
+                hasOverflow
+                    ? $"{order.orderId} arrived in a sealed physical container; excess units were received into the location's persistent stock reserve."
+                    : $"{order.orderId} arrived in a sealed physical container.",
+                true);
             error = null;
             return true;
         }
 
+        private bool TrySynchronizeMaterializedDetailedDelivery(
+            out string error)
+        {
+            return locationSceneAdapter?.HasActiveGeneratedLocation == true
+                ? locationSceneAdapter.TrySynchronizeActiveLocation(out error)
+                : TrySynchronizeDetailedShift(out error);
+        }
+
         private bool TryRollbackDetailedDelivery(
+            string locationId,
             FirstStoreInventorySnapshot inventorySnapshot,
             DeliveryContainerSnapshot containerSnapshot,
             PortfolioProgressionSnapshot portfolioSnapshot,
+            IReadOnlyList<PortfolioProductInventorySnapshot>
+                generatedInventoryBaseline,
             out string error)
         {
+            List<string> rollbackErrors = new();
+            FirstStoreInventory restoredInventory = null;
             if (!FirstStoreInventory.TryRestore(
                     inventorySnapshot,
-                    out FirstStoreInventory restoredInventory,
-                    out error) ||
+                    out restoredInventory,
+                    out string inventoryError) ||
                 !firstStoreInventory.TryApplyRestoredInventory(
                     restoredInventory,
-                    out error) ||
+                    out inventoryError))
+            {
+                rollbackErrors.Add($"inventory: {inventoryError}");
+            }
+
+            DeliveryContainer restoredContainer = null;
+            string containerError = null;
+            if (restoredInventory == null ||
                 !DeliveryContainer.TryRestore(
                     restoredInventory,
                     containerSnapshot,
-                    out DeliveryContainer restoredContainer,
-                    out error) ||
+                    out restoredContainer,
+                    out containerError) ||
                 !firstStoreDeliveryBox.TryApplyRestoredContainer(
                     restoredContainer,
-                    out error) ||
-                !PortfolioProgression.TryRestore(
-                    portfolioSnapshot,
-                    out PortfolioProgression restoredPortfolio,
-                    out error))
+                    out containerError))
             {
-                return false;
+                rollbackErrors.Add(
+                    $"delivery container: {containerError ?? "restored inventory is unavailable"}");
             }
 
-            progression = restoredPortfolio;
-            error = null;
-            return true;
+            if (!PortfolioProgression.TryRestore(
+                    portfolioSnapshot,
+                    out PortfolioProgression restoredPortfolio,
+                    out string portfolioError))
+            {
+                rollbackErrors.Add($"portfolio: {portfolioError}");
+            }
+            else
+            {
+                progression = restoredPortfolio;
+            }
+
+            string generatedInventoryError = null;
+            if (generatedInventoryBaseline != null &&
+                (locationSceneAdapter == null ||
+                 !locationSceneAdapter.TryRestoreDetailedDeliveryInventoryBaseline(
+                     locationId,
+                     generatedInventoryBaseline,
+                     out generatedInventoryError)))
+            {
+                rollbackErrors.Add(
+                    $"generated location inventory: {generatedInventoryError ?? "location adapter is unavailable"}");
+            }
+
+            error = rollbackErrors.Count == 0
+                ? null
+                : string.Join("; ", rollbackErrors);
+            return rollbackErrors.Count == 0;
         }
 
         public bool TryCaptureSnapshot(

@@ -21002,6 +21002,11 @@ MonoBehaviour:
   stagedCheckout: {fileID: 1595772827}
   customerFlow: {fileID: 1579769789}
   employeeWork: {fileID: 794714431}
+  deliveryBox: {fileID: 287785512}
+  cleaningTask: {fileID: 1585079517}
+  cleaningTarget: {fileID: 198456707}
+  cleaningTool: {fileID: 102939080}
+  operatingControl: {fileID: 216687122}
   player: {fileID: 33272900}
 --- !u!114 &1955686707
 MonoBehaviour:

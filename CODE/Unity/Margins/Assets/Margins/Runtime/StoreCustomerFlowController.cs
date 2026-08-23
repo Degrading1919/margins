@@ -5,6 +5,33 @@ using UnityEngine;
 
 namespace Margins
 {
+    public sealed class StoreCustomerFlowLocationBindings
+    {
+        public StoreCustomerFlowLocationBindings(
+            Transform entrancePoint,
+            Transform exitPoint,
+            Transform checkoutCustomerPoint,
+            IEnumerable<Transform> checkoutItemPoints,
+            IEnumerable<Transform> browsePoints,
+            IEnumerable<Transform> queuePoints)
+        {
+            EntrancePoint = entrancePoint;
+            ExitPoint = exitPoint;
+            CheckoutCustomerPoint = checkoutCustomerPoint;
+            CheckoutItemPoints = checkoutItemPoints?.ToArray() ??
+                                 Array.Empty<Transform>();
+            BrowsePoints = browsePoints?.ToArray() ?? Array.Empty<Transform>();
+            QueuePoints = queuePoints?.ToArray() ?? Array.Empty<Transform>();
+        }
+
+        public Transform EntrancePoint { get; }
+        public Transform ExitPoint { get; }
+        public Transform CheckoutCustomerPoint { get; }
+        public IReadOnlyList<Transform> CheckoutItemPoints { get; }
+        public IReadOnlyList<Transform> BrowsePoints { get; }
+        public IReadOnlyList<Transform> QueuePoints { get; }
+    }
+
     /// <summary>
     /// Owns only instantiated customer lifecycle, physical shelf reservations,
     /// and queue order. Inventory, checkout completion, and revenue remain with
@@ -99,6 +126,79 @@ namespace Margins
         public StoreOperatingController StoreOperating => storeOperating;
         public CheckoutStationComponent Checkout => checkout;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
+
+        public StoreCustomerFlowLocationBindings CaptureLocationBindings()
+        {
+            return new StoreCustomerFlowLocationBindings(
+                entrancePoint,
+                exitPoint,
+                checkoutCustomerPoint,
+                checkoutItemPoints,
+                browsePoints,
+                queuePoints);
+        }
+
+        public bool TryBindDetailedLocation(
+            StoreCustomerFlowLocationBindings bindings,
+            out string error)
+        {
+            if (bindings == null || bindings.EntrancePoint == null ||
+                bindings.ExitPoint == null ||
+                bindings.CheckoutCustomerPoint == null ||
+                bindings.CheckoutItemPoints == null ||
+                bindings.BrowsePoints == null || bindings.QueuePoints == null)
+            {
+                error = "Detailed customer flow requires explicit location bindings.";
+                return false;
+            }
+
+            if (customers.Count > 0 || HasActiveCheckout)
+            {
+                error =
+                    "Finish serving and clear current customers before rebinding detailed customer flow.";
+                return false;
+            }
+
+            StoreCustomerFlowLocationBindings previous =
+                CaptureLocationBindings();
+            entrancePoint = bindings.EntrancePoint;
+            exitPoint = bindings.ExitPoint;
+            checkoutCustomerPoint = bindings.CheckoutCustomerPoint;
+            checkoutItemPoints = bindings.CheckoutItemPoints.ToArray();
+            browsePoints = bindings.BrowsePoints.ToArray();
+            queuePoints = bindings.QueuePoints.ToArray();
+            if (TryValidateConfiguration(out error))
+            {
+                return true;
+            }
+
+            entrancePoint = previous.EntrancePoint;
+            exitPoint = previous.ExitPoint;
+            checkoutCustomerPoint = previous.CheckoutCustomerPoint;
+            checkoutItemPoints = previous.CheckoutItemPoints.ToArray();
+            browsePoints = previous.BrowsePoints.ToArray();
+            queuePoints = previous.QueuePoints.ToArray();
+            return false;
+        }
+
+        public bool TryGetDetailedLocationChangeBlocker(out string blocker)
+        {
+            if (HasActiveCheckout)
+            {
+                blocker =
+                    "Complete or abandon the active customer checkout before leaving this location.";
+                return true;
+            }
+            if (HasCustomersInStore)
+            {
+                blocker =
+                    "Close the store and let current customers leave before changing detailed locations.";
+                return true;
+            }
+
+            blocker = null;
+            return false;
+        }
 
         public DetailedOperationMetricsSnapshot CreateDetailedOperationMetrics(
             bool standardsTaskComplete)

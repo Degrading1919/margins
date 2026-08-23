@@ -4,6 +4,29 @@ using UnityEngine;
 
 namespace Margins
 {
+    public sealed class InStoreEmployeeLocationBindings
+    {
+        public InStoreEmployeeLocationBindings(
+            Transform cashierWorkPoint,
+            Transform deliveryWorkPoint,
+            Transform deliveryDropPoint,
+            Transform shelfWorkPoint,
+            Transform managerWorkPoint)
+        {
+            CashierWorkPoint = cashierWorkPoint;
+            DeliveryWorkPoint = deliveryWorkPoint;
+            DeliveryDropPoint = deliveryDropPoint;
+            ShelfWorkPoint = shelfWorkPoint;
+            ManagerWorkPoint = managerWorkPoint;
+        }
+
+        public Transform CashierWorkPoint { get; }
+        public Transform DeliveryWorkPoint { get; }
+        public Transform DeliveryDropPoint { get; }
+        public Transform ShelfWorkPoint { get; }
+        public Transform ManagerWorkPoint { get; }
+    }
+
     /// <summary>
     /// Runs hired staff through the same authoritative detailed interactions the
     /// owner uses: receive and stock physical units, serve live customers by
@@ -42,14 +65,21 @@ namespace Margins
         private bool employeeMovingBox;
         private bool deliveryRelocated;
         private ProductItem stockerUnit;
+        private string detailedLocationId =
+            PortfolioProgressionRules.FirstLocationId;
 
         public bool IsHandlingInventory =>
             employeeMovingBox || stockerUnit != null;
 
         public StoreCustomerFlowController CustomerFlow => customerFlow;
+        public string DetailedLocationId => detailedLocationId;
 
         private void Start()
         {
+            if (!FirstStoreIdentifier.IsValid(detailedLocationId))
+            {
+                detailedLocationId = PortfolioProgressionRules.FirstLocationId;
+            }
             ConfigureNavigation(cashierAvatar, 20);
             ConfigureNavigation(stockerAvatar, 25);
             ConfigureNavigation(managerAvatar, 30);
@@ -178,7 +208,9 @@ namespace Margins
                 products == null || products.Length == 0 ||
                 products.Any(product => product == null) ||
                 cashierAvatar == null || stockerAvatar == null ||
-                managerAvatar == null || cashierWorkPoint == null ||
+                managerAvatar == null ||
+                !FirstStoreIdentifier.IsValid(detailedLocationId) ||
+                cashierWorkPoint == null ||
                 deliveryWorkPoint == null || deliveryDropPoint == null ||
                 shelfWorkPoint == null || managerWorkPoint == null ||
                 stockerBoxCarryPoint == null || stockerUnitCarryPoint == null)
@@ -205,6 +237,74 @@ namespace Margins
 
             error = null;
             return true;
+        }
+
+        public InStoreEmployeeLocationBindings CaptureLocationBindings()
+        {
+            return new InStoreEmployeeLocationBindings(
+                cashierWorkPoint,
+                deliveryWorkPoint,
+                deliveryDropPoint,
+                shelfWorkPoint,
+                managerWorkPoint);
+        }
+
+        public bool TryBindDetailedLocation(
+            string locationId,
+            InStoreEmployeeLocationBindings bindings,
+            out string error)
+        {
+            if (!FirstStoreIdentifier.IsValid(locationId) ||
+                bindings == null || bindings.CashierWorkPoint == null ||
+                bindings.DeliveryWorkPoint == null ||
+                bindings.DeliveryDropPoint == null ||
+                bindings.ShelfWorkPoint == null ||
+                bindings.ManagerWorkPoint == null)
+            {
+                error =
+                    "Detailed employee work requires a valid location and explicit workplace bindings.";
+                return false;
+            }
+
+            if (IsHandlingInventory)
+            {
+                error =
+                    "Finish the employee's current physical inventory move before changing detailed locations.";
+                return false;
+            }
+
+            string previousLocationId = detailedLocationId;
+            InStoreEmployeeLocationBindings previous =
+                CaptureLocationBindings();
+            detailedLocationId = locationId;
+            cashierWorkPoint = bindings.CashierWorkPoint;
+            deliveryWorkPoint = bindings.DeliveryWorkPoint;
+            deliveryDropPoint = bindings.DeliveryDropPoint;
+            shelfWorkPoint = bindings.ShelfWorkPoint;
+            managerWorkPoint = bindings.ManagerWorkPoint;
+            if (TryValidateConfiguration(out error))
+            {
+                ResetTransientStateAfterRestore();
+                return true;
+            }
+
+            detailedLocationId = previousLocationId;
+            cashierWorkPoint = previous.CashierWorkPoint;
+            deliveryWorkPoint = previous.DeliveryWorkPoint;
+            deliveryDropPoint = previous.DeliveryDropPoint;
+            shelfWorkPoint = previous.ShelfWorkPoint;
+            managerWorkPoint = previous.ManagerWorkPoint;
+            return false;
+        }
+
+        public void PlaceAvatarsAtBoundWorkplaces()
+        {
+            PlaceAvatar(cashierAvatar, cashierWorkPoint);
+            PlaceAvatar(stockerAvatar, deliveryDropPoint);
+            PlaceAvatar(managerAvatar, managerWorkPoint);
+            ResetNavigation(cashierAvatar);
+            ResetNavigation(stockerAvatar);
+            ResetNavigation(managerAvatar);
         }
 
         public void ResetTransientStateAfterRestore()
@@ -419,7 +519,7 @@ namespace Margins
             return deliveryWorkPoint;
         }
 
-        private static PortfolioEmployeeSnapshot FindAssigned(
+        private PortfolioEmployeeSnapshot FindAssigned(
             PortfolioProgression progression,
             PortfolioEmployeeRole role)
         {
@@ -427,7 +527,7 @@ namespace Margins
                 employee.role == role &&
                 string.Equals(
                     employee.assignedLocationId,
-                    PortfolioProgressionRules.FirstLocationId,
+                    detailedLocationId,
                     StringComparison.Ordinal));
         }
 
@@ -538,6 +638,20 @@ namespace Margins
         {
             avatar?.GetComponent<LocalNavigationAgent>()
                 ?.ResetNavigationAfterRestore();
+        }
+
+        private static void PlaceAvatar(
+            Transform avatar,
+            Transform workplace)
+        {
+            if (avatar == null || workplace == null)
+            {
+                return;
+            }
+
+            avatar.SetPositionAndRotation(
+                workplace.position,
+                workplace.rotation);
         }
 
         private static bool IsAttachedToFixture(

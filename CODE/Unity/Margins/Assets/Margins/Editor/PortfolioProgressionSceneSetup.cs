@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -49,13 +50,31 @@ namespace Margins.Editor
             InStoreEmployeeWorkController employeeWork =
                 UnityEngine.Object.FindAnyObjectByType<
                     InStoreEmployeeWorkController>();
+            CleaningTaskComponent cleaning = store.CleaningTask;
+            CleaningWorldInteractionTarget cleaningTarget =
+                UnityEngine.Object.FindAnyObjectByType<
+                    CleaningWorldInteractionTarget>();
+            CarryableToolComponent cleaningTool = UnityEngine.Object
+                .FindObjectsByType<CarryableToolComponent>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None)
+                .FirstOrDefault(value => string.Equals(
+                    value.CapabilityId,
+                    "clean-floor",
+                    StringComparison.Ordinal));
+            StoreOperatingWorldInteractionTarget operatingControl =
+                UnityEngine.Object.FindAnyObjectByType<
+                    StoreOperatingWorldInteractionTarget>();
 
             if (player == null || store == null || inventory == null ||
                 delivery == null ||
                 disk == null || validation == null ||
                 persistenceMapper == null || physicalUnits == null ||
                 stocking == null || merchandising == null ||
-                stagedCheckout == null)
+                stagedCheckout == null || customerFlow == null ||
+                employeeWork == null || cleaning == null ||
+                cleaningTarget == null || cleaningTool == null ||
+                operatingControl == null)
             {
                 throw new InvalidOperationException(
                     "Portfolio scene setup requires the existing player, store, disk, and validation components.");
@@ -116,6 +135,11 @@ namespace Margins.Editor
                 stagedCheckout,
                 customerFlow,
                 employeeWork,
+                delivery,
+                cleaning,
+                cleaningTarget,
+                cleaningTool,
+                operatingControl,
                 player);
             SetObject(portfolio, "locationSceneAdapter", sceneAdapter);
             EditorUtility.SetDirty(materializer);
