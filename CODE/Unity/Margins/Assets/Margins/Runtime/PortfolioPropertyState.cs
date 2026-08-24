@@ -84,11 +84,240 @@ namespace Margins
     }
 
     [Serializable]
+    public sealed class PortfolioStartupProfileSnapshot
+    {
+        public string businessName;
+        public string primaryColorHex;
+        public string secondaryColorHex;
+        public string logoSelectionId;
+        public int seed;
+        public string difficultyPurposeId;
+    }
+
+    [Serializable]
+    public sealed class NewBusinessSetupData
+    {
+        public string businessName;
+        public string primaryColorHex;
+        public string secondaryColorHex;
+        public string logoSelectionId;
+        public int seed;
+        public string difficultyPurposeId;
+
+        public static NewBusinessSetupData CreateDefault()
+        {
+            PortfolioStartupProfileSnapshot profile =
+                PortfolioStartupProfileRules.CreateDefault();
+            return new NewBusinessSetupData
+            {
+                businessName = profile.businessName,
+                primaryColorHex = profile.primaryColorHex,
+                secondaryColorHex = profile.secondaryColorHex,
+                logoSelectionId = profile.logoSelectionId,
+                seed = profile.seed,
+                difficultyPurposeId = profile.difficultyPurposeId
+            };
+        }
+    }
+
+    /// <summary>
+    /// Validates the player-authored startup identity. Difficulty values record
+    /// only the four purposes approved by FD-006; they intentionally do not
+    /// apply gameplay modifiers in this remediation wave.
+    /// </summary>
+    public static class PortfolioStartupProfileRules
+    {
+        public const string DefaultBusinessName = "Mile 7 Market";
+        public const string DefaultPrimaryColorHex = "#1F897A";
+        public const string DefaultSecondaryColorHex = "#DE5B22";
+        public const int DefaultSeed = 1907;
+        public const string DefaultLogoSelectionId = "placeholder-mark-a";
+        public const string DefaultDifficultyPurposeId =
+            "purpose-challenging-recoverable";
+
+        public static readonly string[] LogoSelectionIds =
+        {
+            "placeholder-mark-a",
+            "placeholder-mark-b",
+            "placeholder-mark-c"
+        };
+
+        public static readonly string[] DifficultyPurposeIds =
+        {
+            "purpose-forgiving-growth",
+            "purpose-challenging-recoverable",
+            "purpose-harsher-simulation",
+            "purpose-sandbox-experimentation"
+        };
+
+        public static PortfolioStartupProfileSnapshot CreateDefault()
+        {
+            return new PortfolioStartupProfileSnapshot
+            {
+                businessName = DefaultBusinessName,
+                primaryColorHex = DefaultPrimaryColorHex,
+                secondaryColorHex = DefaultSecondaryColorHex,
+                logoSelectionId = DefaultLogoSelectionId,
+                seed = DefaultSeed,
+                difficultyPurposeId = DefaultDifficultyPurposeId
+            };
+        }
+
+        public static bool TryNormalize(
+            NewBusinessSetupData source,
+            out PortfolioStartupProfileSnapshot profile,
+            out string error)
+        {
+            profile = null;
+            if (source == null)
+            {
+                error = "New Business setup is missing.";
+                return false;
+            }
+
+            PortfolioStartupProfileSnapshot candidate =
+                new PortfolioStartupProfileSnapshot
+                {
+                    businessName = source.businessName?.Trim(),
+                    primaryColorHex = NormalizeHex(source.primaryColorHex),
+                    secondaryColorHex = NormalizeHex(source.secondaryColorHex),
+                    logoSelectionId = source.logoSelectionId?.Trim(),
+                    seed = source.seed,
+                    difficultyPurposeId = source.difficultyPurposeId?.Trim()
+                };
+            if (!TryValidate(candidate, out error))
+            {
+                return false;
+            }
+
+            profile = candidate;
+            error = null;
+            return true;
+        }
+
+        public static bool TryValidate(
+            PortfolioStartupProfileSnapshot profile,
+            out string error)
+        {
+            if (profile == null ||
+                string.IsNullOrWhiteSpace(profile.businessName) ||
+                profile.businessName.Trim().Length < 2 ||
+                profile.businessName.Trim().Length > 32)
+            {
+                error = "Business name must contain 2 to 32 characters.";
+                return false;
+            }
+            if (!IsHexColor(profile.primaryColorHex) ||
+                !IsHexColor(profile.secondaryColorHex))
+            {
+                error = "Business colors must use six-digit hex values such as #1F897A.";
+                return false;
+            }
+            if (!Contains(LogoSelectionIds, profile.logoSelectionId))
+            {
+                error = "Logo selection is not one of the current placeholder data hooks.";
+                return false;
+            }
+            if (!Contains(DifficultyPurposeIds, profile.difficultyPurposeId))
+            {
+                error = "Difficulty purpose is not one of the four approved FD-006 purposes.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        public static bool TryApply(
+            PortfolioProgressionSnapshot snapshot,
+            NewBusinessSetupData setup,
+            out string error)
+        {
+            error = null;
+            if (snapshot?.company == null || snapshot.locations == null ||
+                !TryNormalize(setup, out PortfolioStartupProfileSnapshot profile,
+                    out error))
+            {
+                error ??= "New Business company state is unavailable.";
+                return false;
+            }
+
+            snapshot.company.startupProfile = Clone(profile);
+            snapshot.company.displayName = profile.businessName;
+            PortfolioBrandSnapshot firstBrand = snapshot.company.brands?
+                .FirstOrDefault(brand => string.Equals(
+                    brand?.brandId,
+                    PortfolioPropertyRules.ConvenienceBrandId,
+                    StringComparison.Ordinal));
+            if (firstBrand != null)
+            {
+                firstBrand.displayName = profile.businessName;
+            }
+
+            PortfolioLocationSnapshot firstLocation = snapshot.locations
+                .FirstOrDefault(location => string.Equals(
+                    location?.locationId,
+                    PortfolioProgressionRules.FirstLocationId,
+                    StringComparison.Ordinal));
+            if (firstLocation == null)
+            {
+                error = "New Business first-location state is missing.";
+                return false;
+            }
+            firstLocation.displayName = profile.businessName;
+            error = null;
+            return true;
+        }
+
+        public static PortfolioStartupProfileSnapshot Clone(
+            PortfolioStartupProfileSnapshot source)
+        {
+            return source == null
+                ? null
+                : new PortfolioStartupProfileSnapshot
+                {
+                    businessName = source.businessName,
+                    primaryColorHex = source.primaryColorHex,
+                    secondaryColorHex = source.secondaryColorHex,
+                    logoSelectionId = source.logoSelectionId,
+                    seed = source.seed,
+                    difficultyPurposeId = source.difficultyPurposeId
+                };
+        }
+
+        private static bool Contains(string[] accepted, string value)
+        {
+            return accepted.Any(item => string.Equals(
+                item,
+                value,
+                StringComparison.Ordinal));
+        }
+
+        private static string NormalizeHex(string value)
+        {
+            string accepted = value?.Trim() ?? string.Empty;
+            if (!accepted.StartsWith("#", StringComparison.Ordinal))
+            {
+                accepted = $"#{accepted}";
+            }
+            return accepted.ToUpperInvariant();
+        }
+
+        private static bool IsHexColor(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value) && value.Length == 7 &&
+                   value[0] == '#' &&
+                   value.Skip(1).All(Uri.IsHexDigit);
+        }
+    }
+
+    [Serializable]
     public sealed class PortfolioCompanySnapshot
     {
         public string companyId;
         public string displayName;
         public string activeDetailedLocationId;
+        public PortfolioStartupProfileSnapshot startupProfile;
         public List<PortfolioBrandSnapshot> brands = new();
         public List<PortfolioCommercialPropertySnapshot> properties = new();
     }
@@ -243,7 +472,8 @@ namespace Margins
             PortfolioCompanySnapshot company = new()
             {
                 companyId = PlayerCompanyId,
-                displayName = PlayerCompanyName
+                displayName = PlayerCompanyName,
+                startupProfile = PortfolioStartupProfileRules.CreateDefault()
             };
             company.brands.Add(new PortfolioBrandSnapshot
             {
@@ -318,6 +548,9 @@ namespace Margins
                     PlayerCompanyId,
                     StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(company.displayName) ||
+                !PortfolioStartupProfileRules.TryValidate(
+                    company.startupProfile,
+                    out error) ||
                 company.brands == null || company.brands.Count == 0 ||
                 company.properties == null || locations == null ||
                 currentDay < 1)
@@ -463,6 +696,23 @@ namespace Margins
                         $"Business location '{location.locationId}' does not resolve to its brand, property, and occupied commercial unit by stable ID.";
                     return false;
                 }
+                if (string.Equals(
+                        location.locationId,
+                        PortfolioProgressionRules.FirstLocationId,
+                        StringComparison.Ordinal) &&
+                    (!string.Equals(
+                         location.displayName,
+                         company.startupProfile.businessName,
+                         StringComparison.Ordinal) ||
+                     !string.Equals(
+                         brand.displayName,
+                         company.startupProfile.businessName,
+                         StringComparison.Ordinal)))
+                {
+                    error =
+                        "The first store and its brand must match the saved New Business identity.";
+                    return false;
+                }
             }
 
             if (!occupiedLocations.SetEquals(locationIds))
@@ -603,6 +853,8 @@ namespace Margins
                 companyId = source.companyId,
                 displayName = source.displayName,
                 activeDetailedLocationId = source.activeDetailedLocationId,
+                startupProfile = PortfolioStartupProfileRules.Clone(
+                    source.startupProfile),
                 brands = source.brands?
                     .Select(CloneBrand)
                     .ToList() ?? new List<PortfolioBrandSnapshot>(),

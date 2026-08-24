@@ -24,6 +24,7 @@ namespace Margins
         [SerializeField] private PlaceableFixtureComponent checkoutFixture;
         [SerializeField] private ProductDefinition colaProduct;
         [SerializeField] private ProductDefinition chipsProduct;
+        [SerializeField] private PortfolioProgressionController portfolio;
 
         [Header("Dynamic presentation")]
         [SerializeField] private Transform deliveryLidPivot;
@@ -44,6 +45,9 @@ namespace Margins
         [SerializeField] private Renderer[] focusIndicatorRenderers;
         [SerializeField] private Light[] interiorLights;
         [SerializeField] private Renderer[] practicalLightRenderers;
+        [SerializeField] private TextMesh businessNameText;
+        [SerializeField] private Renderer primaryBrandRenderer;
+        [SerializeField] private Renderer secondaryBrandRenderer;
 
         private readonly List<AudioClip> generatedClips = new();
         private AudioSource effectsSource;
@@ -73,6 +77,8 @@ namespace Margins
         private Renderer[] checkoutFixtureRenderers;
         private Collider[] checkoutFixtureColliders;
         private MaterialPropertyBlock focusPropertyBlock;
+        private MaterialPropertyBlock brandPropertyBlock;
+        private string appliedBrandSignature;
         private float focusFeedbackUntil;
         private bool focusFeedbackSucceeded = true;
 
@@ -94,6 +100,13 @@ namespace Margins
 
         private void Awake()
         {
+            portfolio ??= FindAnyObjectByType<PortfolioProgressionController>();
+            businessNameText ??= GameObject.Find("Experience Store Name")?
+                .GetComponent<TextMesh>();
+            primaryBrandRenderer ??= GameObject.Find("Mile 7 Sign Teal Bar")?
+                .GetComponent<Renderer>();
+            secondaryBrandRenderer ??= GameObject.Find("Mile 7 Sign Orange Bar")?
+                .GetComponent<Renderer>();
             CreateAudio();
             spillInitialScale = cleaningSpillVisual != null
                 ? cleaningSpillVisual.localScale
@@ -112,12 +125,45 @@ namespace Margins
             }
             lightPropertyBlock = new MaterialPropertyBlock();
             focusPropertyBlock = new MaterialPropertyBlock();
+            brandPropertyBlock = new MaterialPropertyBlock();
+            ConfigureLegacyFocusIndicator();
             checkoutFixtureRenderers = checkoutFixture != null
                 ? checkoutFixture.GetComponentsInChildren<Renderer>(true)
                 : Array.Empty<Renderer>();
             checkoutFixtureColliders = checkoutFixture != null
                 ? checkoutFixture.GetComponentsInChildren<Collider>(true)
                 : Array.Empty<Collider>();
+        }
+
+        private void ConfigureLegacyFocusIndicator()
+        {
+            if (focusIndicatorRenderers == null ||
+                focusIndicatorRenderers.Length <= 2)
+            {
+                return;
+            }
+
+            for (int index = 0; index < focusIndicatorRenderers.Length; index++)
+            {
+                Renderer renderer = focusIndicatorRenderers[index];
+                if (renderer == null)
+                {
+                    continue;
+                }
+                renderer.enabled = index < 2;
+                if (index >= 2)
+                {
+                    continue;
+                }
+
+                renderer.transform.localPosition = Vector3.zero;
+                renderer.transform.localRotation = Quaternion.Euler(
+                    0f,
+                    0f,
+                    index == 0 ? 45f : -45f);
+                renderer.transform.localScale =
+                    new Vector3(0.14f, 0.025f, 0.018f);
+            }
         }
 
         private void OnEnable()
@@ -187,6 +233,7 @@ namespace Margins
             UpdateFixtureAndCheckoutPresentation();
             UpdateCleaningPresentation();
             UpdateStorePresentation();
+            UpdateBrandPresentation();
             UpdateObjectiveBeacon();
             UpdateFocusIndicator();
             UpdateThresholdAudio();
@@ -511,6 +558,48 @@ namespace Margins
                 cleaning.TryCreateMess();
                 Play(saleClip, 1f);
             }
+        }
+
+        private void UpdateBrandPresentation()
+        {
+            PortfolioStartupProfileSnapshot profile = portfolio?.StartupProfile;
+            if (profile == null)
+            {
+                return;
+            }
+
+            string signature = $"{profile.businessName}|{profile.primaryColorHex}|" +
+                               $"{profile.secondaryColorHex}|{profile.logoSelectionId}";
+            if (string.Equals(
+                    signature,
+                    appliedBrandSignature,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            appliedBrandSignature = signature;
+            if (businessNameText != null)
+            {
+                businessNameText.text = profile.businessName.ToUpperInvariant();
+            }
+            ApplyBrandColor(primaryBrandRenderer, profile.primaryColorHex);
+            ApplyBrandColor(secondaryBrandRenderer, profile.secondaryColorHex);
+        }
+
+        private void ApplyBrandColor(Renderer renderer, string colorHex)
+        {
+            if (renderer == null ||
+                !ColorUtility.TryParseHtmlString(colorHex, out Color color))
+            {
+                return;
+            }
+
+            renderer.GetPropertyBlock(brandPropertyBlock);
+            brandPropertyBlock.SetColor("_BaseColor", color);
+            brandPropertyBlock.SetColor("_Color", color);
+            brandPropertyBlock.SetColor("_EmissionColor", color * 1.5f);
+            renderer.SetPropertyBlock(brandPropertyBlock);
         }
 
         private void UpdateObjectiveBeacon(bool immediate = false)

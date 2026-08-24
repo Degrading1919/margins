@@ -167,8 +167,10 @@ namespace Margins.Editor
             FirstPersonController firstPerson =
                 playerObject.GetComponent<FirstPersonController>();
             SetObject(firstPerson, "inputActions", inputActions);
-            SetFloat(firstPerson, "moveSpeed", 0.9f);
-            SetFloat(firstPerson, "sprintSpeed", 4.5f);
+            SetFloat(firstPerson, "moveSpeed", 3.2f);
+            SetFloat(firstPerson, "sprintSpeed", 5.4f);
+            SetFloat(firstPerson, "acceleration", 24f);
+            SetFloat(firstPerson, "deceleration", 30f);
             SetFloat(firstPerson, "jumpHeight", 1.15f);
 
             FixturePlacementWorldInteractionTarget placedFixtureTarget =

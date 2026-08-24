@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -256,13 +257,32 @@ namespace Margins.Tests
             Assert.That(store.State, Is.EqualTo(StoreOperatingState.Closed));
             Assert.That(store.IsContinuousOperation, Is.False);
             Assert.That(storeTarget.IsAvailable, Is.True);
-            StringAssert.Contains("Stock a checkout product", storeTarget.Prompt.FormattedText);
+            StringAssert.DoesNotContain(
+                "Stock a checkout product",
+                storeTarget.Prompt.FormattedText);
 
             Assert.That(carrier.TrySetDownHeldTool(out error), Is.True, error);
             StockOneColaFromDelivery(out error);
             Assert.That(storeTarget.TryPrimary(out error), Is.True, error);
             Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
             StringAssert.Contains("Begin closing", storeTarget.Prompt.FormattedText);
+        }
+
+        [UnityTest]
+        public IEnumerator NewBusinessCanOpenBeforeMerchandiseIsShelved()
+        {
+            yield return LoadValidationScene();
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            StoreCustomerFlowController flow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            flow.enabled = false;
+
+            Assert.That(store.Checkout.HasSellableStock, Is.False);
+            Assert.That(store.TryGetFirstOpenBlocker(out string blocker), Is.False,
+                blocker);
+            Assert.That(store.TryOpenStore(out string error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Open));
         }
 
         [UnityTest]
@@ -304,24 +324,209 @@ namespace Margins.Tests
             StringAssert.Contains("store", error);
         }
 
+        [UnityTest]
+        public IEnumerator DedicatedCheckoutPresentsExactItemsLocksMovementAndAlwaysClears()
+        {
+            yield return LoadValidationScene();
+
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            StoreCustomerFlowController flow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            CheckoutStationComponent checkout =
+                Object.FindAnyObjectByType<CheckoutStationComponent>();
+            FirstStoreInteractionController interaction =
+                Object.FindAnyObjectByType<FirstStoreInteractionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            FirstStorePersistenceMapperComponent mapper =
+                Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            CustomerCheckoutWorldInteractionTarget checkoutTarget =
+                Require("Essential Checkout Fixture")
+                    .GetComponent<CustomerCheckoutWorldInteractionTarget>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            for (int step = 0; step < cleaning.RequiredProgressUnits; step++)
+            {
+                cleaning.TryApplyProgress(1);
+            }
+
+            StockProductFromDelivery(
+                "Delivery Content Cola Target",
+                "fixture-shelf-cola-validation",
+                out string error);
+            StockProductFromDelivery(
+                "Delivery Content Chips Target",
+                "fixture-shelf-chips-validation",
+                out error);
+            Assert.That(store.TryOpenStore(out error), Is.True, error);
+            SetPrivateField(flow, "secondsUntilNextArrival", 1_000f);
+            SetPrivateField(flow, "arrivalIntervalSeconds", 1_000f);
+            Assert.That(flow.TryAdmitCustomerNow(out _, out error), Is.True, error);
+
+            float deadline = Time.realtimeSinceStartup + 12f;
+            while (!flow.CanStartCheckout &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
+
+            int completedBefore = checkout.CompletedTransactionCount;
+            Assert.That(
+                interaction.TryBeginDedicatedCheckoutMode(
+                    checkoutTarget,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(interaction.IsCheckoutModeActive, Is.True);
+            Assert.That(player.IsInteractionMovementLocked, Is.True);
+            Assert.That(flow.ActiveCheckoutItemCount, Is.GreaterThan(0));
+            foreach (string physicalUnitId in flow.ActiveCheckoutPhysicalUnitIds)
+            {
+                Assert.That(
+                    flow.PhysicalUnits.TryGetUnit(
+                        physicalUnitId,
+                        out ProductItem item,
+                        out error),
+                    Is.True,
+                    error);
+                Assert.That(item.IsReservedByCustomer, Is.True);
+                Assert.That(
+                    item.GetComponentsInChildren<Renderer>(true)
+                        .Any(renderer => renderer.enabled),
+                    Is.True,
+                    $"Checkout item {physicalUnitId} was not visibly presented.");
+            }
+
+            Assert.That(
+                interaction.TryPrimaryInteraction(out error),
+                Is.True,
+                error);
+            Assert.That(flow.ActiveCheckoutScannedCount, Is.EqualTo(1));
+            Assert.That(
+                interaction.TryCancelInteraction(out error),
+                Is.True,
+                error);
+            Assert.That(flow.ActiveCheckoutScannedCount, Is.Zero);
+            Assert.That(interaction.IsCheckoutModeActive, Is.True);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.True);
+
+            while (flow.ActiveCheckoutScannedCount <
+                   flow.ActiveCheckoutItemCount)
+            {
+                Assert.That(
+                    interaction.TryPrimaryInteraction(out error),
+                    Is.True,
+                    error);
+            }
+            Assert.That(
+                interaction.TryPrimaryInteraction(out error),
+                Is.True,
+                error);
+            Assert.That(checkout.CompletedTransactionCount,
+                Is.EqualTo(completedBefore + 1));
+            Assert.That(interaction.IsCheckoutModeActive, Is.False);
+            Assert.That(player.IsInteractionMovementLocked, Is.False);
+            Assert.That(flow.HasActiveCheckout, Is.False);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.False);
+
+            deadline = Time.realtimeSinceStartup + 12f;
+            while (flow.HasCustomersInStore &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(flow.HasCustomersInStore, Is.False);
+            StockProductFromDelivery(
+                "Delivery Content Cola Target",
+                "fixture-shelf-cola-validation",
+                out error);
+            StockProductFromDelivery(
+                "Delivery Content Chips Target",
+                "fixture-shelf-chips-validation",
+                out error);
+            Assert.That(flow.TryAdmitCustomerNow(out _, out error), Is.True, error);
+            deadline = Time.realtimeSinceStartup + 25f;
+            while (!flow.CanStartCheckout &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
+            Assert.That(
+                interaction.TryBeginDedicatedCheckoutMode(
+                    checkoutTarget,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(
+                interaction.TryCancelInteraction(out error),
+                Is.True,
+                error);
+            Assert.That(interaction.IsCheckoutModeActive, Is.False);
+            Assert.That(flow.HasActiveCheckout, Is.False);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.False);
+            Assert.That(mapper.TryGetDiskSaveBlocker(out _), Is.False);
+
+            Assert.That(
+                checkout.TryBeginSession("stale-session-regression", out error),
+                Is.True,
+                error);
+            Assert.That(flow.HasActiveCheckout, Is.False);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.True);
+            Assert.That(flow.TryClearStaleCheckout(out error), Is.True, error);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.False);
+            Assert.That(mapper.TryGetDiskSaveBlocker(out _), Is.False);
+        }
+
         private static void StockOneColaFromDelivery(out string error)
+        {
+            StockProductFromDelivery(
+                "Delivery Content Cola Target",
+                "fixture-shelf-cola-validation",
+                out error);
+        }
+
+        private static void StockProductFromDelivery(
+            string deliveryTargetName,
+            string shelfName,
+            out string error)
         {
             DeliveryBoxComponent delivery =
                 Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
             DeliveryBoxWorldInteractionTarget boxTarget =
                 delivery.GetComponent<DeliveryBoxWorldInteractionTarget>();
             DeliveryProductWorldInteractionTarget colaTarget =
-                delivery.transform.Find("Delivery Content Cola Target")
+                delivery.transform.Find(deliveryTargetName)
                     .GetComponent<DeliveryProductWorldInteractionTarget>();
             ShelfFixtureWorldInteractionTarget shelfTarget =
-                Require("fixture-shelf-cola-validation")
+                Require(shelfName)
                     .GetComponent<ShelfFixtureWorldInteractionTarget>();
 
-            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
-            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
-            Assert.That(boxTarget.TryCancel(out error), Is.True, error);
+            if (delivery.IsSealed)
+            {
+                Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+                Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            }
+            if (delivery.IsCarried)
+            {
+                Assert.That(boxTarget.TryCancel(out error), Is.True, error);
+            }
             Assert.That(colaTarget.TryPrimary(out error), Is.True, error);
             Assert.That(shelfTarget.TryPrimary(out error), Is.True, error);
+        }
+
+        private static void SetPrivateField(
+            object target,
+            string fieldName,
+            object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName);
+            field.SetValue(target, value);
         }
 
         private static IEnumerator LoadValidationScene()

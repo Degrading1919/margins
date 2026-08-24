@@ -30,7 +30,53 @@
 }
 
 .menu-background-layer {
-    background-color: rgba(8, 15, 17, 0.50);
+    background-color: rgb(8, 15, 17);
+}
+
+.setup-shell {
+    height: 680px;
+}
+
+.setup-intro,
+.setup-note {
+    color: var(--cream-muted);
+    font-size: 14px;
+    white-space: normal;
+    margin-top: 8px;
+}
+
+.setup-grid {
+    flex-grow: 1;
+    flex-direction: row;
+    margin-top: 18px;
+}
+
+.setup-column {
+    flex-grow: 1;
+    width: 48%;
+}
+
+.setup-column--right {
+    margin-left: 34px;
+}
+
+.setup-field {
+    min-height: 48px;
+    margin-bottom: 14px;
+    color: var(--cream);
+    font-size: 15px;
+}
+
+.setup-field .unity-base-field__input {
+    min-height: 38px;
+    background-color: var(--charcoal-raised);
+    border-width: 1px;
+    border-color: rgba(236, 222, 190, 0.24);
+    color: var(--cream);
+}
+
+.setup-notification {
+    flex-shrink: 0;
 }
 
 .menu-background-wash {
@@ -232,8 +278,53 @@
 }
 
 .settings-toggle .unity-toggle__input {
+    flex-grow: 0;
+    width: 22px;
+    height: 22px;
     background-color: var(--charcoal-raised);
     border-color: rgba(236, 222, 190, 0.28);
+}
+
+.settings-toggle .unity-base-field__input {
+    flex-grow: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.sensitivity-stepper {
+    min-height: 48px;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.sensitivity-label {
+    flex-grow: 1;
+    color: var(--cream);
+    font-size: 16px;
+}
+
+.stepper-button {
+    width: 38px;
+    height: 34px;
+    border-width: 1px;
+    border-radius: 0;
+    border-color: rgba(236, 222, 190, 0.28);
+    background-color: var(--charcoal-raised);
+    color: var(--cream);
+    font-size: 18px;
+}
+
+.stepper-button:hover,
+.stepper-button:focus {
+    border-color: var(--teal-bright);
+    background-color: rgba(31, 137, 122, 0.24);
+}
+
+.stepper-value {
+    width: 122px;
+    color: var(--cream);
+    font-size: 15px;
+    -unity-text-align: middle-center;
 }
 
 .setting-value {
@@ -266,6 +357,24 @@
     border-bottom-width: 1px;
     border-top-color: rgba(236, 222, 190, 0.12);
     border-bottom-color: rgba(236, 222, 190, 0.12);
+}
+
+.binding-list .unity-scroller--vertical {
+    width: 14px;
+    background-color: var(--charcoal-soft);
+}
+
+.binding-list .unity-scroller__slider {
+    background-color: var(--charcoal-raised);
+}
+
+.binding-list .unity-base-slider__tracker {
+    background-color: rgba(236, 222, 190, 0.08);
+}
+
+.binding-list .unity-base-slider__dragger {
+    background-color: var(--teal-bright);
+    border-width: 0;
 }
 
 .binding-row {

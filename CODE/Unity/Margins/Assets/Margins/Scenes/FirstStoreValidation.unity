@@ -579,10 +579,10 @@ MonoBehaviour:
   lookActionName: Look
   sprintActionName: Sprint
   jumpActionName: Jump
-  moveSpeed: 0.9
-  sprintSpeed: 4.5
-  acceleration: 17
-  deceleration: 23
+  moveSpeed: 3.2
+  sprintSpeed: 5.4
+  acceleration: 24
+  deceleration: 30
   horizontalLookSensitivity: 0.1
   verticalLookSensitivity: 0.1
   invertY: 0

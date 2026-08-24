@@ -268,6 +268,19 @@ namespace Margins.Editor
                 Require("First-Store Inventory")
                     .GetComponent<FirstStoreInventoryComponent>());
             SetObject(presenter, "portfolio", portfolio);
+            SetObject(experience, "portfolio", portfolio);
+            SetObject(
+                experience,
+                "businessNameText",
+                Require("Experience Store Name").GetComponent<TextMesh>());
+            SetObject(
+                experience,
+                "primaryBrandRenderer",
+                Require("Mile 7 Sign Teal Bar").GetComponent<Renderer>());
+            SetObject(
+                experience,
+                "secondaryBrandRenderer",
+                Require("Mile 7 Sign Orange Bar").GetComponent<Renderer>());
 
             FirstStoreDiskPersistenceController diskPersistence =
                 UnityEngine.Object.FindAnyObjectByType<FirstStoreDiskPersistenceController>();
@@ -858,46 +871,15 @@ namespace Margins.Editor
         {
             GameObject indicator = new("Focus Indicator");
             indicator.transform.SetParent(root, false);
-            const float edge = 0.36f;
-            const float offset = 0.27f;
-            const float thickness = 0.035f;
-            Vector3[] horizontalPositions =
-            {
-                new(-offset, offset, 0f),
-                new(offset, offset, 0f),
-                new(-offset, -offset, 0f),
-                new(offset, -offset, 0f)
-            };
-            Vector3[] verticalPositions =
-            {
-                new(-offset, offset, 0f),
-                new(offset, offset, 0f),
-                new(-offset, -offset, 0f),
-                new(offset, -offset, 0f)
-            };
-            for (int index = 0; index < horizontalPositions.Length; index++)
-            {
-                float horizontalSign = index % 2 == 0 ? 1f : -1f;
-                float verticalSign = index < 2 ? -1f : 1f;
-                CreateShape(
-                    indicator.transform,
-                    $"Focus Corner H {index + 1}",
-                    PrimitiveType.Cube,
-                    horizontalPositions[index] +
-                    Vector3.right * horizontalSign * edge * 0.25f,
-                    new Vector3(edge, thickness, thickness),
-                    material,
-                    false);
-                CreateShape(
-                    indicator.transform,
-                    $"Focus Corner V {index + 1}",
-                    PrimitiveType.Cube,
-                    verticalPositions[index] +
-                    Vector3.up * verticalSign * edge * 0.25f,
-                    new Vector3(thickness, edge, thickness),
-                    material,
-                    false);
-            }
+            CreateShape(
+                indicator.transform,
+                "Interactable Highlight",
+                PrimitiveType.Cube,
+                Vector3.zero,
+                new Vector3(0.12f, 0.12f, 0.018f),
+                material,
+                false,
+                Quaternion.Euler(0f, 0f, 45f));
             indicator.SetActive(false);
             return indicator;
         }

@@ -163,8 +163,9 @@ namespace Margins
     {
         public const int LegacyVersion = 1;
         public const int VersionTwo = 2;
-        public const int PriorVersion = 3;
-        public const int CurrentVersion = 4;
+        public const int VersionThree = 3;
+        public const int PriorVersion = 4;
+        public const int CurrentVersion = 5;
 
         public int version = CurrentVersion;
         public int currentDay = 1;
@@ -4131,10 +4132,15 @@ namespace Margins
                 !PortfolioProgressionRules.TryGetLocationDefinition(
                     location.locationId,
                     out PortfolioLocationDefinition definition) ||
-                !string.Equals(
-                    location.displayName,
-                    definition.DisplayName,
-                    StringComparison.Ordinal) ||
+                (string.Equals(
+                     location.locationId,
+                     PortfolioProgressionRules.FirstLocationId,
+                     StringComparison.Ordinal)
+                    ? location.displayName.Trim().Length > 32
+                    : !string.Equals(
+                        location.displayName,
+                        definition.DisplayName,
+                        StringComparison.Ordinal)) ||
                 !string.Equals(
                     location.districtName,
                     definition.DistrictName,
@@ -4874,6 +4880,7 @@ namespace Margins
             if (source == null ||
                 (source.version != PortfolioProgressionSnapshot.LegacyVersion &&
                  source.version != PortfolioProgressionSnapshot.VersionTwo &&
+                 source.version != PortfolioProgressionSnapshot.VersionThree &&
                  source.version != PortfolioProgressionSnapshot.PriorVersion &&
                  source.version != PortfolioProgressionSnapshot.CurrentVersion))
             {
@@ -4888,7 +4895,7 @@ namespace Margins
                 return false;
             }
 
-            if (source.version >= PortfolioProgressionSnapshot.PriorVersion &&
+            if (source.version >= PortfolioProgressionSnapshot.VersionThree &&
                 source.locations?.Any(location =>
                     location == null || location.merchandisePrices == null ||
                     location.shelfMerchandiseAssignments == null) == true)
@@ -4931,11 +4938,11 @@ namespace Margins
                             location,
                             source.version <=
                             PortfolioProgressionSnapshot.VersionTwo,
-                            source.version !=
-                            PortfolioProgressionSnapshot.CurrentVersion))
+                            source.version <
+                            PortfolioProgressionSnapshot.PriorVersion))
                     .ToList() ?? new List<PortfolioLocationSnapshot>()
             };
-            if (source.version != PortfolioProgressionSnapshot.CurrentVersion &&
+            if (source.version < PortfolioProgressionSnapshot.PriorVersion &&
                 clone.locations.FirstOrDefault(location => string.Equals(
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
@@ -4991,10 +4998,14 @@ namespace Margins
                         first.detailedReconciliation.includedOperatingExpensesCents;
                 }
             }
-            clone.company = source.version ==
-                            PortfolioProgressionSnapshot.CurrentVersion
+            clone.company = source.version >= PortfolioProgressionSnapshot.PriorVersion
                 ? PortfolioPropertyRules.Clone(source.company)
                 : PortfolioPropertyRules.CreateForLocations(clone.locations);
+            if (clone.company != null && clone.company.startupProfile == null)
+            {
+                clone.company.startupProfile =
+                    PortfolioStartupProfileRules.CreateDefault();
+            }
             SortCollections(clone);
             return clone;
         }

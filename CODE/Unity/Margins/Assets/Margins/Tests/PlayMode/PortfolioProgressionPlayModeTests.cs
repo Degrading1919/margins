@@ -693,7 +693,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator StaffFinishesQueuedSaleAndStandardsWorkDuringClosing()
+        public IEnumerator ClosingDrainsQueuedCustomersWithoutCreatingPhantomSales()
         {
             CompletePhysicalFirstShift();
             CheckoutStationComponent checkout =
@@ -751,10 +751,10 @@ namespace Margins.Tests
             Assert.That(cleaning.IsComplete, Is.True);
             Assert.That(
                 checkout.CompletedTransactionCount,
-                Is.EqualTo(transactionCountBefore + 1));
+                Is.EqualTo(transactionCountBefore));
             Assert.That(
                 TotalInventory(inventory, checkout),
-                Is.EqualTo(inventoryBefore - 1));
+                Is.EqualTo(inventoryBefore));
             Assert.That(
                 store.State,
                 Is.EqualTo(StoreOperatingState.Closed));

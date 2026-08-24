@@ -56,6 +56,10 @@ namespace Margins.Tests
             Assert.That(root.Q("menu-background-layer"), Is.Not.Null);
             Assert.That(root.Q("menu-foreground-layer"), Is.Not.Null);
             Assert.That(root.Q<IMGUIContainer>(), Is.Null);
+            Assert.That(
+                root.Q<VisualElement>("menu-background-layer")
+                    .resolvedStyle.backgroundColor.a,
+                Is.EqualTo(1f).Within(0.001f));
 
             string[] primaryOptions =
             {
@@ -106,13 +110,48 @@ namespace Margins.Tests
             Assert.That(boundActions, Does.Contain("BuildMode"));
             Assert.That(boundActions, Does.Contain("Cancel"));
             Assert.That(boundActions, Does.Contain("RotatePlacement"));
+            Assert.That(boundActions, Does.Not.Contain("Attack"));
+            Assert.That(boundActions, Does.Not.Contain("Crouch"));
+            Assert.That(boundActions, Does.Not.Contain("Previous"));
+            Assert.That(boundActions, Does.Not.Contain("Next"));
+            Assert.That(
+                root.Q<SliderInt>("settings-look-sensitivity"),
+                Is.Null);
+            Assert.That(
+                root.Q<Button>("settings-look-sensitivity-decrease"),
+                Is.Not.Null);
+            Assert.That(
+                root.Q<Button>("settings-look-sensitivity-increase"),
+                Is.Not.Null);
 
             VisualElement notification = root.Q("settings-notification");
-            VisualElement footer = root.Q(className: "settings-footer");
+            VisualElement footer = root.Q("settings-view")
+                .Q(className: "settings-footer");
             Assert.That(notification.parent, Is.SameAs(footer.parent));
             Assert.That(
                 notification.parent.IndexOf(notification),
                 Is.LessThan(footer.parent.IndexOf(footer)));
+
+            menu.CloseSettings();
+            menu.RequestNewBusiness();
+            yield return null;
+            Assert.That(menu.Screen,
+                Is.EqualTo(GameMenuScreen.NewBusinessSetup));
+            Assert.That(
+                root.Q("new-business-setup-view").resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.Flex));
+            Assert.That(root.Q<TextField>("setup-business-name"), Is.Not.Null);
+            Assert.That(root.Q<TextField>("setup-primary-color"), Is.Not.Null);
+            Assert.That(root.Q<TextField>("setup-secondary-color"), Is.Not.Null);
+            Assert.That(root.Q<IntegerField>("setup-seed"), Is.Not.Null);
+            Assert.That(root.Q<DropdownField>("setup-logo").choices,
+                Has.Count.EqualTo(3));
+            Assert.That(root.Q<DropdownField>("setup-difficulty").choices,
+                Has.Count.EqualTo(4));
+            Assert.That(
+                root.Q<DropdownField>("setup-difficulty").choices,
+                Has.All.StartsWith("Purpose:"));
+            menu.CancelNewBusinessSetup();
         }
 
         [UnityTest]
@@ -653,9 +692,12 @@ namespace Margins.Tests
                 Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
             GamePauseMenuController menu =
                 Object.FindAnyObjectByType<GamePauseMenuController>();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
             Assert.That(persistence, Is.Not.Null);
             Assert.That(mapper, Is.Not.Null);
             Assert.That(menu, Is.Not.Null);
+            Assert.That(portfolio, Is.Not.Null);
 
             for (int frame = 0;
                  frame < 10 && !persistence.HasNewBusinessTemplate;
@@ -680,29 +722,44 @@ namespace Margins.Tests
                 error);
             Assert.That(persistence.TrySave(), Is.True, persistence.LastDiagnostic);
             Assert.That(File.Exists(createdSavePath), Is.True);
+            PortfolioStartupProfileSnapshot savedProfile =
+                portfolio.StartupProfile;
 
             MoveCheckoutFixture(new GridPosition(4, 3), 2);
             menu.Resume();
             menu.ReturnToTitle();
+            Assert.That(menu.HasActiveSession, Is.False);
             menu.RequestNewBusiness();
             Assert.That(
-                menu.PendingReplacement,
-                Is.EqualTo(SessionReplacementAction.NewBusiness));
+                menu.Screen,
+                Is.EqualTo(GameMenuScreen.NewBusinessSetup));
             Assert.That(File.Exists(createdSavePath), Is.True);
-            menu.RequestNewBusiness();
+            Assert.That(menu.IsOpen, Is.True);
+            menu.SetNewBusinessName("Cedar Corner");
+            menu.SetNewBusinessPrimaryColor("#336699");
+            menu.SetNewBusinessSecondaryColor("#CC7722");
+            menu.SetNewBusinessLogoSelection("placeholder-mark-b");
+            menu.SetNewBusinessSeed(741);
+            menu.SetNewBusinessDifficultyPurpose(
+                "purpose-challenging-recoverable");
+            menu.StartConfiguredNewBusiness();
             Assert.That(menu.IsOpen, Is.False);
             Assert.That(
                 mapper.TryCapture(out FirstStoreSnapshot newBusinessState, out error),
                 Is.True,
                 error);
             Assert.That(newBusinessState, Is.EqualTo(cleanState));
+            PortfolioStartupProfileSnapshot profile = portfolio.StartupProfile;
+            Assert.That(profile.businessName, Is.EqualTo("Cedar Corner"));
+            Assert.That(profile.primaryColorHex, Is.EqualTo("#336699"));
+            Assert.That(profile.secondaryColorHex, Is.EqualTo("#CC7722"));
+            Assert.That(profile.logoSelectionId,
+                Is.EqualTo("placeholder-mark-b"));
+            Assert.That(profile.seed, Is.EqualTo(741));
             Assert.That(File.Exists(createdSavePath), Is.True);
 
             menu.ReturnToTitle();
-            menu.RequestLoadBusiness();
-            Assert.That(
-                menu.PendingReplacement,
-                Is.EqualTo(SessionReplacementAction.LoadBusiness));
+            Assert.That(menu.HasActiveSession, Is.False);
             menu.RequestLoadBusiness();
             Assert.That(menu.IsOpen, Is.False);
             Assert.That(
@@ -710,6 +767,10 @@ namespace Margins.Tests
                 Is.True,
                 error);
             Assert.That(loadedState, Is.EqualTo(savedState));
+            Assert.That(portfolio.StartupProfile.businessName,
+                Is.EqualTo(savedProfile.businessName));
+            Assert.That(portfolio.StartupProfile.seed,
+                Is.EqualTo(savedProfile.seed));
             Assert.That(File.Exists(createdSavePath), Is.True);
         }
 

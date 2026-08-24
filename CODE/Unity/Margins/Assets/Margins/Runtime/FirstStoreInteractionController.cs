@@ -33,6 +33,7 @@ namespace Margins
         private InputAction buildModeAction;
         private InputAction rotatePlacementAction;
         private bool ownsFallbackActions;
+        private CustomerCheckoutWorldInteractionTarget dedicatedCheckoutTarget;
 
         public event Action<FirstStoreInteractionFeedback> InteractionResolved;
 
@@ -41,8 +42,13 @@ namespace Margins
             firstPersonController != null &&
             firstPersonController.IsGameplayInputActive;
         public string FocusedTargetId => focusedTarget?.StableTargetId;
-        public FirstStoreWorldInteractionPrompt CurrentPrompt => currentPrompt;
-        public string CurrentPromptText => currentPrompt?.FormattedText ?? string.Empty;
+        public bool IsCheckoutModeActive => dedicatedCheckoutTarget != null;
+        public StoreCustomerFlowController CheckoutModeFlow =>
+            dedicatedCheckoutTarget?.CustomerFlow;
+        public FirstStoreWorldInteractionPrompt CurrentPrompt =>
+            dedicatedCheckoutTarget?.DedicatedPrompt ?? currentPrompt;
+        public string CurrentPromptText =>
+            CurrentPrompt?.FormattedText ?? string.Empty;
         public string LastFeedback { get; private set; }
         public int FeedbackRevision { get; private set; }
         public Transform FocusedWorldTransform => focusedWorldTransform;
@@ -68,6 +74,7 @@ namespace Margins
 
         private void OnDisable()
         {
+            ExitDedicatedCheckoutMode();
             fixturePlacementMode?.TrySetBuildMode(false, out _);
             SetInputActionsEnabled(false);
             ClearFocus();
@@ -92,6 +99,12 @@ namespace Margins
             {
                 fixturePlacementMode?.TrySetBuildMode(false, out _);
                 ClearFocus();
+                return;
+            }
+
+            if (IsCheckoutModeActive)
+            {
+                UpdateDedicatedCheckoutMode();
                 return;
             }
 
@@ -153,6 +166,12 @@ namespace Margins
             {
                 ClearFocus();
                 return false;
+            }
+
+            if (IsCheckoutModeActive)
+            {
+                currentPrompt = dedicatedCheckoutTarget.DedicatedPrompt;
+                return true;
             }
 
             candidates.Clear();
@@ -242,6 +261,11 @@ namespace Margins
                 return false;
             }
 
+            if (IsCheckoutModeActive)
+            {
+                return TryDedicatedCheckoutPrimary(out error);
+            }
+
             if (focusedTarget == null && !RefreshFocus())
             {
                 error = "No world interaction target is focused.";
@@ -265,10 +289,48 @@ namespace Margins
 
             string targetId = focusedTarget.StableTargetId;
             string action = focusedTarget.Prompt?.Action ?? "Interact";
+            if (focusedTarget is CustomerCheckoutWorldInteractionTarget
+                checkoutTarget)
+            {
+                return TryBeginDedicatedCheckoutMode(checkoutTarget, out error);
+            }
             bool success = focusedTarget.TryPrimary(out error);
             RecordInteraction(success, targetId, action, error);
             RefreshFocus();
             return success;
+        }
+
+        public bool TryBeginDedicatedCheckoutMode(
+            CustomerCheckoutWorldInteractionTarget checkoutTarget,
+            out string error)
+        {
+            if (!IsWorldInteractionEnabled || checkoutTarget == null)
+            {
+                error = "Return to the store and use an available checkout.";
+                return false;
+            }
+            if (stocking != null && stocking.HasHeldUnit)
+            {
+                error = "Put down the carried product before serving checkout.";
+                RecordInteraction(
+                    false,
+                    checkoutTarget.StableTargetId,
+                    "Enter checkout",
+                    error);
+                return false;
+            }
+
+            bool entered = checkoutTarget.TryEnterDedicatedMode(out error);
+            RecordInteraction(
+                entered,
+                checkoutTarget.StableTargetId,
+                "Enter checkout",
+                error);
+            if (entered)
+            {
+                EnterDedicatedCheckoutMode(checkoutTarget);
+            }
+            return entered;
         }
 
         public bool TryCancelInteraction(out string error)
@@ -278,6 +340,11 @@ namespace Margins
                 error = "Return to the store before interacting.";
                 LastFeedback = error;
                 return false;
+            }
+
+            if (IsCheckoutModeActive)
+            {
+                return TryDedicatedCheckoutCancel(out error);
             }
 
             if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
@@ -463,6 +530,13 @@ namespace Margins
                 return false;
             }
 
+            if (IsCheckoutModeActive)
+            {
+                error = "Finish or cancel checkout before entering Build Mode.";
+                LastFeedback = error;
+                return false;
+            }
+
             if (!fixturePlacementMode.IsBuildModeActive &&
                 ((stocking != null && stocking.HasHeldUnit) ||
                  (toolCarrier != null && toolCarrier.HasHeldTool)))
@@ -610,8 +684,90 @@ namespace Margins
 
         public void ResetTransientStateAfterRestore()
         {
+            ExitDedicatedCheckoutMode();
             fixturePlacementMode?.ResetTransientStateAfterRestore();
             ClearFocus();
+        }
+
+        private void EnterDedicatedCheckoutMode(
+            CustomerCheckoutWorldInteractionTarget target)
+        {
+            dedicatedCheckoutTarget = target;
+            fixturePlacementMode?.TrySetBuildMode(false, out _);
+            ClearFocus();
+            currentPrompt = target?.DedicatedPrompt;
+            firstPersonController?.SetInteractionMovementLocked(true);
+        }
+
+        private void ExitDedicatedCheckoutMode()
+        {
+            dedicatedCheckoutTarget = null;
+            firstPersonController?.SetInteractionMovementLocked(false);
+            ClearFocus();
+        }
+
+        private void UpdateDedicatedCheckoutMode()
+        {
+            if (dedicatedCheckoutTarget == null ||
+                !dedicatedCheckoutTarget.IsDedicatedCheckoutActive)
+            {
+                ExitDedicatedCheckoutMode();
+                return;
+            }
+
+            currentPrompt = dedicatedCheckoutTarget.DedicatedPrompt;
+            if (interactAction != null && interactAction.WasPressedThisFrame())
+            {
+                TryDedicatedCheckoutPrimary(out _);
+            }
+            if (cancelAction != null && cancelAction.WasPressedThisFrame())
+            {
+                TryDedicatedCheckoutCancel(out _);
+            }
+        }
+
+        private bool TryDedicatedCheckoutPrimary(out string error)
+        {
+            CustomerCheckoutWorldInteractionTarget target =
+                dedicatedCheckoutTarget;
+            if (target == null)
+            {
+                error = "No dedicated checkout is active.";
+                return false;
+            }
+
+            string action = target.DedicatedPrompt?.Action ?? "Use checkout";
+            bool success = target.TryDedicatedPrimary(out error);
+            RecordInteraction(success, target.StableTargetId, action, error);
+            if (!target.IsDedicatedCheckoutActive)
+            {
+                ExitDedicatedCheckoutMode();
+            }
+            return success;
+        }
+
+        private bool TryDedicatedCheckoutCancel(out string error)
+        {
+            CustomerCheckoutWorldInteractionTarget target =
+                dedicatedCheckoutTarget;
+            if (target == null)
+            {
+                error = "No dedicated checkout is active.";
+                return false;
+            }
+
+            bool correcting = target.CustomerFlow.ActiveCheckoutScannedCount > 0;
+            bool success = target.TryDedicatedCancel(out error);
+            RecordInteraction(
+                success,
+                target.StableTargetId,
+                correcting ? "Undo checkout scan" : "Cancel checkout",
+                error);
+            if (!target.IsDedicatedCheckoutActive)
+            {
+                ExitDedicatedCheckoutMode();
+            }
+            return success;
         }
 
         private void ClearFocus()

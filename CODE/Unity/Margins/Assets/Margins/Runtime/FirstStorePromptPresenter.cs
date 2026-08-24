@@ -209,7 +209,9 @@ namespace Margins
             if (store.State == StoreOperatingState.Closed &&
                 saleComplete && cleaning.IsComplete)
             {
-                return FirstStoreObjectiveKind.Complete;
+                return portfolio?.Progression?.CurrentDay <= 1
+                    ? FirstStoreObjectiveKind.ReviewResult
+                    : FirstStoreObjectiveKind.Complete;
             }
 
             for (int index = 0; index < requiredFixtures.Length; index++)
@@ -294,7 +296,7 @@ namespace Margins
                 FirstStoreObjectiveKind.FinalizeClosing =>
                     "Finish serving inside customers and clear closing blockers",
                 FirstStoreObjectiveKind.ReviewResult =>
-                    "Shift report posted",
+                    "Open the Owner Phone to review the shift and End Day",
                 _ => "The business is yours to run"
             };
         }
@@ -323,8 +325,7 @@ namespace Margins
                 FirstStoreObjectiveKind.ClockIn or
                 FirstStoreObjectiveKind.OpenStore or
                 FirstStoreObjectiveKind.BeginClosing or
-                FirstStoreObjectiveKind.FinalizeClosing or
-                FirstStoreObjectiveKind.ReviewResult => storeControlTarget,
+                FirstStoreObjectiveKind.FinalizeClosing => storeControlTarget,
                 FirstStoreObjectiveKind.PlaceCheckout => fixtureTarget,
                 FirstStoreObjectiveKind.OpenDelivery => deliveryTarget,
                 FirstStoreObjectiveKind.TakeCola => colaDeliveryTarget,
@@ -429,17 +430,20 @@ namespace Margins
             float width = Screen.width / scale;
             float height = Screen.height / scale;
 
-            if (store != null && store.IsContinuousOperation)
-            {
-                DrawCompanyGlance(width);
-            }
-            else
+            DrawCompanyGlance(width);
+            if (store != null && !store.IsContinuousOperation)
             {
                 DrawObjectiveToast(width);
             }
-            DrawCrosshair(width, height);
-            DrawContextPrompt(width, height);
-            DrawBuildMode(width);
+            if (interaction.IsCheckoutModeActive)
+            {
+                DrawDedicatedCheckout(width, height);
+            }
+            else
+            {
+                DrawContextPrompt(width, height);
+            }
+            DrawBuildMode(width, height);
             DrawHeldItem(width, height);
             DrawFeedback(width, height);
             DrawOperationalCue(height);
@@ -460,7 +464,7 @@ namespace Margins
                 return;
             }
 
-            Rect panel = new(width - 340f, 28f, 308f, 58f);
+            Rect panel = new(width - 340f, 28f, 308f, 78f);
             DrawPanel(panel, Night);
             DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Teal);
             GUI.Label(
@@ -471,6 +475,12 @@ namespace Margins
                 new Rect(panel.x + 20f, panel.y + 27f, 265f, 24f),
                 FormatCents(company.cashCents),
                 titleStyle);
+            GUI.Label(
+                new Rect(panel.x + 20f, panel.y + 53f, 265f, 18f),
+                portfolio?.IsOwnerPhoneUnlocked == true
+                    ? "TAB  OWNER PHONE"
+                    : "OWNER PHONE UNLOCKS AFTER FIRST SALE",
+                smallStyle);
         }
 
         private void DrawObjectiveToast(float width)
@@ -528,19 +538,54 @@ namespace Margins
             }
         }
 
-        private void DrawCrosshair(float width, float height)
+        private void DrawDedicatedCheckout(float width, float height)
         {
-            float x = width * 0.5f;
-            float y = height * 0.5f;
-            bool focused = interaction.CurrentPrompt != null;
-            Color color = focused
-                ? Teal
-                : new Color(0.88f, 0.91f, 0.89f, 0.58f);
-            float radius = focused ? 8f : 4f;
-            DrawPanel(new Rect(x - radius, y - 1f, radius * 0.65f, 2f), color);
-            DrawPanel(new Rect(x + radius * 0.35f, y - 1f, radius * 0.65f, 2f), color);
-            DrawPanel(new Rect(x - 1f, y - radius, 2f, radius * 0.65f), color);
-            DrawPanel(new Rect(x - 1f, y + radius * 0.35f, 2f, radius * 0.65f), color);
+            StoreCustomerFlowController flow = interaction.CheckoutModeFlow;
+            FirstStoreWorldInteractionPrompt prompt = interaction.CurrentPrompt;
+            if (flow == null || prompt == null)
+            {
+                return;
+            }
+
+            Rect panel = new(
+                (width - 780f) * 0.5f,
+                height - 205f,
+                780f,
+                162f);
+            DrawPanel(panel, new Color(0.018f, 0.03f, 0.038f, 0.98f));
+            DrawPanel(new Rect(panel.x, panel.y, panel.width, 7f), Teal);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 18f, 230f, 22f),
+                "CHECKOUT MODE",
+                eyebrowStyle);
+            GUI.Label(
+                new Rect(panel.x + 24f, panel.y + 42f, 430f, 30f),
+                flow.ActiveCheckoutScannedCount < flow.ActiveCheckoutItemCount
+                    ? $"Items on counter  {flow.ActiveCheckoutScannedCount}/" +
+                      $"{flow.ActiveCheckoutItemCount} scanned"
+                    : "All presented items scanned",
+                bodyStyle);
+            GUI.Label(
+                new Rect(panel.x + 530f, panel.y + 35f, 220f, 42f),
+                FormatCents(flow.ActiveCheckoutSubtotalCents),
+                resultValueStyle);
+
+            Rect primaryKey = new(panel.x + 24f, panel.y + 94f, 42f, 34f);
+            DrawPanel(primaryKey, Teal);
+            GUI.Label(primaryKey, "E", keyStyle);
+            GUI.Label(
+                new Rect(panel.x + 78f, panel.y + 91f, 380f, 40f),
+                FriendlyAction(prompt.Action),
+                promptStyle);
+            Rect cancelKey = new(panel.x + 530f, panel.y + 94f, 42f, 34f);
+            DrawPanel(cancelKey, Amber);
+            GUI.Label(cancelKey, "Q", keyStyle);
+            GUI.Label(
+                new Rect(panel.x + 584f, panel.y + 98f, 170f, 26f),
+                flow.ActiveCheckoutScannedCount > 0
+                    ? "Undo last scan"
+                    : "Cancel & exit",
+                smallStyle);
         }
 
         private void DrawHeldItem(float width, float height)
@@ -561,11 +606,11 @@ namespace Margins
                 bodyStyle);
             GUI.Label(
                 new Rect(panel.x + 18f, panel.y + 34f, panel.width - 36f, 20f),
-                held != null ? "Wheel  Rotate    •    Q  Put down" : "Q  Put down",
+                "Q  Put down",
                 smallStyle);
         }
 
-        private void DrawBuildMode(float width)
+        private void DrawBuildMode(float width, float height)
         {
             if (fixturePlacementMode == null ||
                 !fixturePlacementMode.IsBuildModeActive)
@@ -573,12 +618,27 @@ namespace Margins
                 return;
             }
 
-            Rect panel = new(width - 230f, 104f, 198f, 40f);
+            const float edge = 9f;
+            DrawPanel(new Rect(0f, 0f, width, edge), Amber);
+            DrawPanel(new Rect(0f, height - edge, width, edge), Amber);
+            DrawPanel(new Rect(0f, 0f, edge, height), Amber);
+            DrawPanel(new Rect(width - edge, 0f, edge, height), Amber);
+            for (float x = 0f; x < width; x += 72f)
+            {
+                DrawPanel(
+                    new Rect(x, 0f, 36f, edge),
+                    new Color(0.03f, 0.045f, 0.05f, 1f));
+                DrawPanel(
+                    new Rect(x + 36f, height - edge, 36f, edge),
+                    new Color(0.03f, 0.045f, 0.05f, 1f));
+            }
+
+            Rect panel = new(width - 258f, 122f, 226f, 44f);
             DrawPanel(panel, NightSoft);
             DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Teal);
             GUI.Label(
                 new Rect(panel.x + 17f, panel.y + 8f, panel.width - 28f, 24f),
-                "BUILD MODE  •  B EXIT",
+                "BUILD MODE  •  B EXIT  •  WHEEL ROTATE",
                 eyebrowStyle);
         }
 
@@ -610,7 +670,12 @@ namespace Margins
         {
             string cue = null;
             Color cueColor = Teal;
-            if (cleaning != null && cleaning.NeedsCleaning)
+            if (CurrentObjectiveKind == FirstStoreObjectiveKind.ReviewResult)
+            {
+                cue = "Tab  Review shift & End Day";
+                cueColor = Amber;
+            }
+            else if (cleaning != null && cleaning.NeedsCleaning)
             {
                 cue = "Cleanup needed";
                 cueColor = Amber;
@@ -664,7 +729,7 @@ namespace Margins
             DrawHelpLine(panel, 0, "MOVE", "WASD   •   Shift brisk walk");
             DrawHelpLine(panel, 1, "USE", "E interact   •   Q back / put down");
             DrawHelpLine(panel, 2, "BUILD", "B mode   •   E select   •   Q place / cancel");
-            DrawHelpLine(panel, 3, "ROTATE", "Mouse wheel rotates held objects");
+            DrawHelpLine(panel, 3, "ROTATE", "Mouse wheel rotates fixtures in Build Mode");
             DrawHelpLine(panel, 4, "COMPANY", "Tab management   •   Esc menu");
             DrawHelpLine(panel, 5, "SAVE", "F5 save   •   F9 twice to reload");
             GUI.Label(

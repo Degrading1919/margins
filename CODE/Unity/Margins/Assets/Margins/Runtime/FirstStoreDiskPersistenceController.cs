@@ -236,6 +236,11 @@ namespace Margins
 
         public bool TryStartNewBusiness()
         {
+            return TryStartNewBusiness(null);
+        }
+
+        public bool TryStartNewBusiness(NewBusinessSetupData setup)
+        {
             if (TryGetGeneratedLocationPersistenceBlocker(out string blocker))
             {
                 return Reject($"New business rejected: {blocker}");
@@ -266,6 +271,15 @@ namespace Margins
             {
                 return Reject(
                     $"New business rejected: initialization state could not be copied: {error}");
+            }
+
+            if (setup != null &&
+                !PortfolioStartupProfileRules.TryApply(
+                    cleanState.portfolio,
+                    setup,
+                    out error))
+            {
+                return Reject($"New business rejected: {error}");
             }
 
             return TryRestoreSaveData(cleanState, true);

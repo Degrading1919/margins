@@ -37,11 +37,11 @@ namespace Margins
         [SerializeField] private string lookActionName = "Look";
         [SerializeField] private string sprintActionName = "Sprint";
         [SerializeField] private string jumpActionName = "Jump";
-        [SerializeField, Min(0f)] private float moveSpeed = 0.9f;
+        [SerializeField, Min(0f)] private float moveSpeed = 3.2f;
         [FormerlySerializedAs("briskWalkSpeed")]
-        [SerializeField, Min(0f)] private float sprintSpeed = 4.5f;
-        [SerializeField, Min(0.01f)] private float acceleration = 17f;
-        [SerializeField, Min(0.01f)] private float deceleration = 23f;
+        [SerializeField, Min(0f)] private float sprintSpeed = 5.4f;
+        [SerializeField, Min(0.01f)] private float acceleration = 24f;
+        [SerializeField, Min(0.01f)] private float deceleration = 30f;
         [FormerlySerializedAs("mouseSensitivity")]
         [SerializeField, Min(0f)] private float horizontalLookSensitivity = 0.1f;
         [SerializeField, Min(0f)] private float verticalLookSensitivity = 0.1f;
@@ -68,6 +68,7 @@ namespace Margins
         private InputAction sprintAction;
         private InputAction jumpAction;
         private bool ownsFallbackActions;
+        private bool interactionMovementLocked;
 
         public event Action<bool> Footstep;
         public event Action Landed;
@@ -79,6 +80,7 @@ namespace Margins
             IsGameplayMode &&
             (Application.isBatchMode ||
              Cursor.lockState == CursorLockMode.Locked);
+        public bool IsInteractionMovementLocked => interactionMovementLocked;
         public bool CameraMotionEnabled { get; private set; } = true;
         public float MouseSensitivity => horizontalLookSensitivity;
         public float HorizontalLookSensitivity => horizontalLookSensitivity;
@@ -194,6 +196,7 @@ namespace Margins
         private void OnDisable()
         {
             IsGameplayMode = false;
+            interactionMovementLocked = false;
             RequestedCursorLockState = CursorLockMode.None;
             planarVelocity = Vector3.zero;
             IsSprinting = false;
@@ -252,6 +255,16 @@ namespace Margins
             hasAppliedInitialMode = true;
         }
 
+        public void SetInteractionMovementLocked(bool locked)
+        {
+            interactionMovementLocked = locked;
+            if (locked)
+            {
+                planarVelocity = Vector3.zero;
+                IsSprinting = false;
+            }
+        }
+
         private void HandleMovement()
         {
             if (characterController == null || moveAction == null ||
@@ -260,9 +273,11 @@ namespace Margins
                 return;
             }
 
-            Vector2 input = Vector2.ClampMagnitude(
-                moveAction.ReadValue<Vector2>(),
-                1f);
+            Vector2 input = interactionMovementLocked
+                ? Vector2.zero
+                : Vector2.ClampMagnitude(
+                    moveAction.ReadValue<Vector2>(),
+                    1f);
 
             IsSprinting = input.sqrMagnitude > 0.01f &&
                           sprintAction.IsPressed();
@@ -281,7 +296,8 @@ namespace Margins
                 verticalVelocity = -2f;
             }
 
-            if (groundedBeforeMove && jumpAction.WasPressedThisFrame())
+            if (!interactionMovementLocked && groundedBeforeMove &&
+                jumpAction.WasPressedThisFrame())
             {
                 verticalVelocity = Mathf.Sqrt(
                     jumpHeight * -2f * gravity);
@@ -316,7 +332,7 @@ namespace Margins
 
         private void HandleLook()
         {
-            if (cameraPivot == null ||
+            if (interactionMovementLocked || cameraPivot == null ||
                 lookAction == null ||
                 !IsGameplayInputActive)
             {
@@ -340,7 +356,8 @@ namespace Margins
 
         private void HandleModeToggle()
         {
-            if (GamePauseMenuController.IsAnyMenuOpen)
+            if (interactionMovementLocked ||
+                GamePauseMenuController.IsAnyMenuOpen)
             {
                 return;
             }
@@ -397,31 +414,18 @@ namespace Margins
                 return;
             }
 
-            float speed = planarVelocity.magnitude;
-            bool moving = CameraMotionEnabled && grounded && speed > 0.15f;
-            Vector3 targetPosition = cameraBaseLocalPosition;
-            float roll = 0f;
-            if (moving)
-            {
-                float speedRatio = Mathf.Clamp01(speed / Mathf.Max(0.01f, targetSpeed));
-                bobPhase += Time.deltaTime * cameraBobFrequency *
-                            Mathf.Lerp(5.2f, 7.4f, speedRatio);
-                targetPosition += new Vector3(
-                    Mathf.Cos(bobPhase * 0.5f) * cameraBobAmplitude * 0.45f,
-                    Mathf.Sin(bobPhase) * cameraBobAmplitude,
-                    0f);
-                roll = Mathf.Cos(bobPhase * 0.5f) * 0.35f * speedRatio;
-            }
-
             cameraPivot.localPosition = Vector3.Lerp(
                 cameraPivot.localPosition,
-                targetPosition,
+                cameraBaseLocalPosition,
                 1f - Mathf.Exp(-14f * Time.deltaTime));
-            ApplyCameraRotation(roll);
+            ApplyCameraRotation();
 
             if (playerCamera != null)
             {
-                float targetFov = baseFieldOfView + (IsSprinting ? 2.5f : 0f);
+                float targetFov = baseFieldOfView +
+                                  (CameraMotionEnabled && IsSprinting
+                                      ? 2.5f
+                                      : 0f);
                 playerCamera.fieldOfView = Mathf.Lerp(
                     playerCamera.fieldOfView,
                     targetFov,

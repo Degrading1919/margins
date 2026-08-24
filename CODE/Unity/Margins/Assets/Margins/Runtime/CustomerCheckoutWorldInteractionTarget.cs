@@ -13,6 +13,7 @@ namespace Margins
         [SerializeField] private PlaceableFixtureComponent requiredFixture;
 
         public string StableTargetId => stableTargetId;
+        public StoreCustomerFlowController CustomerFlow => customerFlow;
         public FirstStoreWorldInteractionPriority Priority =>
             FirstStoreWorldInteractionPriority.Checkout;
         public bool IsAvailable =>
@@ -67,6 +68,87 @@ namespace Margins
                         "Use checkout",
                         customerFlow.CheckoutBlocker);
             }
+        }
+
+        public bool IsDedicatedCheckoutActive =>
+            IsAvailable && customerFlow.HasActiveCheckout &&
+            customerFlow.Checkout.HasActiveIncompleteSession;
+
+        public FirstStoreWorldInteractionPrompt DedicatedPrompt
+        {
+            get
+            {
+                if (!IsDedicatedCheckoutActive)
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        "Checkout ended",
+                        "returning to the store");
+                }
+
+                if (customerFlow.ActiveCheckoutScannedCount <
+                    customerFlow.ActiveCheckoutItemCount)
+                {
+                    return new FirstStoreWorldInteractionPrompt(
+                        "E",
+                        $"Scan {customerFlow.ActiveCheckoutNextProductName ?? "item"}",
+                        $"{customerFlow.ActiveCheckoutScannedCount}/" +
+                        $"{customerFlow.ActiveCheckoutItemCount} scanned  •  " +
+                        $"{FormatCents(customerFlow.ActiveCheckoutSubtotalCents)}  •  " +
+                        (customerFlow.ActiveCheckoutScannedCount > 0
+                            ? "Q undo last scan"
+                            : "Q cancel checkout"));
+                }
+
+                return new FirstStoreWorldInteractionPrompt(
+                    "E",
+                    $"Take payment {FormatCents(customerFlow.ActiveCheckoutSubtotalCents)}",
+                    "Q undoes the last scan");
+            }
+        }
+
+        public bool TryEnterDedicatedMode(out string error)
+        {
+            if (!IsAvailable)
+            {
+                error = "Customer checkout is unavailable.";
+                return false;
+            }
+            if (!customerFlow.TryClearStaleCheckout(out error))
+            {
+                return false;
+            }
+            if (customerFlow.HasActiveCheckout)
+            {
+                error = null;
+                return true;
+            }
+            return customerFlow.TryStartCheckout(out error);
+        }
+
+        public bool TryDedicatedPrimary(out string error)
+        {
+            if (!IsDedicatedCheckoutActive)
+            {
+                error = "The customer checkout has ended.";
+                return false;
+            }
+            return customerFlow.ActiveCheckoutScannedCount <
+                   customerFlow.ActiveCheckoutItemCount
+                ? customerFlow.TryScanNextCustomerItem(out error)
+                : customerFlow.TryCompleteCheckout(out error);
+        }
+
+        public bool TryDedicatedCancel(out string error)
+        {
+            if (!IsDedicatedCheckoutActive)
+            {
+                error = "The customer checkout has ended.";
+                return false;
+            }
+            return customerFlow.ActiveCheckoutScannedCount > 0
+                ? customerFlow.TryCorrectLastScan(out error)
+                : customerFlow.TryCancelActiveCheckout(out error);
         }
 
         public bool TryPrimary(out string error)

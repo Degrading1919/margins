@@ -340,6 +340,12 @@ namespace Margins
                 return true;
             }
 
+            if (customerFlow != null &&
+                !customerFlow.TryClearStaleCheckout(out blocker))
+            {
+                return true;
+            }
+
             if (checkout.HasActiveIncompleteSession)
             {
                 blocker = "Complete the active checkout before saving.";
