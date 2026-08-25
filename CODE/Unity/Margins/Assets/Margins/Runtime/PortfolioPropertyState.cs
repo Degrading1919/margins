@@ -215,12 +215,12 @@ namespace Margins
             }
             if (!Contains(LogoSelectionIds, profile.logoSelectionId))
             {
-                error = "Logo selection is not one of the current placeholder data hooks.";
+                error = "Choose one of the available logos.";
                 return false;
             }
             if (!Contains(DifficultyPurposeIds, profile.difficultyPurposeId))
             {
-                error = "Difficulty purpose is not one of the four approved FD-006 purposes.";
+                error = "The starting business profile is unavailable.";
                 return false;
             }
 

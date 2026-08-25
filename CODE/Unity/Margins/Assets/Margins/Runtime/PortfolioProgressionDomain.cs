@@ -590,11 +590,9 @@ namespace Margins
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal));
-            if ((!snapshot.firstShiftCompleted &&
-                 firstLocation.detailedReconciliation?.transactionCount > 0) ||
-                (snapshot.firstShiftCompleted &&
-                 (firstLocation.daysOperating < 1 ||
-                  firstLocation.lifetimeGrossSalesCents <= 0)))
+            if (snapshot.firstShiftCompleted &&
+                (firstLocation.daysOperating < 1 ||
+                 !firstLocation.hasLastReport))
             {
                 error = "First-shift progression disagrees with first-location operating history.";
                 return false;
@@ -734,6 +732,43 @@ namespace Margins
                 inventoryAssetValueCents,
                 out alreadyPosted,
                 out error);
+        }
+
+        public bool TryCompleteFirstDetailedShift(
+            string sessionId,
+            out bool unchanged,
+            out string error)
+        {
+            unchanged = false;
+            if (!FirstStoreIdentifier.IsValid(sessionId) ||
+                !TryGetLocation(
+                    state,
+                    PortfolioProgressionRules.FirstLocationId,
+                    out PortfolioLocationSnapshot firstLocation) ||
+                firstLocation.detailedReconciliation == null ||
+                !firstLocation.detailedReconciliation.initialized ||
+                !string.Equals(
+                    firstLocation.detailedReconciliation.sessionId,
+                    sessionId,
+                    StringComparison.Ordinal) ||
+                firstLocation.daysOperating < 1 ||
+                !firstLocation.hasLastReport)
+            {
+                error =
+                    "The closed first shift does not match the reconciled first-store report.";
+                return false;
+            }
+
+            if (state.firstShiftCompleted)
+            {
+                unchanged = true;
+                error = null;
+                return true;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            candidate.firstShiftCompleted = true;
+            return TryCommit(candidate, out error);
         }
 
         public bool TryReconcileDetailedOperation(
@@ -5001,7 +5036,9 @@ namespace Margins
             clone.company = source.version >= PortfolioProgressionSnapshot.PriorVersion
                 ? PortfolioPropertyRules.Clone(source.company)
                 : PortfolioPropertyRules.CreateForLocations(clone.locations);
-            if (clone.company != null && clone.company.startupProfile == null)
+            if (clone.company != null &&
+                (source.version < PortfolioProgressionSnapshot.CurrentVersion ||
+                 clone.company.startupProfile == null))
             {
                 clone.company.startupProfile =
                     PortfolioStartupProfileRules.CreateDefault();

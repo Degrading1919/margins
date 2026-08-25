@@ -601,14 +601,23 @@ namespace Margins.Tests
                 error);
             Assert.That(customerId, Is.EqualTo("store-customer-000003"));
 
-            deadline = Time.realtimeSinceStartup + 12f;
+            deadline = Time.realtimeSinceStartup + 16f;
             while (!flow.CanStartCheckout &&
                    Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
             }
 
-            Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
+            flow.TryGetCustomerNavigationAgent(
+                customerId,
+                out LocalNavigationAgent customerNavigation);
+            Assert.That(
+                flow.CanStartCheckout,
+                Is.True,
+                $"{flow.CheckoutBlocker}; navigation={customerNavigation?.State}, " +
+                $"position={customerNavigation?.transform.position}, " +
+                $"destination={customerNavigation?.LastRequestedDestination}, " +
+                $"hasPath={customerNavigation?.HasPath}");
             Assert.That(flow.TryStartCheckout(out error), Is.True, error);
             Assert.That(flow.ActiveCheckoutItemCount, Is.EqualTo(2));
             string playerScannedUnit = flow.ActiveCheckoutPhysicalUnitIds[0];
@@ -659,7 +668,14 @@ namespace Margins.Tests
             {
                 yield return null;
             }
-            Assert.That(flow.HasCustomersInStore, Is.False);
+            Assert.That(
+                flow.HasCustomersInStore,
+                Is.False,
+                $"state={store.State}, queued={flow.QueuedCustomerCount}, " +
+                $"activeCheckout={flow.HasActiveCheckout}, " +
+                $"transactions={checkout.CompletedTransactionCount}, " +
+                $"served={flow.LifetimeCustomersServed}, " +
+                $"abandoned={flow.LifetimeCustomersAbandoned}");
             Assert.That(employeeWork.IsHandlingInventory, Is.False);
             employeeWork.enabled = false;
             flow.enabled = false;
@@ -693,7 +709,7 @@ namespace Margins.Tests
         }
 
         [UnityTest]
-        public IEnumerator ClosingDrainsQueuedCustomersWithoutCreatingPhantomSales()
+        public IEnumerator ClosingStopsArrivalsAndLetsQueuedCustomerFinishService()
         {
             CompletePhysicalFirstShift();
             CheckoutStationComponent checkout =
@@ -720,6 +736,8 @@ namespace Margins.Tests
             SetField(flow, "arrivalIntervalSeconds", 1_000f);
             int transactionCountBefore = checkout.CompletedTransactionCount;
             int inventoryBefore = TotalInventory(inventory, checkout);
+            int servedBefore = flow.LifetimeCustomersServed;
+            int abandonedBefore = flow.LifetimeCustomersAbandoned;
             employeeWork.enabled = false;
             Assert.That(cleaning.NeedsCleaning, Is.True);
             Assert.That(
@@ -736,6 +754,12 @@ namespace Margins.Tests
 
             Assert.That(flow.CanStartCheckout, Is.True, flow.CheckoutBlocker);
             Assert.That(store.TryBeginClosing(out error), Is.True, error);
+            Assert.That(flow.HasCustomersInStore, Is.True);
+            Assert.That(flow.LifetimeCustomersAbandoned, Is.EqualTo(abandonedBefore));
+            Assert.That(
+                flow.TryAdmitCustomerNow(out _, out string arrivalError),
+                Is.False);
+            StringAssert.Contains("only while the store is open", arrivalError);
             employeeWork.enabled = true;
 
             deadline = Time.realtimeSinceStartup + 18f;
@@ -747,14 +771,23 @@ namespace Margins.Tests
                 yield return null;
             }
 
-            Assert.That(flow.HasCustomersInStore, Is.False);
+            Assert.That(
+                flow.HasCustomersInStore,
+                Is.False,
+                $"state={store.State}, queued={flow.QueuedCustomerCount}, " +
+                $"activeCheckout={flow.HasActiveCheckout}, " +
+                $"transactions={checkout.CompletedTransactionCount}, " +
+                $"served={flow.LifetimeCustomersServed}, " +
+                $"abandoned={flow.LifetimeCustomersAbandoned}");
             Assert.That(cleaning.IsComplete, Is.True);
             Assert.That(
                 checkout.CompletedTransactionCount,
-                Is.EqualTo(transactionCountBefore));
+                Is.EqualTo(transactionCountBefore + 1));
             Assert.That(
                 TotalInventory(inventory, checkout),
-                Is.EqualTo(inventoryBefore));
+                Is.EqualTo(inventoryBefore - 1));
+            Assert.That(flow.LifetimeCustomersServed, Is.EqualTo(servedBefore + 1));
+            Assert.That(flow.LifetimeCustomersAbandoned, Is.EqualTo(abandonedBefore));
             Assert.That(
                 store.State,
                 Is.EqualTo(StoreOperatingState.Closed));

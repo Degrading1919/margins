@@ -55,8 +55,10 @@ namespace Margins.Tests
 
             AimAt(Camera.main, deliveryBoxTarget.transform);
             Assert.That(interaction.RefreshFocus(), Is.True);
-            StringAssert.Contains("[E] Pick up delivery", interaction.CurrentPromptText);
-            StringAssert.Contains("sealed container", interaction.CurrentPromptText);
+            Assert.That(
+                interaction.CurrentPromptText,
+                Is.EqualTo("[E] Pick up delivery"));
+            StringAssert.DoesNotContain("sealed container", interaction.CurrentPromptText);
             Assert.That(presenter.CurrentPromptText, Is.EqualTo(interaction.CurrentPromptText));
         }
 
@@ -124,8 +126,8 @@ namespace Margins.Tests
             int totalBefore = inventory.Inventory.GetTotalQuantity(cola.StableProductId);
 
             Assert.That(colaTarget.IsAvailable, Is.True);
-            StringAssert.Contains("delivery sealed", colaTarget.Prompt.FormattedText);
             StringAssert.Contains(cola.DisplayName, colaTarget.Prompt.FormattedText);
+            StringAssert.DoesNotContain("delivery sealed", colaTarget.Prompt.FormattedText);
             Assert.That(colaTarget.TryPrimary(out string sealedError), Is.False);
             StringAssert.Contains("Open the delivery", sealedError);
             Assert.That(delivery.TryGetConfiguredProductRemaining(cola, out string name, out int remaining, out string error), Is.True, error);
@@ -242,12 +244,14 @@ namespace Margins.Tests
 
             Assert.That(cleaning.NeedsCleaning, Is.True);
             Assert.That(cleaningTarget.IsAvailable, Is.True);
-            StringAssert.Contains("compatible cleaning tool", cleaningTarget.Prompt.FormattedText);
+            StringAssert.DoesNotContain(
+                "compatible cleaning tool",
+                cleaningTarget.Prompt.FormattedText);
             Assert.That(cleaningTarget.TryPrimary(out string blocker), Is.False);
             StringAssert.Contains("Pick up", blocker);
             Assert.That(mop.TryPrimary(out string error), Is.True, error);
             Assert.That(carrier.HeldTool, Is.SameAs(mop));
-            StringAssert.Contains("0/4", cleaningTarget.Prompt.FormattedText);
+            StringAssert.DoesNotContain("0/4", cleaningTarget.Prompt.FormattedText);
             for (int index = 0; index < cleaning.RequiredProgressUnits; index++)
             {
                 Assert.That(cleaningTarget.TryPrimary(out error), Is.True, error);

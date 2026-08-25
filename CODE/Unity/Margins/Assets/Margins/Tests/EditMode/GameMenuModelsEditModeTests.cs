@@ -104,6 +104,32 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void ReturnToTitleUsesTheSameActiveSessionReplacementGuard()
+        {
+            GameMenuStateModel state = new();
+            state.EnterSession();
+            state.OpenPause();
+
+            Assert.That(
+                state.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle),
+                Is.False);
+            Assert.That(state.HasActiveSession, Is.True);
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Pause));
+            Assert.That(
+                state.PendingReplacement,
+                Is.EqualTo(SessionReplacementAction.ReturnToTitle));
+
+            Assert.That(
+                state.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle),
+                Is.True);
+            state.ReturnToTitle();
+            Assert.That(state.HasActiveSession, Is.False);
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Title));
+        }
+
+        [Test]
         public void NewBusinessSetupIsARealTitleLifecycleState()
         {
             GameMenuStateModel state = new();
@@ -161,7 +187,7 @@ namespace Margins.Tests
             Assert.That(
                 PortfolioStartupProfileRules.TryApply(snapshot, setup, out error),
                 Is.False);
-            Assert.That(error, Does.Contain("FD-006"));
+            Assert.That(error, Is.EqualTo("The starting business profile is unavailable."));
         }
 
         [Test]

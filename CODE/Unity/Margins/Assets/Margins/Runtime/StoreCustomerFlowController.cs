@@ -756,31 +756,6 @@ namespace Margins
             return true;
         }
 
-        public bool TryDrainForStoreClosing(out string error)
-        {
-            if (!TryClearStaleCheckout(out error))
-            {
-                return false;
-            }
-
-            for (int index = 0; index < customers.Count; index++)
-            {
-                RuntimeCustomer customer = customers[index];
-                if (customer.State != StoreCustomerState.Leaving)
-                {
-                    Abandon(customer);
-                }
-            }
-            if (checkout.HasActiveIncompleteSession || HasActiveCheckout)
-            {
-                error = "Customer checkout state did not clear for closing.";
-                return false;
-            }
-
-            error = null;
-            return true;
-        }
-
         public bool TryCaptureSnapshot(
             out StoreCustomerFlowSnapshot snapshot,
             out string error)

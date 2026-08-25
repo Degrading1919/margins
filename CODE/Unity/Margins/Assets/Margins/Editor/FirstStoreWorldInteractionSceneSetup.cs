@@ -576,7 +576,7 @@ namespace Margins.Editor
         {
             Transform cashierAvatar = CreateEmployeeAvatar(
                 "Detailed Cashier Employee",
-                new Vector3(5f, 0f, -5.6f),
+                new Vector3(4.85f, 0f, -2.95f),
                 cashierMaterial,
                 20,
                 out TextMesh cashierLabel);
@@ -596,7 +596,7 @@ namespace Margins.Editor
             Transform cashierWork = CreateAttachedWorkPoint(
                 checkoutFixture,
                 "Cashier Work Point",
-                new Vector3(-0.15f, 0f, -1.55f));
+                new Vector3(-0.15f, 0f, 1.55f));
             Transform deliveryWork = CreateWorkPoint(
                 "Receiving Work Point",
                 new Vector3(-4.8f, 0f, 4.45f));

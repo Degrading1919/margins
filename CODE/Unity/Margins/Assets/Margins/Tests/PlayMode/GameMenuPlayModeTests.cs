@@ -146,11 +146,12 @@ namespace Margins.Tests
             Assert.That(root.Q<IntegerField>("setup-seed"), Is.Not.Null);
             Assert.That(root.Q<DropdownField>("setup-logo").choices,
                 Has.Count.EqualTo(3));
-            Assert.That(root.Q<DropdownField>("setup-difficulty").choices,
-                Has.Count.EqualTo(4));
-            Assert.That(
-                root.Q<DropdownField>("setup-difficulty").choices,
-                Has.All.StartsWith("Purpose:"));
+            Assert.That(root.Q<DropdownField>("setup-difficulty"), Is.Null);
+            string setupCopy = AllText(root.Q("new-business-setup-view"));
+            Assert.That(setupCopy, Does.Not.Contain("data hook").IgnoreCase);
+            Assert.That(setupCopy, Does.Not.Contain("difficulty").IgnoreCase);
+            Assert.That(setupCopy, Does.Not.Contain("implementation").IgnoreCase);
+            Assert.That(setupCopy, Does.Not.Contain("FD-006").IgnoreCase);
             menu.CancelNewBusinessSetup();
         }
 
@@ -616,6 +617,122 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator ZeroStockDayClosesAndEndDayAdvancesExactlyOnce()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            StoreOperatingController store =
+                Object.FindAnyObjectByType<StoreOperatingController>();
+            StoreCustomerFlowController customerFlow =
+                Object.FindAnyObjectByType<StoreCustomerFlowController>();
+            InStoreEmployeeWorkController employeeWork =
+                Object.FindAnyObjectByType<InStoreEmployeeWorkController>();
+            CleaningTaskComponent cleaning =
+                Object.FindAnyObjectByType<CleaningTaskComponent>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            FirstStorePromptPresenter prompts =
+                Object.FindAnyObjectByType<FirstStorePromptPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(store, Is.Not.Null);
+            Assert.That(customerFlow, Is.Not.Null);
+            Assert.That(employeeWork, Is.Not.Null);
+            Assert.That(cleaning, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+            Assert.That(prompts, Is.Not.Null);
+
+            FixturePlacementController placement =
+                Object.FindAnyObjectByType<FixturePlacementController>();
+            PlaceableFixtureComponent fixture = Resources
+                .FindObjectsOfTypeAll<PlaceableFixtureComponent>()
+                .Single(item => item.StableFixtureInstanceId ==
+                                "fixture-checkout-essential-01");
+            if (!placement.IsPlaced(fixture.StableFixtureInstanceId))
+            {
+                FixturePlacementResult placed = placement.TryPlace(
+                    fixture,
+                    new GridPosition(1, 1),
+                    0);
+                Assert.That(placed.IsSuccess, Is.True, placed.Failure.ToString());
+            }
+
+            SetPrivateField(customerFlow, "secondsUntilNextArrival", 1_000f);
+            SetPrivateField(customerFlow, "arrivalIntervalSeconds", 1_000f);
+            employeeWork.enabled = false;
+            Assert.That(store.Checkout.HasSellableStock, Is.False);
+            Assert.That(store.Checkout.CompletedTransactionCount, Is.Zero);
+            Assert.That(store.TryOpenStore(out string error), Is.True, error);
+            Assert.That(store.TryBeginClosing(out error), Is.True, error);
+            Assert.That(customerFlow.HasCustomersInStore, Is.False);
+            while (cleaning.NeedsCleaning)
+            {
+                cleaning.TryApplyProgress(1);
+            }
+            Assert.That(store.TryFinishClosing(out error), Is.True, error);
+            Assert.That(store.State, Is.EqualTo(StoreOperatingState.Closed));
+            Assert.That(store.ResultTotals.transactionCount, Is.Zero);
+
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot completed =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(completed.firstShiftCompleted, Is.True);
+            Assert.That(completed.locations[0].lastReport.unitsSold, Is.Zero);
+            Assert.That(completed.locations[0].lastReport.grossSalesCents, Is.Zero);
+            Assert.That(prompts.DeriveCurrentObjective(), Does.Contain("End Day"));
+
+            Assert.That(
+                portfolio.TrySynchronizeDetailedShift(out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot repeated =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(repeated.currentDay, Is.EqualTo(completed.currentDay));
+            Assert.That(repeated.cashCents, Is.EqualTo(completed.cashCents));
+            Assert.That(
+                repeated.locations[0].daysOperating,
+                Is.EqualTo(completed.locations[0].daysOperating));
+            Assert.That(
+                repeated.locations[0].lifetimeGrossSalesCents,
+                Is.EqualTo(completed.locations[0].lifetimeGrossSalesCents));
+
+            player.SetGameplayMode(false);
+            yield return null;
+            yield return null;
+            VisualElement root = presenter.Root;
+            Assert.That(portfolio.IsOwnerPhoneUnlocked, Is.True);
+            Assert.That(
+                root.Q("management-view").resolvedStyle.display,
+                Is.EqualTo(DisplayStyle.Flex));
+            Submit(root.Q<Button>("management-leave-location"));
+            yield return null;
+            HireCoreTeam(portfolio);
+            yield return null;
+
+            Button endDay = root.Q<Button>("management-advance-overnight");
+            Assert.That(endDay, Is.Not.Null);
+            Assert.That(endDay.enabledInHierarchy, Is.True);
+            int dayBefore = portfolio.Progression.CurrentDay;
+            Submit(endDay);
+            yield return null;
+            Assert.That(
+                portfolio.Progression.CurrentDay,
+                Is.EqualTo(dayBefore + 1));
+            yield return null;
+            yield return null;
+            Assert.That(
+                portfolio.Progression.CurrentDay,
+                Is.EqualTo(dayBefore + 1),
+                "A single End Day action must advance the portfolio exactly once.");
+        }
+
+        [UnityTest]
         public IEnumerator OwnerPhoneLeasesAndSwitchesStoresDirectly()
         {
             yield return LoadValidationScene();
@@ -727,6 +844,14 @@ namespace Margins.Tests
 
             MoveCheckoutFixture(new GridPosition(4, 3), 2);
             menu.Resume();
+            menu.OpenMenu();
+            menu.ReturnToTitle();
+            Assert.That(menu.HasActiveSession, Is.True);
+            Assert.That(menu.Screen, Is.EqualTo(GameMenuScreen.Pause));
+            Assert.That(
+                menu.PendingReplacement,
+                Is.EqualTo(SessionReplacementAction.ReturnToTitle));
+            StringAssert.Contains("unsaved progress", menu.StatusMessage);
             menu.ReturnToTitle();
             Assert.That(menu.HasActiveSession, Is.False);
             menu.RequestNewBusiness();
@@ -740,8 +865,6 @@ namespace Margins.Tests
             menu.SetNewBusinessSecondaryColor("#CC7722");
             menu.SetNewBusinessLogoSelection("placeholder-mark-b");
             menu.SetNewBusinessSeed(741);
-            menu.SetNewBusinessDifficultyPurpose(
-                "purpose-challenging-recoverable");
             menu.StartConfiguredNewBusiness();
             Assert.That(menu.IsOpen, Is.False);
             Assert.That(
@@ -758,6 +881,9 @@ namespace Margins.Tests
             Assert.That(profile.seed, Is.EqualTo(741));
             Assert.That(File.Exists(createdSavePath), Is.True);
 
+            menu.OpenMenu();
+            menu.ReturnToTitle();
+            Assert.That(menu.HasActiveSession, Is.True);
             menu.ReturnToTitle();
             Assert.That(menu.HasActiveSession, Is.False);
             menu.RequestLoadBusiness();

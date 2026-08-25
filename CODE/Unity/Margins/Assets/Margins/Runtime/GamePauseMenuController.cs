@@ -183,6 +183,17 @@ namespace Margins
 
         public void ReturnToTitle()
         {
+            if (!menuState.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle))
+            {
+                notification.ShowPersistent(
+                    "Return to title? Any unsaved progress will be lost. " +
+                    "Select Return to Title again to confirm.",
+                    MenuNotificationKind.Information);
+                PublishPresentation();
+                return;
+            }
+
             menuState.ReturnToTitle();
             notification.Clear();
             ApplyMenuEnvironment();

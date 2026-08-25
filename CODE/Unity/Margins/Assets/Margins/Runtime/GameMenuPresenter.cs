@@ -98,7 +98,6 @@ namespace Margins
         private IntegerField setupSeed;
         private TextField setupPrimaryColor;
         private TextField setupSecondaryColor;
-        private DropdownField setupDifficulty;
         private Button setupBack;
         private Button setupStart;
         private Button generalTab;
@@ -246,7 +245,6 @@ namespace Margins
             setupSeed = Require<IntegerField>("setup-seed");
             setupPrimaryColor = Require<TextField>("setup-primary-color");
             setupSecondaryColor = Require<TextField>("setup-secondary-color");
-            setupDifficulty = Require<DropdownField>("setup-difficulty");
             setupBack = Require<Button>("setup-back");
             setupStart = Require<Button>("setup-start");
             generalTab = Require<Button>("settings-general-tab");
@@ -385,16 +383,9 @@ namespace Margins
             setupBusinessName.maxLength = 32;
             setupLogo.choices = new List<string>
             {
-                "Placeholder mark A",
-                "Placeholder mark B",
-                "Placeholder mark C"
-            };
-            setupDifficulty.choices = new List<string>
-            {
-                "Purpose: forgiving growth-focused play",
-                "Purpose: intended challenging-but-recoverable play",
-                "Purpose: harsher simulation",
-                "Purpose: sandbox experimentation & construction"
+                "Logo A",
+                "Logo B",
+                "Logo C"
             };
             setupBusinessName.RegisterValueChangedCallback(
                 evt => controller.SetNewBusinessName(evt.newValue));
@@ -412,16 +403,6 @@ namespace Margins
                 {
                     controller.SetNewBusinessLogoSelection(
                         PortfolioStartupProfileRules.LogoSelectionIds[index]);
-                }
-            });
-            setupDifficulty.RegisterValueChangedCallback(evt =>
-            {
-                int index = setupDifficulty.choices.IndexOf(evt.newValue);
-                if (index >= 0 && index <
-                    PortfolioStartupProfileRules.DifficultyPurposeIds.Length)
-                {
-                    controller.SetNewBusinessDifficultyPurpose(
-                        PortfolioStartupProfileRules.DifficultyPurposeIds[index]);
                 }
             });
             fullscreenToggle.RegisterValueChangedCallback(
@@ -509,6 +490,10 @@ namespace Margins
                 controller.PendingReplacement == SessionReplacementAction.LoadBusiness
                     ? "Confirm Load Business"
                     : "Load Business";
+            Require<Button>("pause-title").text =
+                controller.PendingReplacement == SessionReplacementAction.ReturnToTitle
+                    ? "Confirm Return to Title"
+                    : "Return to Title";
 
             if (setup)
             {
@@ -540,10 +525,6 @@ namespace Margins
                 PortfolioStartupProfileRules.LogoSelectionIds,
                 setup.logoSelectionId);
             setupLogo.index = Mathf.Max(0, logoIndex);
-            int difficultyIndex = Array.IndexOf(
-                PortfolioStartupProfileRules.DifficultyPurposeIds,
-                setup.difficultyPurposeId);
-            setupDifficulty.index = Mathf.Max(0, difficultyIndex);
         }
 
         private void RefreshSettings(bool controls)
@@ -699,7 +680,6 @@ namespace Margins
                 focusables.Add(setupSeed);
                 focusables.Add(setupPrimaryColor);
                 focusables.Add(setupSecondaryColor);
-                focusables.Add(setupDifficulty);
                 AddEnabled(staticSetupButtons);
                 if (controller.Notification.IsPersistent)
                 {
@@ -2401,7 +2381,7 @@ namespace Margins
                    titleLoadBusiness == null || setupBusinessName == null ||
                    setupLogo == null || setupSeed == null ||
                    setupPrimaryColor == null || setupSecondaryColor == null ||
-                   setupDifficulty == null || setupBack == null ||
+                   setupBack == null ||
                    setupStart == null || generalTab == null ||
                    controlsTab == null || fullscreenToggle == null ||
                    interfaceScaleSlider == null || interfaceScaleValue == null ||

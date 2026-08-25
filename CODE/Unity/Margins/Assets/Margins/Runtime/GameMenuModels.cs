@@ -214,7 +214,8 @@ namespace Margins
     {
         None = 0,
         NewBusiness = 1,
-        LoadBusiness = 2
+        LoadBusiness = 2,
+        ReturnToTitle = 3
     }
 
     public sealed class GameMenuStateModel

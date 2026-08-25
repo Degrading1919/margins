@@ -48,22 +48,20 @@
                     <ui:VisualElement class="settings-header">
                         <ui:Label text="NEW BUSINESS" class="settings-brand" />
                         <ui:Label text="Set up your first store" class="settings-title" />
-                        <ui:Label text="These choices become part of the saved company. The seed drives bounded store-content variation, not city generation." class="setup-intro" />
+                        <ui:Label text="Choose the name and look of your first store." class="setup-intro" />
                     </ui:VisualElement>
 
                     <ui:VisualElement class="setup-grid">
                         <ui:VisualElement class="setup-column">
                             <ui:Label text="IDENTITY" class="section-label" />
                             <ui:TextField name="setup-business-name" label="Business name" value="Mile 7 Market" class="setup-field" />
-                            <ui:DropdownField name="setup-logo" label="Logo data hook" class="setup-field" />
-                            <ui:IntegerField name="setup-seed" label="Startup seed" value="1907" class="setup-field" />
+                            <ui:DropdownField name="setup-logo" label="Logo" class="setup-field" />
+                            <ui:IntegerField name="setup-seed" label="Business seed" value="1907" class="setup-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="setup-column setup-column--right">
-                            <ui:Label text="COLOR &amp; ECONOMIC PURPOSE" class="section-label" />
+                            <ui:Label text="COLORS" class="section-label" />
                             <ui:TextField name="setup-primary-color" label="Primary color (hex)" value="#1F897A" class="setup-field" />
                             <ui:TextField name="setup-secondary-color" label="Secondary color (hex)" value="#DE5B22" class="setup-field" />
-                            <ui:DropdownField name="setup-difficulty" label="Difficulty purpose" class="setup-field" />
-                            <ui:Label text="Purpose is recorded for future tuning. Current vertical-slice economics stay unchanged because final difficulty names and modifiers are unresolved." class="setup-note" />
                         </ui:VisualElement>
                     </ui:VisualElement>
 

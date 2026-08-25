@@ -207,7 +207,7 @@ namespace Margins
             }
 
             if (store.State == StoreOperatingState.Closed &&
-                saleComplete && cleaning.IsComplete)
+                cleaning.IsComplete)
             {
                 return portfolio?.Progression?.CurrentDay <= 1
                     ? FirstStoreObjectiveKind.ReviewResult
@@ -479,7 +479,7 @@ namespace Margins
                 new Rect(panel.x + 20f, panel.y + 53f, 265f, 18f),
                 portfolio?.IsOwnerPhoneUnlocked == true
                     ? "TAB  OWNER PHONE"
-                    : "OWNER PHONE UNLOCKS AFTER FIRST SALE",
+                    : "OWNER PHONE UNLOCKS AFTER THE FIRST DAY",
                 smallStyle);
         }
 
@@ -513,14 +513,11 @@ namespace Margins
                 return;
             }
 
-            string state = FriendlyPromptState(prompt.StateOrBlocker);
-            bool hasState = !string.IsNullOrWhiteSpace(state);
-            float panelHeight = hasState ? 76f : 54f;
             Rect panel = new(
                 (width - 660f) * 0.5f,
                 height * 0.68f,
                 660f,
-                panelHeight);
+                54f);
             DrawPanel(panel, Night);
             Rect key = new(panel.x + 14f, panel.y + 11f, 42f, 32f);
             DrawPanel(key, Teal);
@@ -529,13 +526,6 @@ namespace Margins
                 new Rect(panel.x + 72f, panel.y + 8f, panel.width - 90f, 38f),
                 FriendlyAction(prompt.Action),
                 promptStyle);
-            if (hasState)
-            {
-                GUI.Label(
-                    new Rect(panel.x + 72f, panel.y + 43f, panel.width - 90f, 25f),
-                    state,
-                    smallStyle);
-            }
         }
 
         private void DrawDedicatedCheckout(float width, float height)
@@ -888,25 +878,6 @@ namespace Margins
             return action
                 .Replace("staged", string.Empty, StringComparison.OrdinalIgnoreCase)
                 .Trim();
-        }
-
-        private static string FriendlyPromptState(string state)
-        {
-            if (string.IsNullOrWhiteSpace(state) ||
-                string.Equals(state, "ready", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            string friendly = state
-                .Replace("staged basket", "customer", StringComparison.OrdinalIgnoreCase)
-                .Replace("staged baskets", "customers", StringComparison.OrdinalIgnoreCase)
-                .Replace("Q corrects recent scan", "Q corrects", StringComparison.OrdinalIgnoreCase)
-                .Replace("aim at the visible product", "use the item on the counter", StringComparison.OrdinalIgnoreCase)
-                .Replace("; ", "  •  ", StringComparison.Ordinal);
-            return friendly.Length <= 92
-                ? friendly
-                : $"{friendly.Substring(0, 89)}…";
         }
 
         private static string FriendlySuccess(string action)

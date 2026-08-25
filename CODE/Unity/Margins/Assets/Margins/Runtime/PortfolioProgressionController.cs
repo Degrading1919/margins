@@ -344,6 +344,16 @@ namespace Margins
                 metrics,
                 out bool unchanged,
                 out error);
+            if (success &&
+                firstStore.State == StoreOperatingState.Closed &&
+                firstStore.ResultTotals != null)
+            {
+                success = progression.TryCompleteFirstDetailedShift(
+                    firstStore.StableSessionId,
+                    out bool completionUnchanged,
+                    out error);
+                unchanged &= completionUnchanged;
+            }
             if (success && !unchanged && totals.transactionCount > 0)
             {
                 Record(

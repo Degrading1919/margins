@@ -52,9 +52,7 @@ namespace Margins
         public string Action { get; }
         public string StateOrBlocker { get; }
 
-        public string FormattedText => string.IsNullOrWhiteSpace(StateOrBlocker)
-            ? $"[{Input}] {Action}"
-            : $"[{Input}] {Action} — {StateOrBlocker}";
+        public string FormattedText => $"[{Input}] {Action}";
     }
 
     public interface IFirstStoreWorldInteractionTarget

@@ -387,7 +387,7 @@ namespace Margins
                 return false;
             }
             if (State == StoreOperatingState.Open && customerFlow != null &&
-                !customerFlow.TryDrainForStoreClosing(out error))
+                !customerFlow.TryClearStaleCheckout(out error))
             {
                 return false;
             }
