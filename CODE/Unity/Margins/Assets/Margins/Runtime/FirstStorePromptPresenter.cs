@@ -84,6 +84,7 @@ namespace Margins
         private bool helpVisible;
         private FirstStoreObjectiveKind priorObjective;
         private float objectiveToastUntil;
+        private bool wasGameplayVisible;
 
         public string CurrentPromptText =>
             interaction != null && interaction.IsWorldInteractionEnabled
@@ -134,6 +135,13 @@ namespace Margins
 
         private void Update()
         {
+            bool gameplayVisible = interaction != null && interaction.IsWorldInteractionEnabled;
+            if (gameplayVisible && !wasGameplayVisible)
+            {
+                // Menu/setup time must not consume the player's first instruction.
+                objectiveToastUntil = Time.unscaledTime + 8f;
+            }
+            wasGameplayVisible = gameplayVisible;
             FirstStoreObjectiveKind objective = DeriveObjectiveKind();
             if (objective != priorObjective)
             {
@@ -401,7 +409,9 @@ namespace Margins
         {
             feedbackSucceeded = succeeded;
             feedbackText = succeeded
-                ? diagnostic.Contains("Press F9", StringComparison.OrdinalIgnoreCase)
+                ? diagnostic.StartsWith("Started a clean first-store business", StringComparison.Ordinal)
+                    ? "Business started"
+                    : diagnostic.Contains("Press F9", StringComparison.OrdinalIgnoreCase)
                     ? "Press F9 again to reload"
                     : diagnostic.Contains("Loaded", StringComparison.OrdinalIgnoreCase)
                         ? "Company loaded"
@@ -464,7 +474,7 @@ namespace Margins
                 return;
             }
 
-            Rect panel = new(width - 340f, 28f, 308f, 78f);
+            Rect panel = new(width - 340f, 28f, 308f, 102f);
             DrawPanel(panel, Night);
             DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Teal);
             GUI.Label(
@@ -479,7 +489,11 @@ namespace Margins
                 new Rect(panel.x + 20f, panel.y + 53f, 265f, 18f),
                 portfolio?.IsOwnerPhoneUnlocked == true
                     ? "TAB  OWNER PHONE"
-                    : "OWNER PHONE UNLOCKS AFTER THE FIRST DAY",
+                    : "PHONE UNLOCKS AFTER FIRST SHIFT",
+                smallStyle);
+            GUI.Label(
+                new Rect(panel.x + 20f, panel.y + 76f, 265f, 18f),
+                "H  HELP & NEXT STEP",
                 smallStyle);
         }
 

@@ -865,8 +865,24 @@ namespace Margins.Tests
             menu.SetNewBusinessSecondaryColor("#CC7722");
             menu.SetNewBusinessLogoSelection("placeholder-mark-b");
             menu.SetNewBusinessSeed(741);
+            FirstStorePromptPresenter prompts =
+                Object.FindAnyObjectByType<FirstStorePromptPresenter>();
+            // Reproduce a player spending longer than the toast duration in setup.
+            yield return null;
+            SetPrivateField(prompts, "objectiveToastUntil", Time.unscaledTime - 1f);
             menu.StartConfiguredNewBusiness();
             Assert.That(menu.IsOpen, Is.False);
+            yield return null;
+            Assert.That(
+                typeof(FirstStorePromptPresenter).GetField(
+                    "objectiveToastUntil", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(prompts),
+                Is.GreaterThan(Time.unscaledTime));
+            Assert.That(
+                typeof(FirstStorePromptPresenter).GetField(
+                    "feedbackText", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(prompts),
+                Is.EqualTo("Business started"));
             Assert.That(
                 mapper.TryCapture(out FirstStoreSnapshot newBusinessState, out error),
                 Is.True,

@@ -75,4 +75,29 @@ The following findings are not silently closed by this implementation:
 
 ## Next acceptance action
 
-Run the fresh owner playtest on the Windows x64 build and record any remaining blockers against the sequence above. If the complete loop passes, schedule the bounded Wave D object-lifecycle cleanup without reopening the deferred city, difficulty, map, or final-art decisions by implication.
+Complete the bounded Wave D object-lifecycle cleanup and replay the full first-business journey before fresh owner acceptance. Delivery and cleaning lifecycle work is required remediation, not deferred scope. Do not reopen the city, difficulty, map, or final-art decisions by implication.
+
+## September 9, 2026 executable follow-up
+
+### Reproduced and corrected
+
+The Windows x64 player was built from PR head `3fce2ef` and launched through the Windows computer-use tool. The agent reached **Launch → New Business → setup → first day** through the visible UI.
+
+- Spending time in setup consumed the next-step toast before gameplay began. `FirstStorePromptPresenter` now restarts the toast when gameplay becomes visible and exposes **H Help & Next Step** in the existing HUD.
+- The locked Owner Phone hint was visibly clipped. Its copy is shortened to fit the existing panel width; the panel has room for the help shortcut.
+- Starting New Business displayed **Company saved**, although the persistence operation deliberately retained the existing disk save. The presenter now identifies the existing new-business diagnostic and displays **Business started**. No persistence behavior changed.
+- The existing New Business/save/load regression now checks that returning from setup restores the hint duration and reports startup without claiming a save.
+
+### Automated verification
+
+- Full PlayMode suite: **84 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/owner-acceptance-playmode.xml`, local generated evidence).
+- Full EditMode suite: **172 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/owner-acceptance-editmode.xml`, local generated evidence).
+- The corrected Windows x64 build succeeded with a Unity report size of **105,218,368 bytes**; executable PE machine **0x8664 (AMD64)**. Build log: `CODE/Unity/Margins/Logs/owner-acceptance-rebuild.log` (local generated evidence).
+- The rebuilt executable was launched again. After more than eight seconds in setup, starting the business visibly showed the next-step instruction, the complete phone/help text, and **Business started**. This verifies the corrected startup presentation, not the rest of the journey.
+- `git diff --check`: clean.
+
+### Acceptance limitation
+
+Mouse-driven setup and camera input reached the running player, but repeated keyboard input through the computer-use tool, including movement and Escape after explicit activation, produced no visible response. The cause has not been established as a game defect or an automation limitation. A physical-key check was requested from the owner.
+
+The agent therefore did **not** complete receiving/stocking, checkout, close, End Day, save/title/load continuation, or a full fresh-start replay in the executable. No hands-on acceptance claim is made for those paths. Wave D delivery/empty-box/receiving-station and bucket/mop remediation remains unfinished, and PR #42 is **not yet ready for owner acceptance** under the requested gate.
