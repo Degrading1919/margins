@@ -3,7 +3,7 @@ STR_001,Square structural column,Structural Architecture,Structural Supports,Sha
 STR_002,Rectangular structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_003,Round structural column,Structural Architecture,Structural Supports,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_006,Structural roof truss,Structural Architecture,Roof Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_007,Structural cross-brace module,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_008,Exterior stair flight module,Structural Architecture,Exterior Access Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
