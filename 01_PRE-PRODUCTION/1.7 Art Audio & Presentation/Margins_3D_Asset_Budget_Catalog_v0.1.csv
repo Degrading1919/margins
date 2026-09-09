@@ -2,7 +2,7 @@ asset_id,asset_name,asset_bin,subcategory,business_use,procedural_category,capab
 STR_001,Square structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_002,Rectangular structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_003,Round structural column,Structural Architecture,Structural Supports,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_006,Structural roof truss,Structural Architecture,Roof Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_007,Structural cross-brace module,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
