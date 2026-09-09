@@ -49,6 +49,13 @@ STR_047,Fuel-station canopy structural frame,Structural Architecture,,,,,,,,,,,,
 STR_048,Fuel-station canopy support column,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 STR_049,Loading / service canopy structural frame,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 STR_050,Loading / service canopy support column,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_051,Gable-roof structural module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_052,Hip-roof structural module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_053,Shed / mono-pitch roof structural module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_054,Pitched-roof truss / rafter module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_055,Gable-end structural wall module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_056,Roof-intersection / valley structural module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+STR_057,Roof-dormer structural shell module,Structural Architecture,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 BIN_02,[category reference],Architectural Openings & Finish,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_03,[category reference],"Site, Lot & Hardscape",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
