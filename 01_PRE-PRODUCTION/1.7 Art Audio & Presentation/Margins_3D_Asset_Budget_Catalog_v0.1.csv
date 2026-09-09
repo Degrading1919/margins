@@ -1,5 +1,5 @@
 asset_id,asset_name,asset_bin,subcategory,business_use,procedural_category,capabilities,technical_class,raw_source_tris,lod0_ceiling_tris,lod0_measured_tris,lod1_ceiling_tris,lod1_measured_tris,lod2_ceiling_tris,lod2_measured_tris,collider_type,collision_ceiling_tris,collision_measured_tris,material_slots_max,material_slots_measured,texture_max_px,expected_visible_instances,closest_view_m,interaction_level,animation_requirement,source_pipeline,source_or_license,ai_involvement,normalization_status,production_status,notes
-STR_001,Square structural column,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_001,Square structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_002,Rectangular structural column,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_003,Round structural column,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
