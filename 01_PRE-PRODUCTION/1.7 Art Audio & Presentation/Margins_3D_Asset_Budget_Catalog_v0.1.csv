@@ -53,7 +53,32 @@ SLH_017,Tree grate / sidewalk planting surround,"Site, Lot & Hardscape",Landscap
 SLH_018,Loading-dock bumper / dock-edge protection kit,"Site, Lot & Hardscape",Loading & Service Protection,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Bumper and edge-protection hardware only; dock machinery is separate.
 SLH_019,Concrete utility-equipment pad,"Site, Lot & Hardscape",Equipment Pads,Shared,,,,,750,,,,,,,,,,,,,,,,,,,,Planned,Authored profile variant only; plain rectangular equipment pad remains procedural.
 SLH_020,Parking-lot protective pipe rail / guard post module,"Site, Lot & Hardscape",Parking & Service Protection,Shared,,,,,3500,,,,,,,,,,,,,,,,,,,,Planned,
-BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+CSI_001,Standard roadway streetlight,City & Streetscape Infrastructure,Street Lighting,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_002,Decorative downtown streetlamp,City & Streetscape Infrastructure,Street Lighting,Shared,,,,,4500,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_003,Wooden utility pole,City & Streetscape Infrastructure,Overhead Utilities,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,Pole structure only; overhead wires are spline/generated and major pole hardware is cataloged separately.
+CSI_004,Pole-mounted transformer / crossarm / insulator hardware kit,City & Streetscape Infrastructure,Overhead Utilities,Shared,,,,,7500,,,,,,,,,,,,,,,,,,,,Planned,Modular pole hardware kit; utility pole and overhead wires are separate.
+CSI_005,Overhead utility-wire anchor / junction hardware kit,City & Streetscape Infrastructure,Overhead Utilities,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,"Visible anchor, junction, and pole-side connection hardware only; overhead wires are spline/generated."
+CSI_006,Ground-mounted utility transformer,City & Streetscape Infrastructure,Ground Utilities,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_007,Electrical / telecom utility cabinet family,City & Streetscape Infrastructure,Ground Utilities,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_008,Fire hydrant,City & Streetscape Infrastructure,Municipal Utilities,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_009,Traffic-signal pole / mast-arm assembly,City & Streetscape Infrastructure,Traffic Control,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,Support structure only; traffic and pedestrian signal hardware is cataloged separately.
+CSI_010,Traffic / pedestrian signal hardware family,City & Streetscape Infrastructure,Traffic Control,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,"Signal heads, pedestrian signal, and push-button/control hardware family; support pole is separate."
+CSI_011,Municipal signpost family,City & Streetscape Infrastructure,Traffic Signage,Shared,,,,,750,,,,,,,,,,,,,,,,,,,,Planned,Sign support hardware only; sign boards and graphics are separate.
+CSI_012,Regulatory / warning road-sign board family,City & Streetscape Infrastructure,Traffic Signage,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,,Planned,Sign-face identity and graphics should be material/texture driven.
+CSI_013,Street-name sign assembly,City & Streetscape Infrastructure,Street Identification,Shared,,,,,1250,,,,,,,,,,,,,,,,,,,,Planned,Street-name graphics should be material/texture driven.
+CSI_014,Municipal parking-payment equipment family,City & Streetscape Infrastructure,Parking Infrastructure,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,Covers single-space parking meter and larger multi-space pay-station variants.
+CSI_015,Bus-stop sign / pole,City & Streetscape Infrastructure,Transit Infrastructure,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,,Planned,Route and stop graphics should be material/texture driven.
+CSI_016,Bus shelter,City & Streetscape Infrastructure,Transit Infrastructure,Shared,,,,,7000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_017,Public sidewalk bench,City & Streetscape Infrastructure,Street Furniture,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_018,Public litter / recycling receptacle family,City & Streetscape Infrastructure,Street Furniture,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_019,Bicycle rack family,City & Streetscape Infrastructure,Street Furniture,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+CSI_020,Public mailbox / parcel drop box,City & Streetscape Infrastructure,Street Furniture,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Generic municipal/postal-style geometry; avoid protected branding and use fictionalized/material-driven identity.
+CSI_021,Newspaper / free-publication box family,City & Streetscape Infrastructure,Street Furniture,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,Graphics and publication identity should be material/texture driven.
+CSI_022,Street-side storm-drain / curb-inlet kit,City & Streetscape Infrastructure,Stormwater Infrastructure,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,Visible curb-inlet and grate geometry only; avoid unnecessary hidden drainage construction geometry.
+CSI_023,Manhole / utility-access cover kit,City & Streetscape Infrastructure,Utility Access,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,Fine embossed patterns and text should be normal/material detail rather than dense geometry.
+CSI_024,Street tree guard / trunk guard,City & Streetscape Infrastructure,Urban Forestry,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,Protective guard only; tree and vegetation are cataloged separately.
+CSI_025,Public streetscape planter family,City & Streetscape Infrastructure,Urban Landscaping,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Planter shell only; vegetation is cataloged separately.
+CSI_026,Flexible / removable municipal delineator bollard family,City & Streetscape Infrastructure,Traffic Control,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,"Municipal delineator family distinct from heavy protective bollards in Site, Lot & Hardscape."
 BIN_05,[category reference],Business Fixtures & Furniture,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_06,[category reference],Business Equipment & Machines,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_07,[category reference],"Operational Tools, Handling & Support",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
