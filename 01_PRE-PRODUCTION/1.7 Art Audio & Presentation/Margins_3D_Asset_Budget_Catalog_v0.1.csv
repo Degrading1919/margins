@@ -14,7 +14,7 @@ STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcon
 STR_013,Wall-attached commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_014,Freestanding commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_015,Loading / service canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,8000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_016,Rooftop equipment support frame,Structural Architecture,Rooftop Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_016,Rooftop equipment support frame,Structural Architecture,Rooftop Structure,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 BIN_02,[category reference],Architectural Openings & Finish,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_03,[category reference],"Site, Lot & Hardscape",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
