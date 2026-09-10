@@ -16,7 +16,7 @@ STR_014,Freestanding commercial canopy structural frame,Structural Architecture,
 STR_015,Loading / service canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,8000,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_016,Rooftop equipment support frame,Structural Architecture,Rooftop Structure,Shared,,,,,6000,,,,,,,,,,,,,,,None,,,,,Planned,
 AOF_001,Commercial glass entrance door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
-AOF_002,Storefront window bay module,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,4 ft / 6 ft / 8 ft authored family.
+AOF_002,Storefront window bay module,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,4 ft / 6 ft / 8 ft authored family.
 AOF_003,Rear / service commercial door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
 AOF_004,Interior commercial door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
 AOF_005,Double commercial glass entrance door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
