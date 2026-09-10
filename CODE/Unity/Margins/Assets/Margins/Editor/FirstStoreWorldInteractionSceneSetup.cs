@@ -167,8 +167,10 @@ namespace Margins.Editor
             FirstPersonController firstPerson =
                 playerObject.GetComponent<FirstPersonController>();
             SetObject(firstPerson, "inputActions", inputActions);
-            SetFloat(firstPerson, "moveSpeed", 0.9f);
-            SetFloat(firstPerson, "sprintSpeed", 4.5f);
+            SetFloat(firstPerson, "moveSpeed", 3.2f);
+            SetFloat(firstPerson, "sprintSpeed", 5.4f);
+            SetFloat(firstPerson, "acceleration", 24f);
+            SetFloat(firstPerson, "deceleration", 30f);
             SetFloat(firstPerson, "jumpHeight", 1.15f);
 
             FixturePlacementWorldInteractionTarget placedFixtureTarget =
@@ -351,9 +353,7 @@ namespace Margins.Editor
 
             FirstStoreExperienceSceneSetup.Apply(scene);
 
-            ConfigureCarryableMop(
-                Require("Mop Tool"),
-                toolCarrier);
+            ConfigureWaveD();
             ConfigureOwnedPropertyObstacles(
                 propertyArea,
                 Require("First Store Presentation").transform,
@@ -361,7 +361,7 @@ namespace Margins.Editor
                 colaShelfObject.transform,
                 chipsShelfObject.transform,
                 deliveryDropObject.transform,
-                Require("Mop Tool").transform);
+                Require("Mop Bucket").transform);
 
             ConfigureCheckoutProductTarget(
                 requiredFixtureObject.transform.Find("Experience Checkout Cola Prop")?.gameObject,
@@ -392,7 +392,7 @@ namespace Margins.Editor
                 fixturePlacement,
                 playerObject,
                 deliveryObject,
-                Require("Mop Tool"),
+                Require("Mop Bucket"),
                 requiredFixture,
                 colaShelfFixture,
                 chipsShelfFixture,
@@ -574,7 +574,7 @@ namespace Margins.Editor
         {
             Transform cashierAvatar = CreateEmployeeAvatar(
                 "Detailed Cashier Employee",
-                new Vector3(5f, 0f, -5.6f),
+                new Vector3(4.85f, 0f, -2.95f),
                 cashierMaterial,
                 20,
                 out TextMesh cashierLabel);
@@ -594,7 +594,7 @@ namespace Margins.Editor
             Transform cashierWork = CreateAttachedWorkPoint(
                 checkoutFixture,
                 "Cashier Work Point",
-                new Vector3(-0.15f, 0f, -1.55f));
+                new Vector3(-0.15f, 0f, 1.55f));
             Transform deliveryWork = CreateWorkPoint(
                 "Receiving Work Point",
                 new Vector3(-4.8f, 0f, 4.45f));
@@ -933,6 +933,70 @@ namespace Margins.Editor
                 new Vector3(12f, 0f, -18f);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(mop);
+        }
+
+        // Upgrade the existing scene without regenerating unrelated presentation.
+        public static void ApplyWaveD()
+        {
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            ConfigureWaveD();
+            var fixturePlacement = UnityEngine.Object.FindAnyObjectByType<FixturePlacementController>();
+            ConfigureOwnedPropertyObstacles(
+                UnityEngine.Object.FindAnyObjectByType<OwnedPropertyPlacementArea>(),
+                Require("First Store Presentation").transform,
+                Require("Essential Checkout Fixture").transform,
+                Require("fixture-shelf-cola-validation").transform,
+                Require("fixture-shelf-chips-validation").transform,
+                Require("Stockroom Delivery Drop").transform,
+                Require("Mop Bucket").transform);
+            ConfigureLocalNavigation(scene, fixturePlacement,
+                Require("Validation Player"), Require("Mixed Starter Delivery"), Require("Mop Bucket"),
+                Require("Essential Checkout Fixture").GetComponent<PlaceableFixtureComponent>(),
+                Require("fixture-shelf-cola-validation").GetComponent<PlaceableFixtureComponent>(),
+                Require("fixture-shelf-chips-validation").GetComponent<PlaceableFixtureComponent>(),
+                Require("Stockroom Delivery Drop").GetComponent<PlaceableFixtureComponent>());
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+        }
+
+        private static void ConfigureWaveD()
+        {
+            foreach (string name in new[] { "Receiving Floor Zone", "Receiving Wall Sign", "Receiving Rail" })
+                DestroySceneObjectsNamed(name);
+            var carrier = Require("Validation Player").GetComponent<PlayerCarryableToolController>();
+            var delivery = Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
+            var deliveryTarget = delivery.GetComponent<DeliveryBoxWorldInteractionTarget>();
+            SetObject(deliveryTarget, "toolCarrier", carrier);
+            SetObject(carrier, "deliveryBox", delivery);
+            SetObject(Require("Validation Player").GetComponent<FirstStoreInteractionController>(),
+                "deliveryBoxTarget", deliveryTarget);
+            SetObject(UnityEngine.Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>(),
+                "toolCarrier", carrier);
+
+            GameObject bucket = Require("Mop Bucket");
+            if (bucket.GetComponent<Renderer>() != null)
+            {
+                // Preserve the existing bucket mesh at its authored scale under a unit-scale kit root.
+                GameObject body = bucket;
+                body.name = "Bucket Body";
+                bucket = new GameObject("Mop Bucket");
+                bucket.transform.SetParent(body.transform.parent, false);
+                bucket.transform.position = body.transform.position - Vector3.up * 0.28f;
+                body.transform.SetParent(bucket.transform, true);
+            }
+            var bucketTool = GetOrAdd<CarryableToolComponent>(bucket);
+            SetObject(bucketTool, "stableToolId", "tool-mop-bucket-01");
+            SetObject(bucketTool, "capabilityId", "carry-cleaning-kit");
+            SetObject(bucketTool, "displayName", "mop bucket");
+            SetObject(bucketTool, "carrier", carrier);
+            ConfigureCarryableMop(Require("Mop Tool"), carrier);
+            var mop = Require("Mop Tool").GetComponent<CarryableToolComponent>();
+            mop.transform.SetParent(bucket.transform, true);
+            SetObject(mop, "storageTool", bucketTool);
+            SetObject(bucketTool, "storedTool", mop);
+            SetObject(carrier, "cleaningKit", bucketTool);
+            ConfigureIgnoredNavigationSource(bucket);
         }
 
         private static void ConfigureInitialFixturePlacement(

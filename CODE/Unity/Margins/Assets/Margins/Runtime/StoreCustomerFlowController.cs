@@ -57,6 +57,7 @@ namespace Margins
         }
 
         [SerializeField] private StoreOperatingController storeOperating;
+        [SerializeField] private PortfolioProgressionController portfolioProgression;
         [SerializeField] private CheckoutStationComponent checkout;
         [SerializeField] private PhysicalProductUnitRegistry physicalUnits;
         [SerializeField] private Transform entrancePoint;
@@ -123,6 +124,29 @@ namespace Margins
                 ? Array.Empty<string>()
                 : checkoutCustomer.ReservedPhysicalUnitIds.ToArray();
         public long ActiveCheckoutSubtotalCents => checkout?.ActiveSubtotalCents ?? 0;
+        public string ActiveCheckoutNextProductName
+        {
+            get
+            {
+                if (checkoutCustomer == null)
+                {
+                    return null;
+                }
+                foreach (string unitId in
+                         checkoutCustomer.ReservedPhysicalUnitIds)
+                {
+                    if (!checkoutCustomer.ScannedPhysicalUnitIds.Contains(unitId) &&
+                        physicalUnits.TryGetUnit(unitId, out ProductItem item, out _))
+                    {
+                        return string.IsNullOrWhiteSpace(
+                            item.Definition?.DisplayName)
+                                ? "item"
+                                : item.Definition.DisplayName;
+                    }
+                }
+                return null;
+            }
+        }
         public StoreOperatingController StoreOperating => storeOperating;
         public CheckoutStationComponent Checkout => checkout;
         public PhysicalProductUnitRegistry PhysicalUnits => physicalUnits;
@@ -272,6 +296,8 @@ namespace Margins
 
         private void Start()
         {
+            portfolioProgression ??=
+                FindAnyObjectByType<PortfolioProgressionController>();
             EnsureCheckoutQueue();
             started = true;
             secondsUntilNextArrival = initialArrivalDelaySeconds;
@@ -289,6 +315,8 @@ namespace Margins
             {
                 return;
             }
+
+            TryClearStaleCheckout(out _);
 
             float deltaSeconds = Mathf.Max(0f, Time.deltaTime);
             StoreOperatingState operatingState = storeOperating.State;
@@ -579,6 +607,28 @@ namespace Margins
             return true;
         }
 
+        public bool TryScanNextCustomerItem(out string error)
+        {
+            if (checkoutCustomer == null)
+            {
+                error = "No customer checkout is active.";
+                return false;
+            }
+
+            foreach (string physicalUnitId in
+                     checkoutCustomer.ReservedPhysicalUnitIds)
+            {
+                if (!checkoutCustomer.ScannedPhysicalUnitIds.Contains(
+                        physicalUnitId))
+                {
+                    return TryScanCustomerItem(physicalUnitId, out error);
+                }
+            }
+
+            error = "Every customer item is scanned. Take payment to finish.";
+            return false;
+        }
+
         public bool TryCorrectLastScan(out string error)
         {
             if (checkoutCustomer == null ||
@@ -657,12 +707,66 @@ namespace Margins
             return true;
         }
 
+        public bool TryCancelActiveCheckout(out string error)
+        {
+            if (checkoutCustomer != null)
+            {
+                Abandon(checkoutCustomer);
+                error = null;
+                return true;
+            }
+
+            if (checkout != null && checkout.HasActiveIncompleteSession)
+            {
+                bool cancelled = checkout.TryCancelActiveSession(out error);
+                error ??= cancelled
+                    ? null
+                    : "The incomplete checkout could not be cleared.";
+                return cancelled;
+            }
+
+            error = "No customer checkout is active.";
+            return false;
+        }
+
+        public bool TryClearStaleCheckout(out string error)
+        {
+            if (checkout == null)
+            {
+                error = "Checkout station is unavailable.";
+                return false;
+            }
+
+            if (checkoutCustomer == null && checkout.HasActiveIncompleteSession)
+            {
+                bool cleared = checkout.TryCancelActiveSession(out error);
+                error ??= cleared
+                    ? null
+                    : "The unreachable checkout session could not be cleared.";
+                return cleared;
+            }
+
+            if (checkoutCustomer != null &&
+                !checkout.HasActiveIncompleteSession)
+            {
+                Abandon(checkoutCustomer);
+            }
+
+            error = null;
+            return true;
+        }
+
         public bool TryCaptureSnapshot(
             out StoreCustomerFlowSnapshot snapshot,
             out string error)
         {
             snapshot = null;
             if (!TryValidateConfiguration(out error))
+            {
+                return false;
+            }
+
+            if (!TryClearStaleCheckout(out error))
             {
                 return false;
             }
@@ -1253,14 +1357,6 @@ namespace Margins
                 new Vector3(0f, 1.85f, 0f),
                 Vector3.one * 0.42f,
                 material);
-            CreateShape(
-                root.transform,
-                "Basket",
-                PrimitiveType.Cube,
-                new Vector3(0.48f, 0.95f, 0f),
-                new Vector3(0.48f, 0.24f, 0.36f),
-                null);
-
             GameObject itemRootObject = new("Customer Items");
             itemRootObject.transform.SetParent(root.transform, false);
             itemRootObject.transform.localPosition = new Vector3(0.48f, 1.1f, 0f);
@@ -1296,7 +1392,13 @@ namespace Margins
         private void ChooseRequestedProducts(RuntimeCustomer customer)
         {
             IReadOnlyList<string> productIds = checkout.ConfiguredProductIds;
-            int primary = (customer.Ordinal - 1) % productIds.Count;
+            int seedOffset = productIds.Count == 0
+                ? 0
+                : (int)(((uint)(portfolioProgression?.StartupSeed ??
+                                 PortfolioStartupProfileRules.DefaultSeed) ^
+                         (uint)PortfolioStartupProfileRules.DefaultSeed) %
+                        (uint)productIds.Count);
+            int primary = (customer.Ordinal - 1 + seedOffset) % productIds.Count;
             if (primary < 0)
             {
                 primary += productIds.Count;

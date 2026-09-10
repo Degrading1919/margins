@@ -75,6 +75,7 @@ namespace Margins
         private readonly List<VisualElement> focusables = new();
         private readonly List<Button> bindingButtons = new();
         private readonly List<Button> staticTitleButtons = new();
+        private readonly List<Button> staticSetupButtons = new();
         private readonly List<Button> staticPauseButtons = new();
         private readonly List<Button> managementTabButtons = new();
         private readonly List<Button> managementFooterButtons = new();
@@ -84,6 +85,7 @@ namespace Margins
 
         private VisualElement root;
         private VisualElement titleView;
+        private VisualElement newBusinessSetupView;
         private VisualElement pauseView;
         private VisualElement settingsView;
         private VisualElement managementView;
@@ -91,6 +93,13 @@ namespace Margins
         private VisualElement controlsContent;
         private Button titleNewBusiness;
         private Button titleLoadBusiness;
+        private TextField setupBusinessName;
+        private DropdownField setupLogo;
+        private IntegerField setupSeed;
+        private TextField setupPrimaryColor;
+        private TextField setupSecondaryColor;
+        private Button setupBack;
+        private Button setupStart;
         private Button generalTab;
         private Button controlsTab;
         private Toggle fullscreenToggle;
@@ -99,7 +108,8 @@ namespace Margins
         private SliderInt masterVolumeSlider;
         private Label masterVolumeValue;
         private Toggle cameraMotionToggle;
-        private SliderInt sensitivitySlider;
+        private Button sensitivityDecrease;
+        private Button sensitivityIncrease;
         private Label sensitivityValue;
         private Toggle invertYToggle;
         private ScrollView bindingList;
@@ -119,6 +129,7 @@ namespace Margins
         private Button managementReportsTab;
         private Button managementResume;
         private NotificationElements titleNotification;
+        private NotificationElements setupNotification;
         private NotificationElements pauseNotification;
         private NotificationElements settingsNotification;
         private bool initialized;
@@ -220,6 +231,8 @@ namespace Margins
             root.RegisterCallback<KeyDownEvent>(HandleKeyDown, TrickleDown.TrickleDown);
 
             titleView = Require<VisualElement>("title-view");
+            newBusinessSetupView =
+                Require<VisualElement>("new-business-setup-view");
             pauseView = Require<VisualElement>("pause-view");
             settingsView = Require<VisualElement>("settings-view");
             managementView = Require<VisualElement>("management-view");
@@ -227,6 +240,13 @@ namespace Margins
             controlsContent = Require<VisualElement>("settings-controls-content");
             titleNewBusiness = Require<Button>("title-new-business");
             titleLoadBusiness = Require<Button>("title-load-business");
+            setupBusinessName = Require<TextField>("setup-business-name");
+            setupLogo = Require<DropdownField>("setup-logo");
+            setupSeed = Require<IntegerField>("setup-seed");
+            setupPrimaryColor = Require<TextField>("setup-primary-color");
+            setupSecondaryColor = Require<TextField>("setup-secondary-color");
+            setupBack = Require<Button>("setup-back");
+            setupStart = Require<Button>("setup-start");
             generalTab = Require<Button>("settings-general-tab");
             controlsTab = Require<Button>("settings-controls-tab");
             fullscreenToggle = Require<Toggle>("settings-fullscreen");
@@ -235,7 +255,10 @@ namespace Margins
             masterVolumeSlider = Require<SliderInt>("settings-master-volume");
             masterVolumeValue = Require<Label>("settings-master-volume-value");
             cameraMotionToggle = Require<Toggle>("settings-camera-motion");
-            sensitivitySlider = Require<SliderInt>("settings-look-sensitivity");
+            sensitivityDecrease =
+                Require<Button>("settings-look-sensitivity-decrease");
+            sensitivityIncrease =
+                Require<Button>("settings-look-sensitivity-increase");
             sensitivityValue = Require<Label>("settings-look-sensitivity-value");
             invertYToggle = Require<Toggle>("settings-invert-y");
             bindingList = Require<ScrollView>("settings-binding-list");
@@ -259,6 +282,10 @@ namespace Margins
                 "title-notification",
                 "title-notification-message",
                 "title-notification-dismiss");
+            setupNotification = Notification(
+                "setup-notification",
+                "setup-notification-message",
+                "setup-notification-dismiss");
             pauseNotification = Notification(
                 "pause-notification",
                 "pause-notification-message",
@@ -288,6 +315,9 @@ namespace Margins
             RegisterButton(Require<Button>("title-settings"), controller.OpenSettings);
             RegisterButton(Require<Button>("title-quit"), controller.QuitToDesktop);
 
+            RegisterButton(setupBack, controller.CancelNewBusinessSetup);
+            RegisterButton(setupStart, controller.StartConfiguredNewBusiness);
+
             RegisterButton(Require<Button>("pause-resume"), controller.Resume);
             RegisterButton(Require<Button>("pause-save"), controller.SaveBusiness);
             RegisterButton(Require<Button>("pause-load"), controller.RequestLoadBusiness);
@@ -301,6 +331,7 @@ namespace Margins
             RegisterButton(settingsBack, controller.CloseSettings);
             RegisterButton(settingsApply, controller.ApplySettings);
             RegisterButton(titleNotification.Dismiss, controller.DismissNotification);
+            RegisterButton(setupNotification.Dismiss, controller.DismissNotification);
             RegisterButton(pauseNotification.Dismiss, controller.DismissNotification);
             RegisterButton(settingsNotification.Dismiss, controller.DismissNotification);
             RegisterButton(
@@ -328,6 +359,9 @@ namespace Margins
             staticTitleButtons.Add(Require<Button>("title-settings"));
             staticTitleButtons.Add(Require<Button>("title-quit"));
 
+            staticSetupButtons.Add(setupBack);
+            staticSetupButtons.Add(setupStart);
+
             staticPauseButtons.Add(Require<Button>("pause-resume"));
             staticPauseButtons.Add(Require<Button>("pause-save"));
             staticPauseButtons.Add(Require<Button>("pause-load"));
@@ -346,6 +380,31 @@ namespace Margins
 
         private void RegisterSettingChanges()
         {
+            setupBusinessName.maxLength = 32;
+            setupLogo.choices = new List<string>
+            {
+                "Logo A",
+                "Logo B",
+                "Logo C"
+            };
+            setupBusinessName.RegisterValueChangedCallback(
+                evt => controller.SetNewBusinessName(evt.newValue));
+            setupPrimaryColor.RegisterValueChangedCallback(
+                evt => controller.SetNewBusinessPrimaryColor(evt.newValue));
+            setupSecondaryColor.RegisterValueChangedCallback(
+                evt => controller.SetNewBusinessSecondaryColor(evt.newValue));
+            setupSeed.RegisterValueChangedCallback(
+                evt => controller.SetNewBusinessSeed(evt.newValue));
+            setupLogo.RegisterValueChangedCallback(evt =>
+            {
+                int index = setupLogo.choices.IndexOf(evt.newValue);
+                if (index >= 0 &&
+                    index < PortfolioStartupProfileRules.LogoSelectionIds.Length)
+                {
+                    controller.SetNewBusinessLogoSelection(
+                        PortfolioStartupProfileRules.LogoSelectionIds[index]);
+                }
+            });
             fullscreenToggle.RegisterValueChangedCallback(
                 evt => controller.SetFullscreen(evt.newValue));
             interfaceScaleSlider.RegisterValueChangedCallback(
@@ -362,8 +421,10 @@ namespace Margins
                 });
             cameraMotionToggle.RegisterValueChangedCallback(
                 evt => controller.SetCameraMotion(evt.newValue));
-            sensitivitySlider.RegisterValueChangedCallback(
-                evt => controller.SetLookSensitivityLevel(evt.newValue));
+            RegisterButton(sensitivityDecrease, () =>
+                AdjustSensitivity(-1));
+            RegisterButton(sensitivityIncrease, () =>
+                AdjustSensitivity(1));
             invertYToggle.RegisterValueChangedCallback(
                 evt => controller.SetInvertY(evt.newValue));
         }
@@ -393,11 +454,14 @@ namespace Margins
 
             bool title = !management &&
                          controller.Screen == GameMenuScreen.Title;
+            bool setup = !management &&
+                         controller.Screen == GameMenuScreen.NewBusinessSetup;
             bool pause = !management &&
                          controller.Screen == GameMenuScreen.Pause;
             bool settings = !management && controller.IsSettingsVisible;
             bool controls = controller.Screen == GameMenuScreen.SettingsControls;
             SetVisible(titleView, title);
+            SetVisible(newBusinessSetupView, setup);
             SetVisible(pauseView, pause);
             SetVisible(settingsView, settings);
             SetVisible(managementView, management);
@@ -407,7 +471,7 @@ namespace Margins
             if (management)
             {
                 RefreshManagement();
-                RebuildFocusables(false, false, false, false, true);
+                RebuildFocusables(false, false, false, false, false, true);
                 EnsureUsefulFocus();
                 return;
             }
@@ -426,14 +490,41 @@ namespace Margins
                 controller.PendingReplacement == SessionReplacementAction.LoadBusiness
                     ? "Confirm Load Business"
                     : "Load Business";
+            Require<Button>("pause-title").text =
+                controller.PendingReplacement == SessionReplacementAction.ReturnToTitle
+                    ? "Confirm Return to Title"
+                    : "Return to Title";
+
+            if (setup)
+            {
+                RefreshNewBusinessSetup();
+            }
 
             if (settings)
             {
                 RefreshSettings(controls);
             }
-            RefreshNotifications(title, pause, settings);
-            RebuildFocusables(title, pause, settings, controls, false);
+            RefreshNotifications(title, setup, pause, settings);
+            RebuildFocusables(title, setup, pause, settings, controls, false);
             EnsureUsefulFocus();
+        }
+
+        private void RefreshNewBusinessSetup()
+        {
+            NewBusinessSetupData setup = controller.NewBusinessSetup;
+            if (setup == null)
+            {
+                return;
+            }
+
+            setupBusinessName.SetValueWithoutNotify(setup.businessName);
+            setupPrimaryColor.SetValueWithoutNotify(setup.primaryColorHex);
+            setupSecondaryColor.SetValueWithoutNotify(setup.secondaryColorHex);
+            setupSeed.SetValueWithoutNotify(setup.seed);
+            int logoIndex = Array.IndexOf(
+                PortfolioStartupProfileRules.LogoSelectionIds,
+                setup.logoSelectionId);
+            setupLogo.index = Mathf.Max(0, logoIndex);
         }
 
         private void RefreshSettings(bool controls)
@@ -452,7 +543,6 @@ namespace Margins
                 Mathf.RoundToInt(settings.MasterVolume * 100f));
             masterVolumeValue.text = $"{settings.MasterVolume * 100f:0}%";
             cameraMotionToggle.SetValueWithoutNotify(settings.CameraMotion);
-            sensitivitySlider.SetValueWithoutNotify(settings.LookSensitivityLevel);
             sensitivityValue.text =
                 $"{settings.LookSensitivityLevel} · " +
                 GameSettingsModel.SensitivityDescription(
@@ -524,9 +614,14 @@ namespace Margins
             renderedActiveBindingKey = settings.ActiveBindingKey;
         }
 
-        private void RefreshNotifications(bool title, bool pause, bool settings)
+        private void RefreshNotifications(
+            bool title,
+            bool setup,
+            bool pause,
+            bool settings)
         {
             RefreshNotification(titleNotification, title);
+            RefreshNotification(setupNotification, setup);
             RefreshNotification(pauseNotification, pause);
             RefreshNotification(settingsNotification, settings);
         }
@@ -555,6 +650,7 @@ namespace Margins
 
         private void RebuildFocusables(
             bool title,
+            bool setup,
             bool pause,
             bool settings,
             bool controls,
@@ -577,6 +673,20 @@ namespace Margins
                 }
                 return;
             }
+            if (setup)
+            {
+                focusables.Add(setupBusinessName);
+                focusables.Add(setupLogo);
+                focusables.Add(setupSeed);
+                focusables.Add(setupPrimaryColor);
+                focusables.Add(setupSecondaryColor);
+                AddEnabled(staticSetupButtons);
+                if (controller.Notification.IsPersistent)
+                {
+                    focusables.Add(setupNotification.Dismiss);
+                }
+                return;
+            }
             if (pause)
             {
                 AddEnabled(staticPauseButtons);
@@ -595,7 +705,8 @@ namespace Margins
             focusables.Add(controlsTab);
             if (controls)
             {
-                focusables.Add(sensitivitySlider);
+                focusables.Add(sensitivityDecrease);
+                focusables.Add(sensitivityIncrease);
                 focusables.Add(invertYToggle);
                 AddEnabled(bindingButtons);
                 focusables.Add(resetBindings);
@@ -700,11 +811,17 @@ namespace Margins
             VisualElement focused = root.panel?.focusController?.focusedElement as VisualElement;
             if (focused is SliderInt slider)
             {
-                int step = slider == sensitivitySlider ? 1 : 5;
+                int step = 5;
                 slider.value = Mathf.Clamp(
                     slider.value + direction * step,
                     slider.lowValue,
                     slider.highValue);
+                return true;
+            }
+            if (focused == sensitivityDecrease ||
+                focused == sensitivityIncrease)
+            {
+                AdjustSensitivity(direction);
                 return true;
             }
             if (focused is Toggle toggle)
@@ -761,6 +878,12 @@ namespace Margins
             }
             button.clicked += action;
             activations[button] = action;
+        }
+
+        private void AdjustSensitivity(int direction)
+        {
+            int current = controller?.DraftSettings?.LookSensitivityLevel ?? 5;
+            controller?.SetLookSensitivityLevel(current + Math.Sign(direction));
         }
 
         private void AddEnabled(IEnumerable<Button> buttons)
@@ -2250,15 +2373,21 @@ namespace Margins
 
         private bool HasMissingRequiredElement()
         {
-            return root == null || titleView == null || pauseView == null ||
+            return root == null || titleView == null ||
+                   newBusinessSetupView == null || pauseView == null ||
                    settingsView == null || managementView == null ||
                    generalContent == null ||
                    controlsContent == null || titleNewBusiness == null ||
-                   titleLoadBusiness == null || generalTab == null ||
+                   titleLoadBusiness == null || setupBusinessName == null ||
+                   setupLogo == null || setupSeed == null ||
+                   setupPrimaryColor == null || setupSecondaryColor == null ||
+                   setupBack == null ||
+                   setupStart == null || generalTab == null ||
                    controlsTab == null || fullscreenToggle == null ||
                    interfaceScaleSlider == null || interfaceScaleValue == null ||
                    masterVolumeSlider == null || masterVolumeValue == null ||
-                   cameraMotionToggle == null || sensitivitySlider == null ||
+                   cameraMotionToggle == null || sensitivityDecrease == null ||
+                   sensitivityIncrease == null ||
                    sensitivityValue == null || invertYToggle == null ||
                    bindingList == null || resetBindings == null ||
                    settingsBack == null || settingsApply == null ||
@@ -2271,7 +2400,8 @@ namespace Margins
                    managementAlertsTab == null ||
                    managementLocationsTab == null ||
                    managementReportsTab == null || managementResume == null ||
-                   !titleNotification.IsValid || !pauseNotification.IsValid ||
+                   !titleNotification.IsValid || !setupNotification.IsValid ||
+                   !pauseNotification.IsValid ||
                    !settingsNotification.IsValid;
         }
 

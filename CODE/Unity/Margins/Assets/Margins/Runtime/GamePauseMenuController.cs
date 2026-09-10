@@ -20,6 +20,8 @@ namespace Margins
         private IGamePreferences preferences;
         private GameSettingsModel appliedSettings;
         private GameSettingsModel draftSettings;
+        private NewBusinessSetupData newBusinessSetup =
+            NewBusinessSetupData.CreateDefault();
         private InputBindingSettings bindingSettings;
         private int lastEscapeFrame = -1;
         private static bool gameMenuOpen;
@@ -34,12 +36,14 @@ namespace Margins
         public bool IsOpen => menuState.Screen != GameMenuScreen.Closed;
         public bool IsTitleVisible => menuState.Screen == GameMenuScreen.Title;
         public bool IsSettingsVisible => menuState.IsSettings;
+        public bool IsNewBusinessSetupVisible => menuState.IsNewBusinessSetup;
         public bool HasActiveSession => menuState.HasActiveSession;
         public bool CanLoadBusiness => persistence != null && persistence.HasSaveFile;
         public GameMenuScreen Screen => menuState.Screen;
         public SessionReplacementAction PendingReplacement =>
             menuState.PendingReplacement;
         public GameSettingsModel DraftSettings => draftSettings;
+        public NewBusinessSetupData NewBusinessSetup => newBusinessSetup;
         public InputBindingSettings BindingSettings => bindingSettings;
         public MenuNotificationModel Notification => notification;
         public string StatusMessage => notification.Message;
@@ -124,6 +128,11 @@ namespace Margins
                 CloseSettings();
                 return;
             }
+            if (menuState.IsNewBusinessSetup)
+            {
+                CancelNewBusinessSetup();
+                return;
+            }
             if (menuState.Screen == GameMenuScreen.Title)
             {
                 return;
@@ -174,6 +183,18 @@ namespace Margins
 
         public void ReturnToTitle()
         {
+            if (!menuState.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle))
+            {
+                notification.ShowPersistent(
+                    "Return to title? Any unsaved progress will be lost. " +
+                    "Select Return to Title again to confirm.",
+                    MenuNotificationKind.Information);
+                PublishPresentation();
+                return;
+            }
+
+            persistence?.ResolveCarriedObjectsForSessionExit();
             menuState.ReturnToTitle();
             notification.Clear();
             ApplyMenuEnvironment();
@@ -248,7 +269,43 @@ namespace Margins
                 return;
             }
 
-            if (!persistence.TryStartNewBusiness())
+            newBusinessSetup = NewBusinessSetupData.CreateDefault();
+            menuState.OpenNewBusinessSetup();
+            notification.Clear();
+            ApplyMenuEnvironment();
+            PublishPresentation();
+        }
+
+        public void CancelNewBusinessSetup()
+        {
+            if (!menuState.IsNewBusinessSetup)
+            {
+                return;
+            }
+
+            menuState.ReturnToTitle();
+            notification.Clear();
+            ApplyMenuEnvironment();
+            PublishPresentation();
+        }
+
+        public void StartConfiguredNewBusiness()
+        {
+            if (!menuState.IsNewBusinessSetup || persistence == null)
+            {
+                return;
+            }
+
+            if (!PortfolioStartupProfileRules.TryNormalize(
+                    newBusinessSetup,
+                    out _,
+                    out string setupError))
+            {
+                ShowError(setupError);
+                return;
+            }
+
+            if (!persistence.TryStartNewBusiness(newBusinessSetup))
             {
                 ShowError(FriendlyPersistenceFailure(
                     persistence.LastDiagnostic,
@@ -257,6 +314,36 @@ namespace Margins
             }
 
             Resume();
+        }
+
+        public void SetNewBusinessName(string value)
+        {
+            newBusinessSetup.businessName = value;
+        }
+
+        public void SetNewBusinessPrimaryColor(string value)
+        {
+            newBusinessSetup.primaryColorHex = value;
+        }
+
+        public void SetNewBusinessSecondaryColor(string value)
+        {
+            newBusinessSetup.secondaryColorHex = value;
+        }
+
+        public void SetNewBusinessLogoSelection(string value)
+        {
+            newBusinessSetup.logoSelectionId = value;
+        }
+
+        public void SetNewBusinessSeed(int value)
+        {
+            newBusinessSetup.seed = value;
+        }
+
+        public void SetNewBusinessDifficultyPurpose(string value)
+        {
+            newBusinessSetup.difficultyPurposeId = value;
         }
 
         public void RequestLoadBusiness()

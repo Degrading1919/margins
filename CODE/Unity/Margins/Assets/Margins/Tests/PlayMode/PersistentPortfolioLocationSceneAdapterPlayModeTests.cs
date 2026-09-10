@@ -103,6 +103,10 @@ namespace Margins.Tests.PlayMode
                 context.Cleaning.NeedsCleaning ||
                 context.Cleaning.TryCreateMess(),
                 Is.True);
+            Assert.That(context.CleaningTool.StorageTool.TryPrimary(out error), Is.True, error);
+            Assert.That(
+                Object.FindAnyObjectByType<PlayerCarryableToolController>()
+                    .TrySetDownHeldTool(out error), Is.True, error);
             Assert.That(context.CleaningTool.TryPrimary(out error), Is.True, error);
             while (!context.Cleaning.IsComplete)
             {
@@ -1249,6 +1253,27 @@ namespace Margins.Tests.PlayMode
             Transform exteriorArrival = GameObject.Find(
                 "Customer Exterior Arrival Boundary")?.transform;
             Assert.That(exteriorArrival, Is.Not.Null);
+            PlaceableFixtureComponent checkoutFixture = customerBindings
+                .CheckoutCustomerPoint
+                .GetComponentInParent<PlaceableFixtureComponent>();
+            Assert.That(checkoutFixture, Is.Not.Null);
+            Vector3 customerLocal = checkoutFixture.transform
+                .InverseTransformPoint(
+                    customerBindings.CheckoutCustomerPoint.position);
+            Vector3 cashierLocal = checkoutFixture.transform
+                .InverseTransformPoint(employeeBindings.CashierWorkPoint.position);
+            Assert.That(
+                customerLocal.z,
+                Is.LessThan(-0.5f),
+                "The authored checkout customer point must stay on the storefront/customer side.");
+            Assert.That(
+                cashierLocal.z,
+                Is.GreaterThan(0.5f),
+                "The cashier workplace must stay behind the authored checkout.");
+            Assert.That(
+                customerLocal.z * cashierLocal.z,
+                Is.LessThan(0f),
+                "Customer and employee approach points must be on opposite checkout sides.");
             AssertCompleteNavigationRoutes(
                 exteriorArrival,
                 new[]

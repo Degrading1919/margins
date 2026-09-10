@@ -525,7 +525,7 @@ namespace Margins.Tests.EditMode
             PortfolioProgressionSnapshot legacy = current.CreateSnapshot();
             PortfolioDetailedReconciliationSnapshot detailed =
                 legacy.locations[0].detailedReconciliation;
-            legacy.version = PortfolioProgressionSnapshot.PriorVersion;
+            legacy.version = PortfolioProgressionSnapshot.VersionThree;
             legacy.detailedOperationInitialized = detailed.initialized;
             legacy.processedDetailedSessionId = detailed.sessionId;
             legacy.reconciledDetailedGrossSalesCents = detailed.grossSalesCents;

@@ -497,6 +497,8 @@ namespace Margins.Tests
             Assert.That(
                 store.TryGetFirstFinalCloseBlocker(out string closeBlocker),
                 Is.True);
+            Assert.That(flow.HasCustomersInStore, Is.True);
+            Assert.That(checkout.HasActiveIncompleteSession, Is.False);
             StringAssert.Contains("customers", closeBlocker);
         }
 

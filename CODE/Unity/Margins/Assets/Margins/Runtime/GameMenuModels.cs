@@ -206,14 +206,16 @@ namespace Margins
         Title = 1,
         Pause = 2,
         SettingsGeneral = 3,
-        SettingsControls = 4
+        SettingsControls = 4,
+        NewBusinessSetup = 5
     }
 
     public enum SessionReplacementAction
     {
         None = 0,
         NewBusiness = 1,
-        LoadBusiness = 2
+        LoadBusiness = 2,
+        ReturnToTitle = 3
     }
 
     public sealed class GameMenuStateModel
@@ -226,6 +228,8 @@ namespace Margins
         public bool IsSettings =>
             Screen == GameMenuScreen.SettingsGeneral ||
             Screen == GameMenuScreen.SettingsControls;
+        public bool IsNewBusinessSetup =>
+            Screen == GameMenuScreen.NewBusinessSetup;
 
         public void ShowTitleAtLaunch()
         {
@@ -237,6 +241,7 @@ namespace Margins
         public void ReturnToTitle()
         {
             Screen = GameMenuScreen.Title;
+            HasActiveSession = false;
             PendingReplacement = SessionReplacementAction.None;
         }
 
@@ -251,6 +256,12 @@ namespace Margins
         {
             Screen = GameMenuScreen.Closed;
             HasActiveSession = true;
+            PendingReplacement = SessionReplacementAction.None;
+        }
+
+        public void OpenNewBusinessSetup()
+        {
+            Screen = GameMenuScreen.NewBusinessSetup;
             PendingReplacement = SessionReplacementAction.None;
         }
 

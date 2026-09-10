@@ -42,7 +42,7 @@ namespace Margins.Tests
             PlacementRig rig = CreateRig();
             Assert.That(rig.Mode.TryBegin(rig.Fixture, out string error), Is.True, error);
             StringAssert.Contains("[Q]", rig.Mode.Prompt.FormattedText);
-            StringAssert.Contains("mouse wheel rotates", rig.Mode.Prompt.FormattedText);
+            StringAssert.DoesNotContain("mouse wheel rotates", rig.Mode.Prompt.FormattedText);
 
             float cellSize = rig.Controller.CellSize;
             Ray ray = new(

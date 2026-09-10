@@ -822,6 +822,41 @@ namespace Margins.Tests.EditMode
                 Is.EqualTo(PortfolioProgressionSnapshot.CurrentVersion));
         }
 
+        [Test]
+        public void VersionFourPortfolioMigratesToVersionFiveStartupProfile()
+        {
+            PortfolioProgressionSnapshot versionFour =
+                PortfolioProgression.CreateInitial().CreateSnapshot();
+            versionFour.version = PortfolioProgressionSnapshot.PriorVersion;
+            versionFour.company.startupProfile = null;
+            long expectedCash = versionFour.cashCents;
+            string expectedLocationId = versionFour.locations.Single().locationId;
+
+            Assert.That(
+                PortfolioProgression.TryRestore(
+                    versionFour,
+                    out PortfolioProgression restored,
+                    out string error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot versionFive = restored.CreateSnapshot();
+            Assert.That(
+                versionFive.version,
+                Is.EqualTo(PortfolioProgressionSnapshot.CurrentVersion));
+            Assert.That(versionFive.cashCents, Is.EqualTo(expectedCash));
+            Assert.That(
+                versionFive.locations.Single().locationId,
+                Is.EqualTo(expectedLocationId));
+            Assert.That(versionFive.company.startupProfile, Is.Not.Null);
+            Assert.That(
+                versionFive.company.startupProfile.businessName,
+                Is.EqualTo(PortfolioStartupProfileRules.DefaultBusinessName));
+            Assert.That(
+                versionFive.company.startupProfile.difficultyPurposeId,
+                Is.EqualTo(
+                    PortfolioStartupProfileRules.DefaultDifficultyPurposeId));
+        }
+
         private static PortfolioProgression ReadyForHiring()
         {
             PortfolioProgression progression = PortfolioProgression.CreateInitial();

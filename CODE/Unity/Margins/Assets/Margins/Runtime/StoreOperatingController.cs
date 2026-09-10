@@ -329,12 +329,6 @@ namespace Margins
                 }
             }
 
-            if (!checkout.HasSellableStock)
-            {
-                error = "At least one configured checkout product must be shelved.";
-                return false;
-            }
-
             if (stocking.HasHeldUnit)
             {
                 error = "Return or stock the held unit before opening.";
@@ -375,12 +369,6 @@ namespace Margins
                 }
             }
 
-            if (!checkout.HasSellableStock)
-            {
-                blocker = "Stock a checkout product before opening.";
-                return true;
-            }
-
             if (stocking.HasHeldUnit)
             {
                 blocker = "Return or stock the held product before opening.";
@@ -393,6 +381,16 @@ namespace Margins
 
         public bool TryBeginClosing(out string error)
         {
+            if (Session == null)
+            {
+                error = "Store operating controller is not initialized.";
+                return false;
+            }
+            if (State == StoreOperatingState.Open && customerFlow != null &&
+                !customerFlow.TryClearStaleCheckout(out error))
+            {
+                return false;
+            }
             return TryTransition(StoreOperatingState.Closing, out error);
         }
 
@@ -401,6 +399,12 @@ namespace Margins
             if (Session == null)
             {
                 error = "Store operating controller is not initialized.";
+                return false;
+            }
+
+            if (customerFlow != null &&
+                !customerFlow.TryClearStaleCheckout(out error))
+            {
                 return false;
             }
 
@@ -447,6 +451,8 @@ namespace Margins
                 blocker = "Store controls are not ready.";
                 return true;
             }
+
+            customerFlow?.TryClearStaleCheckout(out _);
 
             if (State != StoreOperatingState.Closing)
             {

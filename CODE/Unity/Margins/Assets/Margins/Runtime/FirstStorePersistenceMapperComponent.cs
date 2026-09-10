@@ -15,6 +15,16 @@ namespace Margins
         [SerializeField] private CleaningTaskComponent cleaningTask;
         [SerializeField] private InStoreEmployeeWorkController employeeWork;
         [SerializeField] private StoreCustomerFlowController customerFlow;
+        [SerializeField] private PlayerCarryableToolController toolCarrier;
+
+        public void ResolveCarriedObjectsForSessionExit()
+        {
+            foreach (DeliveryBoxComponent deliveryBox in deliveryBoxes)
+            {
+                deliveryBox.ResetCarriedStateAfterRestore();
+            }
+            toolCarrier?.ResetTransientStateAfterRestore();
+        }
 
         public bool TryValidateConfiguration(out string error)
         {
@@ -280,6 +290,8 @@ namespace Margins
             }
 
             employeeWork?.ResetTransientStateAfterRestore();
+            // Loose tool staging is transient; restore the paired kit to storage.
+            toolCarrier?.ResetTransientStateAfterRestore();
 
             if (!checkout.TryApplyLedger(restored.TransactionLedger, out error) ||
                 !storeOperating.TryApplySnapshot(
@@ -318,6 +330,11 @@ namespace Margins
 
         public bool TryGetDiskSaveBlocker(out string blocker)
         {
+            if (toolCarrier?.HasHeldTool == true)
+            {
+                blocker = "Return the mop to its bucket or set down the bucket before saving.";
+                return true;
+            }
             if (!TryValidateConfiguration(out string configurationError))
             {
                 blocker = configurationError;
@@ -340,6 +357,12 @@ namespace Margins
                 return true;
             }
 
+            if (customerFlow != null &&
+                !customerFlow.TryClearStaleCheckout(out blocker))
+            {
+                return true;
+            }
+
             if (checkout.HasActiveIncompleteSession)
             {
                 blocker = "Complete the active checkout before saving.";
@@ -358,6 +381,11 @@ namespace Margins
 
         public bool TryGetLoadRollbackBlocker(out string blocker)
         {
+            if (toolCarrier?.HasHeldTool == true)
+            {
+                blocker = "Return the mop to its bucket or set down the bucket before loading.";
+                return true;
+            }
             if (!TryValidateConfiguration(out string configurationError))
             {
                 blocker = configurationError;

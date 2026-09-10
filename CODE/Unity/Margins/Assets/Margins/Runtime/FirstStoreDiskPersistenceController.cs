@@ -224,6 +224,11 @@ namespace Margins
             return true;
         }
 
+        public void ResolveCarriedObjectsForSessionExit()
+        {
+            persistenceMapper?.ResolveCarriedObjectsForSessionExit();
+        }
+
         public bool TrySave()
         {
             return TrySaveToPath(SavePath);
@@ -235,6 +240,11 @@ namespace Margins
         }
 
         public bool TryStartNewBusiness()
+        {
+            return TryStartNewBusiness(null);
+        }
+
+        public bool TryStartNewBusiness(NewBusinessSetupData setup)
         {
             if (TryGetGeneratedLocationPersistenceBlocker(out string blocker))
             {
@@ -266,6 +276,15 @@ namespace Margins
             {
                 return Reject(
                     $"New business rejected: initialization state could not be copied: {error}");
+            }
+
+            if (setup != null &&
+                !PortfolioStartupProfileRules.TryApply(
+                    cleanState.portfolio,
+                    setup,
+                    out error))
+            {
+                return Reject($"New business rejected: {error}");
             }
 
             return TryRestoreSaveData(cleanState, true);

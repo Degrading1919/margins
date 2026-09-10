@@ -9,7 +9,7 @@
   the implementing pull request
 - **File-envelope version:** `4`
 - **First-store snapshot version:** `4`
-- **Portfolio snapshot version:** `4`
+- **Portfolio snapshot version:** `5`
 - **Procurement snapshot version:** `1`
 - **Disposition:** Reversible first-store validation implementation only; it is not
   approval of the eventual production save architecture, migration policy, or slots
@@ -38,7 +38,9 @@ this contract does not choose its migration or compatibility policy.
   succeeds.
 - Unsupported versions, malformed JSON, invalid identifiers, contradictory
   totals, and invalid physical reconciliation reject before live-state mutation.
-- Saving is rejected while a product is held or a checkout is incomplete.
+- Saving is rejected while a product is held or a serviceable customer checkout
+  is incomplete. An incomplete checkout with no customer authority is repaired
+  before blocker evaluation.
 - This proof has one file, no slots, migration tooling, cloud storage,
   encryption, compression, or save-menu framework.
 
@@ -88,6 +90,10 @@ The portfolio snapshot contains:
 
 - one player company with independent brand, commercial-property,
   commercial-unit, and business-location collections linked by stable IDs;
+- one New Business startup profile containing the player-authored first-store
+  name, two hex colors, a placeholder logo-selection ID, a bounded-variation
+  seed, and one of the four approved FD-006 purpose IDs; the purpose ID carries
+  no difficulty modifier under this contract;
 - multiple brands, multiple units per property, vacant units, and properties
   without business locations are valid even though current authored content
   still instantiates only the convenience brand and occupied locations;
@@ -148,7 +154,7 @@ The nested procurement snapshot contains:
   its captured sale-time unit costs.
 - Unsupported versions reject the snapshot without partial mutation.
 - Legacy first-store versions `2` and `3`, file-envelope versions `1` through `3`,
-  and portfolio versions `1` through `3` normalize deterministically to the
+  and portfolio versions `1` through `4` normalize deterministically to the
   current temporary contract before validation and live-state mutation.
 - Every business location resolves by ID to one brand, property, and occupied
   commercial unit. Brands and properties may exist without locations, and

@@ -135,7 +135,10 @@ namespace Margins.Tests
                 player.TryValidateInputConfiguration(out string error),
                 Is.True,
                 error);
-            Assert.That(player.SprintSpeed, Is.GreaterThan(player.WalkSpeed * 4f));
+            Assert.That(player.SprintSpeed, Is.GreaterThan(player.WalkSpeed));
+            Assert.That(player.WalkSpeed, Is.GreaterThanOrEqualTo(3f));
+            Assert.That(player.SprintSpeed,
+                Is.LessThanOrEqualTo(player.WalkSpeed * 2f));
 
             FirstStorePlayerTransformSnapshot start = new(
                 new Vector3(0f, 1f, -4f),
@@ -154,7 +157,7 @@ namespace Margins.Tests
             float sprintDistance = HorizontalDistance(sprintStart, player.transform.position);
 
             Assert.That(walkDistance, Is.GreaterThan(0.55f));
-            Assert.That(sprintDistance, Is.GreaterThan(walkDistance * 3f));
+            Assert.That(sprintDistance, Is.GreaterThan(walkDistance * 1.35f));
             Assert.That(player.IsSprinting, Is.False);
         }
 
@@ -626,6 +629,9 @@ namespace Margins.Tests
             CarryableToolComponent mop =
                 GameObject.Find("Mop Tool").GetComponent<CarryableToolComponent>();
             Assert.That(cleaning.NeedsCleaning, Is.True);
+            Assert.That(mop.StorageTool.TryPrimary(out error), Is.True, error);
+            Assert.That(Object.FindAnyObjectByType<PlayerCarryableToolController>()
+                .TrySetDownHeldTool(out error), Is.True, error);
             Assert.That(mop.TryPrimary(out error), Is.True, error);
             while (cleaning.NeedsCleaning)
             {

@@ -72,11 +72,10 @@ namespace Margins.Tests
         }
 
         [Test]
-        public void ActiveSessionRequiresExplicitReplacementConfirmation()
+        public void SessionExitClearsTheActiveReplacementGuard()
         {
             GameMenuStateModel state = new();
             state.EnterSession();
-            state.ReturnToTitle();
 
             Assert.That(
                 state.ConfirmOrArmReplacement(
@@ -92,6 +91,103 @@ namespace Margins.Tests
             Assert.That(
                 state.PendingReplacement,
                 Is.EqualTo(SessionReplacementAction.None));
+
+            state.ReturnToTitle();
+            Assert.That(state.HasActiveSession, Is.False);
+            Assert.That(
+                state.ConfirmOrArmReplacement(
+                    SessionReplacementAction.LoadBusiness),
+                Is.True);
+            Assert.That(
+                state.PendingReplacement,
+                Is.EqualTo(SessionReplacementAction.None));
+        }
+
+        [Test]
+        public void ReturnToTitleUsesTheSameActiveSessionReplacementGuard()
+        {
+            GameMenuStateModel state = new();
+            state.EnterSession();
+            state.OpenPause();
+
+            Assert.That(
+                state.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle),
+                Is.False);
+            Assert.That(state.HasActiveSession, Is.True);
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Pause));
+            Assert.That(
+                state.PendingReplacement,
+                Is.EqualTo(SessionReplacementAction.ReturnToTitle));
+
+            Assert.That(
+                state.ConfirmOrArmReplacement(
+                    SessionReplacementAction.ReturnToTitle),
+                Is.True);
+            state.ReturnToTitle();
+            Assert.That(state.HasActiveSession, Is.False);
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Title));
+        }
+
+        [Test]
+        public void NewBusinessSetupIsARealTitleLifecycleState()
+        {
+            GameMenuStateModel state = new();
+            state.ShowTitleAtLaunch();
+            state.OpenNewBusinessSetup();
+
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.NewBusinessSetup));
+            Assert.That(state.IsNewBusinessSetup, Is.True);
+            Assert.That(state.HasActiveSession, Is.False);
+
+            state.ReturnToTitle();
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Title));
+            state.EnterSession();
+            Assert.That(state.Screen, Is.EqualTo(GameMenuScreen.Closed));
+            Assert.That(state.HasActiveSession, Is.True);
+        }
+
+        [Test]
+        public void NewBusinessIdentityNormalizesAndUsesOnlyApprovedPurposeHooks()
+        {
+            PortfolioProgressionSnapshot snapshot =
+                PortfolioProgression.CreateInitial().CreateSnapshot();
+            NewBusinessSetupData setup = NewBusinessSetupData.CreateDefault();
+            setup.businessName = "  Cedar Corner  ";
+            setup.primaryColorHex = "336699";
+            setup.secondaryColorHex = "#cc7722";
+            setup.logoSelectionId = "placeholder-mark-c";
+            setup.seed = -741;
+            setup.difficultyPurposeId = "purpose-forgiving-growth";
+
+            Assert.That(
+                PortfolioStartupProfileRules.TryApply(
+                    snapshot,
+                    setup,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                PortfolioProgression.TryRestore(snapshot, out _, out error),
+                Is.True,
+                error);
+            Assert.That(snapshot.company.startupProfile.businessName,
+                Is.EqualTo("Cedar Corner"));
+            Assert.That(snapshot.company.startupProfile.primaryColorHex,
+                Is.EqualTo("#336699"));
+            Assert.That(snapshot.company.startupProfile.secondaryColorHex,
+                Is.EqualTo("#CC7722"));
+            Assert.That(snapshot.company.startupProfile.seed, Is.EqualTo(-741));
+            Assert.That(snapshot.locations[0].displayName,
+                Is.EqualTo("Cedar Corner"));
+            Assert.That(snapshot.company.brands[0].displayName,
+                Is.EqualTo("Cedar Corner"));
+
+            setup.difficultyPurposeId = "easy-with-invented-modifiers";
+            Assert.That(
+                PortfolioStartupProfileRules.TryApply(snapshot, setup, out error),
+                Is.False);
+            Assert.That(error, Is.EqualTo("The starting business profile is unavailable."));
         }
 
         [Test]

@@ -80,7 +80,7 @@ namespace Margins.Tests
         }
 
         [Test]
-        public void PromptFormatsInputActionAndShortStateOrBlocker()
+        public void PromptFormatsOnlyKeyAndActionForNormalPresentation()
         {
             FirstStoreWorldInteractionPrompt blocked =
                 new("E", "Open store", "1 prerequisite missing");
@@ -89,7 +89,10 @@ namespace Margins.Tests
 
             Assert.That(
                 blocked.FormattedText,
-                Is.EqualTo("[E] Open store — 1 prerequisite missing"));
+                Is.EqualTo("[E] Open store"));
+            Assert.That(
+                blocked.StateOrBlocker,
+                Is.EqualTo("1 prerequisite missing"));
             Assert.That(actionOnly.FormattedText, Is.EqualTo("[Q] Cancel placement"));
         }
 

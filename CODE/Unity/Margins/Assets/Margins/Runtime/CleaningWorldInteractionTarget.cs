@@ -82,7 +82,7 @@ namespace Margins
 
             if (!toolCarrier.HasCapability(requiredToolCapabilityId))
             {
-                error = "Pick up the compatible cleaning tool before cleaning this spill.";
+                error = "Pick up and place the bucket, then take the mop to clean this spill.";
                 return false;
             }
 

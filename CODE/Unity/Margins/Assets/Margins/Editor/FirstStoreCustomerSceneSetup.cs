@@ -60,7 +60,7 @@ namespace Margins.Editor
             Transform checkoutCustomer = CreateLocalPoint(
                 requiredFixture.transform,
                 "Customer Checkout Position",
-                new Vector3(0f, 0f, 0.95f));
+                new Vector3(0f, 0f, -0.95f));
             Transform[] browsePoints =
             {
                 CreateLocalPoint(colaShelf, "Customer Browse Cola", new Vector3(0f, 0f, -1.15f)),
@@ -68,10 +68,10 @@ namespace Margins.Editor
             };
             Transform[] queuePoints =
             {
-                CreateLocalPoint(requiredFixture.transform, "Customer Queue 1", new Vector3(0f, 0f, 1.95f)),
-                CreateLocalPoint(requiredFixture.transform, "Customer Queue 2", new Vector3(0f, 0f, 2.95f)),
-                CreateLocalPoint(requiredFixture.transform, "Customer Queue 3", new Vector3(-1.1f, 0f, 3.75f)),
-                CreateLocalPoint(requiredFixture.transform, "Customer Queue 4", new Vector3(-2.25f, 0f, 3.75f))
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 1", new Vector3(-1.55f, 0f, -1.2f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 2", new Vector3(-2.65f, 0f, -1.2f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 3", new Vector3(-3.75f, 0f, -1.2f)),
+                CreateLocalPoint(requiredFixture.transform, "Customer Queue 4", new Vector3(-4.85f, 0f, -1.2f))
             };
             Transform[] checkoutItems =
             {

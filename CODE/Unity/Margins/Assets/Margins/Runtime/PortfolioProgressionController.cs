@@ -72,6 +72,10 @@ namespace Margins
         public PortfolioProgression Progression => progression;
         public event Action ManagementChanged;
         public bool IsInitialized => progression != null;
+        public PortfolioStartupProfileSnapshot StartupProfile =>
+            PortfolioStartupProfileRules.Clone(
+                progression?.CreateSnapshot().company?.startupProfile);
+        public int StartupSeed => StartupProfile?.seed ?? 0;
         public bool IsOwnerPhoneUnlocked =>
             progression?.FirstShiftCompleted == true;
         public bool OwnsManagementDesk =>
@@ -340,6 +344,16 @@ namespace Margins
                 metrics,
                 out bool unchanged,
                 out error);
+            if (success &&
+                firstStore.State == StoreOperatingState.Closed &&
+                firstStore.ResultTotals != null)
+            {
+                success = progression.TryCompleteFirstDetailedShift(
+                    firstStore.StableSessionId,
+                    out bool completionUnchanged,
+                    out error);
+                unchanged &= completionUnchanged;
+            }
             if (success && !unchanged && totals.transactionCount > 0)
             {
                 Record(

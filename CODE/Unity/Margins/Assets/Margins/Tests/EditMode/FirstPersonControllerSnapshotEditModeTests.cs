@@ -144,7 +144,11 @@ namespace Margins.Tests
                 error);
             Assert.That(
                 rig.Controller.SprintSpeed,
-                Is.GreaterThan(rig.Controller.WalkSpeed * 4f));
+                Is.GreaterThan(rig.Controller.WalkSpeed));
+            Assert.That(rig.Controller.WalkSpeed, Is.GreaterThanOrEqualTo(3f));
+            Assert.That(
+                rig.Controller.SprintSpeed,
+                Is.LessThanOrEqualTo(rig.Controller.WalkSpeed * 2f));
             Assert.That(rig.Controller.JumpHeight, Is.GreaterThan(0f));
         }
 

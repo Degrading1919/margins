@@ -171,6 +171,10 @@ namespace Margins
             Dictionary<string, int> labelCounts = new(StringComparer.Ordinal);
             foreach (InputAction action in player.actions)
             {
+                if (!IsPlayerFacingAction(action))
+                {
+                    continue;
+                }
                 for (int index = 0; index < action.bindings.Count; index++)
                 {
                     InputBinding binding = action.bindings[index];
@@ -224,6 +228,10 @@ namespace Margins
             InputActionMap player = inputActions.FindActionMap(PlayerMapName, false);
             foreach (InputAction action in player.actions)
             {
+                if (!IsPlayerFacingAction(action))
+                {
+                    continue;
+                }
                 for (int index = 0; index < action.bindings.Count; index++)
                 {
                     InputBinding binding = action.bindings[index];
@@ -406,6 +414,10 @@ namespace Margins
             Dictionary<string, string> owners = new(StringComparer.Ordinal);
             foreach (InputAction action in player.actions)
             {
+                if (!IsPlayerFacingAction(action))
+                {
+                    continue;
+                }
                 for (int index = 0; index < action.bindings.Count; index++)
                 {
                     InputBinding binding = action.bindings[index];
@@ -439,6 +451,15 @@ namespace Margins
                    binding.groups.IndexOf(
                        KeyboardMouseGroup,
                        StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsPlayerFacingAction(InputAction action)
+        {
+            return action != null &&
+                   !string.Equals(action.name, "Attack", StringComparison.Ordinal) &&
+                   !string.Equals(action.name, "Crouch", StringComparison.Ordinal) &&
+                   !string.Equals(action.name, "Previous", StringComparison.Ordinal) &&
+                   !string.Equals(action.name, "Next", StringComparison.Ordinal);
         }
 
         private static bool IsKeyboardMousePath(string canonicalPath)

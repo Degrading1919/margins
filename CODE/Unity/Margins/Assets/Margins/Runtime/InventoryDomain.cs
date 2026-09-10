@@ -422,6 +422,19 @@ namespace Margins
             return total;
         }
 
+        public bool HasQuantityAt(string locationId)
+        {
+            if (!locations.TryGetValue(locationId, out LocationState location))
+            {
+                return false;
+            }
+            foreach (int quantity in location.Quantities.Values)
+            {
+                if (quantity > 0) return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// The explicit inventory-acquisition boundary. Purchase-order state
         /// supplies idempotency; this authority validates the complete batch
@@ -902,7 +915,8 @@ namespace Margins
     public enum DeliveryContainerOpenResult
     {
         Opened,
-        AlreadyOpen
+        AlreadyOpen,
+        Recycled
     }
 
     public enum DeliveryContainerFailure
@@ -910,7 +924,8 @@ namespace Margins
         None,
         InvalidConfiguration,
         Sealed,
-        TransferRejected
+        TransferRejected,
+        Recycled
     }
 
     [Serializable]
@@ -919,15 +934,19 @@ namespace Margins
         public string containerId;
         public string inventoryLocationId;
         public bool isOpen;
+        // Additive field: older saves deserialize to an unrecycled container.
+        public bool isRecycled;
 
         public DeliveryContainerSnapshot(
             string containerId,
             string inventoryLocationId,
-            bool isOpen)
+            bool isOpen,
+            bool isRecycled = false)
         {
             this.containerId = containerId;
             this.inventoryLocationId = inventoryLocationId;
             this.isOpen = isOpen;
+            this.isRecycled = isRecycled;
         }
 
         public bool Equals(DeliveryContainerSnapshot other)
@@ -938,7 +957,7 @@ namespace Margins
                        inventoryLocationId,
                        other.inventoryLocationId,
                        StringComparison.Ordinal) &&
-                   isOpen == other.isOpen;
+                   isOpen == other.isOpen && isRecycled == other.isRecycled;
         }
 
         public override bool Equals(object obj)
@@ -948,7 +967,7 @@ namespace Margins
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(containerId, inventoryLocationId, isOpen);
+            return HashCode.Combine(containerId, inventoryLocationId, isOpen, isRecycled);
         }
     }
 
@@ -959,6 +978,20 @@ namespace Margins
         public string ContainerId { get; }
         public string InventoryLocationId { get; }
         public bool IsOpen { get; private set; }
+        public bool IsRecycled { get; private set; }
+        public bool IsEmpty => !inventory.HasQuantityAt(InventoryLocationId);
+
+        public bool TryRecycle(out string error)
+        {
+            if (IsRecycled || !IsOpen || !IsEmpty)
+            {
+                error = "Only an open, empty delivery box can be recycled.";
+                return false;
+            }
+            IsRecycled = true;
+            error = null;
+            return true;
+        }
 
         private DeliveryContainer(
             FirstStoreInventory inventory,
@@ -1004,6 +1037,7 @@ namespace Margins
 
         public DeliveryContainerOpenResult TryOpen()
         {
+            if (IsRecycled) return DeliveryContainerOpenResult.Recycled;
             if (IsOpen)
             {
                 return DeliveryContainerOpenResult.AlreadyOpen;
@@ -1020,6 +1054,12 @@ namespace Margins
             out DeliveryContainerFailure failure,
             out InventoryTransferResult transfer)
         {
+            if (IsRecycled)
+            {
+                transfer = null;
+                failure = DeliveryContainerFailure.Recycled;
+                return false;
+            }
             if (!IsOpen)
             {
                 transfer = null;
@@ -1043,7 +1083,8 @@ namespace Margins
             return new DeliveryContainerSnapshot(
                 ContainerId,
                 InventoryLocationId,
-                IsOpen);
+                IsOpen,
+                IsRecycled);
         }
 
         public static bool TryRestore(
@@ -1059,13 +1100,19 @@ namespace Margins
                 return false;
             }
 
-            return TryCreate(
+            if (!TryCreate(
                 inventory,
                 snapshot.containerId,
                 snapshot.inventoryLocationId,
                 snapshot.isOpen,
                 out container,
-                out error);
+                out error)) return false;
+            if (snapshot.isRecycled && !container.TryRecycle(out error))
+            {
+                container = null;
+                return false;
+            }
+            return true;
         }
     }
 }

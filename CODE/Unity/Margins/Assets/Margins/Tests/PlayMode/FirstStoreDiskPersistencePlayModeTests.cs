@@ -354,6 +354,57 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator VersionFourPortfolioInSaveMigratesToVersionFive()
+        {
+            Assert.That(
+                mapper.TryCapture(
+                    out FirstStoreSnapshot expectedState,
+                    out string error),
+                Is.True,
+                error);
+            Assert.That(
+                diskPersistence.TrySaveToPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+            Assert.That(
+                FirstStoreDiskSaveCodec.TryFromJson(
+                    File.ReadAllText(savePath),
+                    out FirstStoreDiskSaveData saveData,
+                    out error),
+                Is.True,
+                error);
+            saveData.portfolio.version =
+                PortfolioProgressionSnapshot.PriorVersion;
+            saveData.portfolio.company.startupProfile = null;
+            File.WriteAllText(savePath, FirstStoreDiskSaveCodec.ToJson(saveData));
+
+            MutateFixtureLayout();
+            Assert.That(
+                diskPersistence.TryLoadFromPath(savePath),
+                Is.True,
+                diskPersistence.LastDiagnostic);
+            Assert.That(
+                mapper.TryCapture(
+                    out FirstStoreSnapshot restoredState,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(restoredState, Is.EqualTo(expectedState));
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            PortfolioProgressionSnapshot migrated =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(
+                migrated.version,
+                Is.EqualTo(PortfolioProgressionSnapshot.CurrentVersion));
+            Assert.That(migrated.company.startupProfile, Is.Not.Null);
+            Assert.That(
+                migrated.company.startupProfile.businessName,
+                Is.EqualTo(PortfolioStartupProfileRules.DefaultBusinessName));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator LoadDiscardsIncompleteStagedSessionAndAllowsCheckoutToRestart()
         {
             DeliveryBoxComponent delivery = Object.FindAnyObjectByType<DeliveryBoxComponent>();

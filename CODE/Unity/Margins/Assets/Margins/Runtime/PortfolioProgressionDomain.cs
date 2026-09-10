@@ -163,8 +163,9 @@ namespace Margins
     {
         public const int LegacyVersion = 1;
         public const int VersionTwo = 2;
-        public const int PriorVersion = 3;
-        public const int CurrentVersion = 4;
+        public const int VersionThree = 3;
+        public const int PriorVersion = 4;
+        public const int CurrentVersion = 5;
 
         public int version = CurrentVersion;
         public int currentDay = 1;
@@ -589,11 +590,9 @@ namespace Margins
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
                     StringComparison.Ordinal));
-            if ((!snapshot.firstShiftCompleted &&
-                 firstLocation.detailedReconciliation?.transactionCount > 0) ||
-                (snapshot.firstShiftCompleted &&
-                 (firstLocation.daysOperating < 1 ||
-                  firstLocation.lifetimeGrossSalesCents <= 0)))
+            if (snapshot.firstShiftCompleted &&
+                (firstLocation.daysOperating < 1 ||
+                 !firstLocation.hasLastReport))
             {
                 error = "First-shift progression disagrees with first-location operating history.";
                 return false;
@@ -733,6 +732,43 @@ namespace Margins
                 inventoryAssetValueCents,
                 out alreadyPosted,
                 out error);
+        }
+
+        public bool TryCompleteFirstDetailedShift(
+            string sessionId,
+            out bool unchanged,
+            out string error)
+        {
+            unchanged = false;
+            if (!FirstStoreIdentifier.IsValid(sessionId) ||
+                !TryGetLocation(
+                    state,
+                    PortfolioProgressionRules.FirstLocationId,
+                    out PortfolioLocationSnapshot firstLocation) ||
+                firstLocation.detailedReconciliation == null ||
+                !firstLocation.detailedReconciliation.initialized ||
+                !string.Equals(
+                    firstLocation.detailedReconciliation.sessionId,
+                    sessionId,
+                    StringComparison.Ordinal) ||
+                firstLocation.daysOperating < 1 ||
+                !firstLocation.hasLastReport)
+            {
+                error =
+                    "The closed first shift does not match the reconciled first-store report.";
+                return false;
+            }
+
+            if (state.firstShiftCompleted)
+            {
+                unchanged = true;
+                error = null;
+                return true;
+            }
+
+            PortfolioProgressionSnapshot candidate = Clone(state);
+            candidate.firstShiftCompleted = true;
+            return TryCommit(candidate, out error);
         }
 
         public bool TryReconcileDetailedOperation(
@@ -4131,10 +4167,15 @@ namespace Margins
                 !PortfolioProgressionRules.TryGetLocationDefinition(
                     location.locationId,
                     out PortfolioLocationDefinition definition) ||
-                !string.Equals(
-                    location.displayName,
-                    definition.DisplayName,
-                    StringComparison.Ordinal) ||
+                (string.Equals(
+                     location.locationId,
+                     PortfolioProgressionRules.FirstLocationId,
+                     StringComparison.Ordinal)
+                    ? location.displayName.Trim().Length > 32
+                    : !string.Equals(
+                        location.displayName,
+                        definition.DisplayName,
+                        StringComparison.Ordinal)) ||
                 !string.Equals(
                     location.districtName,
                     definition.DistrictName,
@@ -4874,6 +4915,7 @@ namespace Margins
             if (source == null ||
                 (source.version != PortfolioProgressionSnapshot.LegacyVersion &&
                  source.version != PortfolioProgressionSnapshot.VersionTwo &&
+                 source.version != PortfolioProgressionSnapshot.VersionThree &&
                  source.version != PortfolioProgressionSnapshot.PriorVersion &&
                  source.version != PortfolioProgressionSnapshot.CurrentVersion))
             {
@@ -4888,7 +4930,7 @@ namespace Margins
                 return false;
             }
 
-            if (source.version >= PortfolioProgressionSnapshot.PriorVersion &&
+            if (source.version >= PortfolioProgressionSnapshot.VersionThree &&
                 source.locations?.Any(location =>
                     location == null || location.merchandisePrices == null ||
                     location.shelfMerchandiseAssignments == null) == true)
@@ -4931,11 +4973,11 @@ namespace Margins
                             location,
                             source.version <=
                             PortfolioProgressionSnapshot.VersionTwo,
-                            source.version !=
-                            PortfolioProgressionSnapshot.CurrentVersion))
+                            source.version <
+                            PortfolioProgressionSnapshot.PriorVersion))
                     .ToList() ?? new List<PortfolioLocationSnapshot>()
             };
-            if (source.version != PortfolioProgressionSnapshot.CurrentVersion &&
+            if (source.version < PortfolioProgressionSnapshot.PriorVersion &&
                 clone.locations.FirstOrDefault(location => string.Equals(
                     location.locationId,
                     PortfolioProgressionRules.FirstLocationId,
@@ -4991,10 +5033,16 @@ namespace Margins
                         first.detailedReconciliation.includedOperatingExpensesCents;
                 }
             }
-            clone.company = source.version ==
-                            PortfolioProgressionSnapshot.CurrentVersion
+            clone.company = source.version >= PortfolioProgressionSnapshot.PriorVersion
                 ? PortfolioPropertyRules.Clone(source.company)
                 : PortfolioPropertyRules.CreateForLocations(clone.locations);
+            if (clone.company != null &&
+                (source.version < PortfolioProgressionSnapshot.CurrentVersion ||
+                 clone.company.startupProfile == null))
+            {
+                clone.company.startupProfile =
+                    PortfolioStartupProfileRules.CreateDefault();
+            }
             SortCollections(clone);
             return clone;
         }

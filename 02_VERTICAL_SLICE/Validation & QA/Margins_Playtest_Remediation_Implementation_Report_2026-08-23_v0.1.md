@@ -1,0 +1,127 @@
+# Margins Playtest Remediation Implementation Report — 2026-08-23 v0.1
+
+## Status and authority
+
+- **Status:** Implemented and automated-verified; owner playtest acceptance remains open.
+- **Implementation base:** Repository `main` at `606723e`.
+- **Scope authority:** `Margins_Roadmap_Amendment_002_Owner_Playtest_Remediation_v0.1.md` and `Margins_Owner_Playtest_Findings_2026-08-23_v0.1.md`.
+- **Decision boundary:** This implementation does not amend foundational decisions. In particular, it does not add full procedural-city generation or difficulty modifiers.
+
+## Implemented outcome
+
+### Session and first-day continuity
+
+- The title and New Business setup are explicit application states with an opaque front end, disabled gameplay input, and no exposed frozen-world presentation.
+- Return to Title now uses the existing session-replacement confirmation guard. The first action warns that unsaved progress will be lost and preserves the active session; only the confirmed second action clears it and reaches the title. New Business and Load still act directly from the title instead of treating the hidden world as a resumable paused session.
+- New Business presents only player-facing setup for business name, logo, two brand colors, and business seed. Developer/schema language and the inert difficulty-purpose selector are absent from the setup UI.
+- The existing default difficulty-purpose identifier remains internal compatibility metadata only. No difficulty name, meaningful player choice, or gameplay modifier was invented.
+- The seed is persisted and used only for bounded deterministic customer product-request ordering. It does not generate or vary the city.
+- Starting applies setup to the existing clean initialization snapshot, including the company, convenience brand, first location, and first-store sign presentation. It does not retain live session state.
+- The portfolio snapshot contract is version `5`. Explicit domain and disk-persistence regressions verify that version `4` saves migrate with the default startup profile while retaining their existing company, location, and operating state; versions `1` through `3` retain their established deterministic migration path.
+- Save/load preserves the startup profile and exact saved operating state. Returning to title and loading the saved business restores that state through the existing atomic persistence path.
+- Opening no longer requires merchandise already shelved; missing sellable stock remains an economic/customer outcome instead of an opening blocker.
+
+### Checkout, closure, and day transition
+
+- Customers use their reserved physical product units in hand and visibly move those exact units to checkout item points; the generic basket presentation is removed.
+- Interacting with checkout enters a dedicated checkout mode. Movement, look, jump, Owner Phone switching, Build Mode, and unrelated world targeting are constrained until checkout exits.
+- The checkout panel shows item progress, subtotal, the next exact product action, payment, undo, and cancel/exit controls.
+- Assisted scanning advances one exact presented physical unit at a time through the existing checkout station. Payment still commits through the existing transaction, inventory, and physical-unit authorities.
+- Undo removes the most recent scan. Cancelling at zero scans abandons the checkout, returns reserved units through their existing physical locations, clears the station session, and exits the mode.
+- Complete, cancel, timeout, restore, and authority-mismatch paths clear transient dedicated-mode state.
+- An incomplete station session with no owning customer is repaired before save or close blocker evaluation. A customer/session mismatch is resolved through the existing customer abandonment and inventory-return path.
+- The authored first-store checkout now places customers on the storefront/front side and the cashier work point and authored cashier avatar on the employee/back side. Queue routing remains on the customer side and has an end-to-end staffed-service regression.
+- Beginning closure stops new admissions but preserves normal shopping, queueing, player or employee checkout service, and visible departure for legitimate customers already inside. Only stale or unreachable checkout authority is repaired. Final close waits for the customer population to drain normally.
+- Closing creates no phantom sale and consumes no abandoned inventory.
+- After the first closed shift, including a zero-stock and zero-sale shift, the HUD directs the player to the Owner Phone for shift review and End Day. End Day remains on the existing overnight, reconciliation, reporting, portfolio, and time authority and advances exactly once.
+
+### Interaction, comfort, HUD, and settings
+
+- First-person movement is tuned to a `3.2` walk speed, `5.4` sprint speed, `24` acceleration, and `30` deceleration.
+- Positional camera bob and roll are removed. The existing camera-motion preference now controls only the subtle sprint field-of-view change and is labeled accordingly.
+- The persistent center crosshair is removed. Focus feedback is reduced from the large corner box to a small contextual marker.
+- Normal world prompts render only the interaction key and action. Secondary implementation/status text is not presented; blocker detail remains available as transient feedback only after an interaction actually fails.
+- The first-store HUD persistently exposes cash, day, and Owner Phone access while keeping objective and interaction guidance contextual.
+- Stock carry guidance no longer advertises rotation. Fixture rotation remains confined to Build Mode.
+- Build Mode receives an amber edge/tape treatment and explicit mode controls.
+- Look Sensitivity is a discrete numeric stepper, toggle backgrounds are compact, and the controls scrollbar uses the menu visual language.
+- Unused template actions including player-facing `Attack` are removed from the presented/rebindable controls list without changing the input-action authority.
+
+## Authority reuse
+
+No parallel inventory, transaction, customer, operating-state, portfolio, overnight, generated-location, time, or persistence state was introduced. New setup data is stored on the existing portfolio snapshot; checkout mode is transient interaction state over the existing customer, physical-unit, and checkout station authorities.
+
+## Verification evidence
+
+- Unity EditMode: **173 passed, 0 failed, 0 skipped**.
+- Unity PlayMode: **86 passed, 0 failed, 0 skipped**.
+- Workflow regressions cover title/setup state and player-facing copy, clean customized New Business initialization, guarded Return to Title, startup-profile save/load, explicit version `4` to `5` portfolio and disk migration, opening without shelved stock, zero-stock close and End Day exact-once progression, visible exact-item checkout, interaction lock, scan/payment/undo/cancel cleanup, stale-checkout repair, legitimate-customer closing drain and service, customer/front versus employee/back checkout routing, and disk round-trip continuity.
+- Windows player: Unity `StandaloneWindows64` build succeeded using the enabled project scenes. Build report size was `105,222,816` bytes; the generated executable PE machine is `0x8664` (AMD64).
+- `git diff --check`: clean.
+
+## Remaining owner-playtest items
+
+The following findings are not silently closed by this implementation:
+
+- A fresh owner playtest must still complete **Launch → New Business → setup → first day → checkout → close store → End Day/review → save → title → load → continue**. Automated state correctness is verified; human usability acceptance is not.
+- Wave D delivery and bucket/mop handling now require owner playtesting of the implementation described below.
+- Exact difficulty design and gameplay modifiers remain unresolved. No player-facing difficulty choice is presented while it has no gameplay effect; the existing default purpose identifier is retained only for compatibility.
+- The exact logo catalog/final logo asset pipeline and the next title/menu art pass remain unresolved.
+- Full procedural-city generation remains outside current direction under FD-005. The saved seed has no city-generation effect.
+- Final minimap/world-map scope and presentation remain unresolved.
+- Final customer animation and hand-carry presentation beyond readable exact merchandise remains production polish.
+- Exact late-game time/calendar presentation remains unresolved.
+
+## Next acceptance action
+
+Owner-playtest the Wave D object lifecycles and replay the full first-business journey before fresh owner acceptance. Do not reopen the city, difficulty, map, or final-art decisions by implication.
+
+## September 9, 2026 executable follow-up
+
+### Reproduced and corrected
+
+The Windows x64 player was built from PR head `3fce2ef` and launched through the Windows computer-use tool. The agent reached **Launch → New Business → setup → first day** through the visible UI.
+
+- Spending time in setup consumed the next-step toast before gameplay began. `FirstStorePromptPresenter` now restarts the toast when gameplay becomes visible and exposes **H Help & Next Step** in the existing HUD.
+- The locked Owner Phone hint was visibly clipped. Its copy is shortened to fit the existing panel width; the panel has room for the help shortcut.
+- Starting New Business displayed **Company saved**, although the persistence operation deliberately retained the existing disk save. The presenter now identifies the existing new-business diagnostic and displays **Business started**. No persistence behavior changed.
+- The existing New Business/save/load regression now checks that returning from setup restores the hint duration and reports startup without claiming a save.
+
+### Automated verification
+
+- Full PlayMode suite: **84 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/owner-acceptance-playmode.xml`, local generated evidence).
+- Full EditMode suite: **172 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/owner-acceptance-editmode.xml`, local generated evidence).
+- The corrected Windows x64 build succeeded with a Unity report size of **105,218,368 bytes**; executable PE machine **0x8664 (AMD64)**. Build log: `CODE/Unity/Margins/Logs/owner-acceptance-rebuild.log` (local generated evidence).
+- The rebuilt executable was launched again. After more than eight seconds in setup, starting the business visibly showed the next-step instruction, the complete phone/help text, and **Business started**. This verifies the corrected startup presentation, not the rest of the journey.
+- `git diff --check`: clean.
+
+### Acceptance limitation
+
+Mouse-driven setup and camera input reached the running player, but repeated keyboard input through the computer-use tool, including movement and Escape after explicit activation, produced no visible response. The cause has not been established as a game defect or an automation limitation. A physical-key check was requested from the owner.
+
+The agent therefore did **not** complete receiving/stocking, checkout, close, End Day, save/title/load continuation, or a full fresh-start replay in that executable pass. No hands-on acceptance claim is made for those paths. Wave D was unfinished at that point; the subsequent bounded implementation is recorded below.
+
+## Wave D object-lifecycle follow-up — September 10, 2026
+
+### Changes and authority
+
+- A carried delivery has a persistent contextual **E Open carried delivery** action and **Q Set down** guidance, independent of the aimed-at object. Held boxes also prevent conflicting tool pickup and Build Mode entry.
+- Open, empty boxes expose **E Recycle empty box**. `DeliveryContainer` owns recycling and rejects sealed, nonempty, repeated, and invalid restored recycling states. Recycling does not destroy inventory or award money.
+- The existing `DeliveryContainerSnapshot` stores the additive `isRecycled` flag. Older saves default it to false. The referenced scene component remains available to persistence and procurement while its physical presentation is inactive; a later procurement delivery reactivates it as a sealed box through the existing materialization path.
+- Removed the obsolete indoor Receiving sign, rail, and floor marking, and updated delivery guidance. The exterior delivery-drop fixture remains because existing stock-clerk work uses it; its inventory, fixture, and employee-work authority is preserved.
+- The bucket and mop reuse `CarryableToolComponent` and `PlayerCarryableToolController`. Carrying the bucket carries its stored mop but does not grant cleaning capability. Place the bucket, target the mop to take it, clean through `CleaningTaskComponent`, then return near the bucket and press Q (or interact with the bucket) to put the mop away. Q never places the mop arbitrarily in the world.
+- Held tools block save/load with actionable instructions. Loose kit positioning is transient staging: successful restore puts the paired kit back in storage. Confirmed Return to Title resolves held delivery boxes and returns the kit to storage so title-menu New Business/Load cannot be stranded behind a held-object guard; the initial unsaved-progress confirmation leaves carried state intact. Generated-location transitions move the kit root and reject travel while either part is carried.
+- No new managers, inventory ledgers, cleaning-progress owners, procurement flows, or business-operation states were added. No difficulty, map, city, art, or animation scope was changed.
+
+### Automated verification
+
+- Full EditMode suite: **173 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/wave-d-editmode-final.xml`).
+- Full PlayMode suite: **86 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/wave-d-playmode-final.xml`).
+- Focused coverage exercises aim-independent carried delivery actions; recycling/JSON restore without stock loss; invalid recycling rejection and legacy saves; later procurement reactivation; bucket-first cleaning, mop-return distance and kit restore; generated-location cleaning; and guarded title/New Business/load continuity while carrying objects.
+- Windows `StandaloneWindows64` build: **Success**, **105,222,816 bytes**, PE machine **0x8664 (AMD64)** (`CODE/Unity/Margins/Logs/wave-d-windows-build.log`).
+- Test results and build logs are local generated evidence. No executable launch or manual control was performed.
+- `git diff --check`: clean.
+
+### Owner acceptance
+
+The executable was not launched or manually controlled for this Wave D follow-up, as instructed. Owner playtesting must assess prompt discoverability, bucket/mop targeting and placement, empty-box recycling, later deliveries, and the full first-business/save/title/load journey. Automated evidence does not substitute for that acceptance.
