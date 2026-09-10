@@ -33,7 +33,26 @@ AOF_015,Recessed ceiling light,Architectural Openings & Finish,Ceiling Lighting,
 AOF_016,Electrical outlet / switch / thermostat kit,Architectural Openings & Finish,Architectural Devices,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,
 AOF_017,Commercial guardrail / handrail module,Architectural Openings & Finish,Railings & Guards,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,"Repeatable railing family for stairs, landings, balconies, and walkways."
 AOF_018,Older Main Street cornice / facade trim module,Architectural Openings & Finish,Exterior Trim,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Authored decorative module for older mixed-use facade variation.
-BIN_03,[category reference],"Site, Lot & Hardscape",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+SLH_001,Parking wheel-stop / curb block kit,"Site, Lot & Hardscape",Parking Controls,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_002,Safety bollard family,"Site, Lot & Hardscape",Protective Site Hardware,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_003,Speed bump / speed hump module,"Site, Lot & Hardscape",Traffic Calming,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_004,Accessible curb-ramp / detectable-warning module,"Site, Lot & Hardscape",Accessible Site Transitions,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_005,Parking-lot drainage grate / catch-basin kit,"Site, Lot & Hardscape",Drainage & Inlets,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_006,Linear trench-drain module,"Site, Lot & Hardscape",Drainage & Inlets,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_007,Concrete parking-island end / protective island module,"Site, Lot & Hardscape",Parking Islands & Protection,Shared,,,,,750,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_008,Dumpster / service-pad slab module,"Site, Lot & Hardscape",Service Pads,Shared,,,,,750,,,,,,,,,,,,,,,,,,,,Planned,Authored profile variant only; plain rectangular service pad remains procedural.
+SLH_009,Commercial dumpster enclosure kit,"Site, Lot & Hardscape",Service Enclosures,Shared,,,,,12000,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_010,Chain-link perimeter fence module,"Site, Lot & Hardscape",Perimeter Fencing,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,Chain-link infill should use a masked/tileable material rather than modeled wire.
+SLH_011,Chain-link pedestrian gate,"Site, Lot & Hardscape",Perimeter Fencing,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Chain-link infill should use a masked/tileable material rather than modeled wire.
+SLH_012,Chain-link vehicle / service gate,"Site, Lot & Hardscape",Perimeter Fencing,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,Chain-link infill should use a masked/tileable material rather than modeled wire.
+SLH_013,Simple commercial privacy / screening fence module,"Site, Lot & Hardscape",Screening Fences,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_014,Low retaining-wall module,"Site, Lot & Hardscape",Retaining Walls,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_015,Retaining-wall corner / end / cap kit,"Site, Lot & Hardscape",Retaining Walls,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,
+SLH_016,Concrete landscape planter / raised-bed shell,"Site, Lot & Hardscape",Landscape Hardscape,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,Vegetation is cataloged separately.
+SLH_017,Tree grate / sidewalk planting surround,"Site, Lot & Hardscape",Landscape Hardscape,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,Use modeled outer structure and major grate members; smaller openings may use material detail.
+SLH_018,Loading-dock bumper / dock-edge protection kit,"Site, Lot & Hardscape",Loading & Service Protection,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,,Planned,Bumper and edge-protection hardware only; dock machinery is separate.
+SLH_019,Concrete utility-equipment pad,"Site, Lot & Hardscape",Equipment Pads,Shared,,,,,750,,,,,,,,,,,,,,,,,,,,Planned,Authored profile variant only; plain rectangular equipment pad remains procedural.
+SLH_020,Parking-lot protective pipe rail / guard post module,"Site, Lot & Hardscape",Parking & Service Protection,Shared,,,,,3500,,,,,,,,,,,,,,,,,,,,Planned,
 BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_05,[category reference],Business Fixtures & Furniture,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_06,[category reference],Business Equipment & Machines,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
