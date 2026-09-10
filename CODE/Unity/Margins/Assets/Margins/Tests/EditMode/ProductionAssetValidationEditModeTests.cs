@@ -212,6 +212,50 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void RendererSharedAcrossLodLevels_IsMeasuredAtEveryLevel()
+        {
+            ProductionAssetMetadata metadata = CreateAsset();
+            Renderer renderer = metadata.VisualRoot.GetComponent<MeshRenderer>();
+            AddLodGroup(metadata.VisualRoot, renderer, renderer);
+
+            ProductionAssetValidationReport report = Validate(
+                metadata,
+                CreateLedger(includeMeasurements: false),
+                ParseCatalog(CreateCatalogCsv(lod1Ceiling: 10)),
+                ProductionAssetValidationMode.IntakeMeasurement);
+
+            Assert.That(report.Measurements.Lod0Triangles, Is.EqualTo(12));
+            Assert.That(report.Measurements.Lod1Triangles, Is.EqualTo(12));
+            string errors = string.Join("\n", ErrorMessages(report));
+            Assert.That(errors, Does.Contain("LOD1 uses 12 triangles"));
+            Assert.That(errors, Does.Contain("ceiling of 10"));
+        }
+
+        [Test]
+        public void RendererOutsideLodGroup_IsMeasuredAsPersistentAtLowerLods()
+        {
+            ProductionAssetMetadata metadata = CreateAsset();
+            Renderer lod0 = AddMeshRenderer(metadata, "LOD0");
+            Renderer lod1 = AddMeshRenderer(metadata, "LOD1");
+            AddLodGroup(metadata.VisualRoot, lod0, lod1);
+
+            ProductionAssetValidationReport report = Validate(
+                metadata,
+                CreateLedger(includeMeasurements: false),
+                ParseCatalog(CreateCatalogCsv(
+                    lod0Ceiling: 30,
+                    materialSlotsMaximum: 2,
+                    lod1Ceiling: 20)),
+                ProductionAssetValidationMode.IntakeMeasurement);
+
+            Assert.That(report.Measurements.Lod0Triangles, Is.EqualTo(24));
+            Assert.That(report.Measurements.Lod1Triangles, Is.EqualTo(24));
+            string errors = string.Join("\n", ErrorMessages(report));
+            Assert.That(errors, Does.Contain("LOD1 uses 24 triangles"));
+            Assert.That(errors, Does.Contain("ceiling of 20"));
+        }
+
+        [Test]
         public void ProceduralIdentityIsValidatedIndependentlyFromProductionIdentity()
         {
             ProductionAssetMetadata metadata = CreateAsset();
@@ -434,6 +478,35 @@ namespace Margins.Tests
             skinned.sharedMaterial = sourceRenderer.sharedMaterial;
         }
 
+        private Renderer AddMeshRenderer(
+            ProductionAssetMetadata metadata,
+            string name)
+        {
+            MeshFilter sourceFilter = metadata.VisualRoot.GetComponent<MeshFilter>();
+            MeshRenderer sourceRenderer =
+                metadata.VisualRoot.GetComponent<MeshRenderer>();
+            GameObject child = Track(new GameObject(name));
+            child.transform.SetParent(metadata.VisualRoot, false);
+            child.AddComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
+            MeshRenderer renderer = child.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = sourceRenderer.sharedMaterial;
+            return renderer;
+        }
+
+        private static void AddLodGroup(
+            Transform visual,
+            Renderer lod0,
+            Renderer lod1)
+        {
+            LODGroup group = visual.gameObject.AddComponent<LODGroup>();
+            group.SetLODs(new[]
+            {
+                new LOD(0.5f, new[] { lod0 }),
+                new LOD(0.1f, new[] { lod1 })
+            });
+            group.RecalculateBounds();
+        }
+
         private static ProductionAssetValidationReport Validate(
             ProductionAssetMetadata metadata,
             ProductionAssetLedger ledger,
@@ -521,7 +594,8 @@ namespace Margins.Tests
             string assetBin = "Business Fixtures",
             string technicalClass = "",
             int materialSlotsMaximum = 1,
-            bool includeProductionContext = true)
+            bool includeProductionContext = true,
+            int? lod1Ceiling = null)
         {
             Dictionary<string, string> values = new(StringComparer.Ordinal)
             {
@@ -537,6 +611,11 @@ namespace Margins.Tests
                 ["texture_max_px"] = "2048",
                 ["production_status"] = "Planned"
             };
+            if (lod1Ceiling.HasValue)
+            {
+                values["lod1_ceiling_tris"] = lod1Ceiling.Value.ToString();
+            }
+
             if (includeProductionContext)
             {
                 values["expected_visible_instances"] = "1";

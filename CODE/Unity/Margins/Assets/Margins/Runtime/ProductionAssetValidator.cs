@@ -819,15 +819,32 @@ namespace Margins
                 return;
             }
 
-            HashSet<Renderer> assigned = new();
+            HashSet<Renderer> lodManaged = new();
+            HashSet<Renderer>[] measuredAtLevel =
+            {
+                new HashSet<Renderer>(),
+                new HashSet<Renderer>(),
+                new HashSet<Renderer>()
+            };
+            int applicableLodCount = 1;
             foreach (LODGroup group in visual.GetComponentsInChildren<LODGroup>(true))
             {
                 LOD[] lods = group.GetLODs();
+                applicableLodCount = Mathf.Max(
+                    applicableLodCount,
+                    Mathf.Min(lods.Length, measuredAtLevel.Length));
                 for (int level = 0; level < lods.Length; level++)
                 {
                     foreach (Renderer renderer in lods[level].renderers)
                     {
-                        if (renderer != null && assigned.Add(renderer))
+                        if (renderer == null)
+                        {
+                            continue;
+                        }
+
+                        lodManaged.Add(renderer);
+                        if (level < measuredAtLevel.Length &&
+                            measuredAtLevel[level].Add(renderer))
                         {
                             AddRendererMeasurement(level, renderer, report);
                         }
@@ -837,9 +854,14 @@ namespace Margins
 
             foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
-                if (assigned.Add(renderer))
+                if (lodManaged.Contains(renderer))
                 {
-                    AddRendererMeasurement(0, renderer, report);
+                    continue;
+                }
+
+                for (int level = 0; level < applicableLodCount; level++)
+                {
+                    AddRendererMeasurement(level, renderer, report);
                 }
             }
         }
