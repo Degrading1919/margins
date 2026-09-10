@@ -10,7 +10,7 @@ STR_008,Exterior stair flight module,Structural Architecture,Exterior Access Str
 STR_009,Exterior stair landing / platform module,Structural Architecture,Exterior Access Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_010,Exterior fixed access ladder,Structural Architecture,Exterior Access Structure,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_011,Balcony structural support frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,3500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_013,Wall-attached commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_014,Freestanding commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_015,Loading / service canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
