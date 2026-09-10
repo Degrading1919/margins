@@ -142,7 +142,7 @@ namespace Margins.Editor
             if (!File.Exists(catalogPath))
             {
                 string message =
-                    $"Production asset budget catalog is missing at '{catalogPath}'. PR #43 is the working authority for this file.";
+                    $"Production asset budget catalog is missing at '{catalogPath}'.";
                 if (!CanContinueWithoutCatalog(mode))
                 {
                     Debug.LogError(message);

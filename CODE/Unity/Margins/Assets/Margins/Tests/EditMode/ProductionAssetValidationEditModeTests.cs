@@ -113,6 +113,36 @@ namespace Margins.Tests
         }
 
         [Test]
+        public void IncrementalCatalogRow_PassesIntakeButFailsStrictReadiness()
+        {
+            ProductionAssetMetadata metadata = CreateAsset();
+            ProductionAssetBudgetCatalog catalog =
+                ParseCatalog(CreateIncrementalCatalogCsv());
+
+            ProductionAssetValidationReport intake = Validate(
+                metadata,
+                CreateLedger(includeMeasurements: false),
+                catalog,
+                ProductionAssetValidationMode.IntakeMeasurement);
+            ProductionAssetValidationReport strict = Validate(
+                metadata,
+                CreateLedger(includeMeasurements: true),
+                catalog,
+                ProductionAssetValidationMode.ProductionReadiness);
+
+            Assert.That(ErrorMessages(intake), Is.Empty);
+            Assert.That(intake.Measurements.Lod0Triangles, Is.EqualTo(12));
+            Assert.That(intake.Measurements.Lod0MaterialSlots, Is.EqualTo(1));
+            Assert.That(intake.TechnicalRequirementsPassed, Is.True);
+            string strictErrors = string.Join("\n", ErrorMessages(strict));
+            Assert.That(strictErrors, Does.Contain("material_slots_max"));
+            Assert.That(strictErrors, Does.Contain("texture_max_px"));
+            Assert.That(strictErrors, Does.Contain("collider_type"));
+            Assert.That(strictErrors, Does.Contain("expected_visible_instances"));
+            Assert.That(strict.ProductionReady, Is.False);
+        }
+
+        [Test]
         public void StrictMode_RequiresRecordedMeasurementsAfterIntake()
         {
             ProductionAssetMetadata metadata = CreateAsset();
@@ -514,6 +544,21 @@ namespace Margins.Tests
                 values["interaction_level"] = "None";
                 values["animation_requirement"] = "None";
             }
+            return CreateCsv(CatalogColumns, values);
+        }
+
+        private static string CreateIncrementalCatalogCsv()
+        {
+            Dictionary<string, string> values = new(StringComparer.Ordinal)
+            {
+                ["asset_id"] = ProductionAssetId,
+                ["asset_name"] = "Test Asset",
+                ["asset_bin"] = "Business Fixtures",
+                ["subcategory"] = "Tests",
+                ["business_use"] = "Shared",
+                ["lod0_ceiling_tris"] = "20",
+                ["production_status"] = "Planned"
+            };
             return CreateCsv(CatalogColumns, values);
         }
 

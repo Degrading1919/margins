@@ -263,29 +263,39 @@ namespace Margins
             ProductionAssetValidationReport report)
         {
             ProductionAssetMeasurements measured = report.Measurements;
-            ValidateLodBudget(record, measured, 0, true, report);
-            ValidateLodBudget(record, measured, 1, false, report);
-            ValidateLodBudget(record, measured, 2, false, report);
+            ValidateLodBudget(record, measured, 0, true, mode, report);
+            ValidateLodBudget(record, measured, 1, false, mode, report);
+            ValidateLodBudget(record, measured, 2, false, mode, report);
 
-            if (!TryGetPositiveInt(record, "material_slots_max", out int materialMaximum))
+            string materialMaximumText = record.Get("material_slots_max");
+            if (!string.IsNullOrWhiteSpace(materialMaximumText) ||
+                mode == ProductionAssetValidationMode.ProductionReadiness)
             {
-                report.AddError("Budget catalog field 'material_slots_max' requires a positive integer.");
-            }
-            else if (measured.Lod0MaterialSlots > materialMaximum)
-            {
-                report.AddError($"LOD0 uses {measured.Lod0MaterialSlots} material slots and exceeds the catalog ceiling of {materialMaximum}.");
-            }
-
-            if (!TryGetPositiveInt(record, "texture_max_px", out int textureMaximum))
-            {
-                report.AddError("Budget catalog field 'texture_max_px' requires a positive integer.");
-            }
-            else if (measured.MaximumTextureDimension > textureMaximum)
-            {
-                report.AddError($"A material uses a {measured.MaximumTextureDimension}px texture and exceeds the catalog ceiling of {textureMaximum}px.");
+                if (!TryGetPositiveInt(record, "material_slots_max", out int materialMaximum))
+                {
+                    report.AddError("Budget catalog field 'material_slots_max' requires a positive integer.");
+                }
+                else if (measured.Lod0MaterialSlots > materialMaximum)
+                {
+                    report.AddError($"LOD0 uses {measured.Lod0MaterialSlots} material slots and exceeds the catalog ceiling of {materialMaximum}.");
+                }
             }
 
-            ValidateColliderBudget(metadata, record, colliders, report);
+            string textureMaximumText = record.Get("texture_max_px");
+            if (!string.IsNullOrWhiteSpace(textureMaximumText) ||
+                mode == ProductionAssetValidationMode.ProductionReadiness)
+            {
+                if (!TryGetPositiveInt(record, "texture_max_px", out int textureMaximum))
+                {
+                    report.AddError("Budget catalog field 'texture_max_px' requires a positive integer.");
+                }
+                else if (measured.MaximumTextureDimension > textureMaximum)
+                {
+                    report.AddError($"A material uses a {measured.MaximumTextureDimension}px texture and exceeds the catalog ceiling of {textureMaximum}px.");
+                }
+            }
+
+            ValidateColliderBudget(metadata, record, colliders, mode, report);
             ValidateCatalogContext(record, mode, report);
             ValidateCatalogClassConstraints(record, mode, report);
         }
@@ -326,12 +336,14 @@ namespace Margins
             ProductionAssetMeasurements measured,
             int level,
             bool required,
+            ProductionAssetValidationMode mode,
             ProductionAssetValidationReport report)
         {
             string field = $"lod{level}_ceiling_tris";
             string text = record.Get(field);
             int actual = measured.TrianglesFor(level);
-            if (!required && string.IsNullOrWhiteSpace(text) && actual == 0)
+            if (!required && string.IsNullOrWhiteSpace(text) &&
+                (actual == 0 || mode == ProductionAssetValidationMode.IntakeMeasurement))
             {
                 return;
             }
@@ -356,6 +368,7 @@ namespace Margins
             ProductionAssetMetadata metadata,
             ProductionAssetLedgerRecord record,
             IReadOnlyList<Collider> colliders,
+            ProductionAssetValidationMode mode,
             ProductionAssetValidationReport report)
         {
             if (colliders.Count == 0)
@@ -365,6 +378,17 @@ namespace Margins
             }
 
             string policy = Normalize(record.Get("collider_type"));
+            if (string.IsNullOrEmpty(policy))
+            {
+                if (mode == ProductionAssetValidationMode.ProductionReadiness)
+                {
+                    report.AddError("Budget catalog field 'collider_type' is required for production readiness.");
+                }
+
+                ValidateCollisionCeiling(record, false, mode, report);
+                return;
+            }
+
             foreach (Collider collider in colliders)
             {
                 bool allowed = policy switch
@@ -399,19 +423,39 @@ namespace Margins
                 report.AddError("Budget catalog collider_type must be primitive, compound primitive, convex mesh, or static mesh.");
             }
 
-            bool meshPolicy = policy == "convexmesh" || policy == "staticmesh";
+            ValidateCollisionCeiling(
+                record,
+                policy == "convexmesh" || policy == "staticmesh" ||
+                report.Measurements.CollisionTriangles > 0,
+                mode,
+                report);
+        }
+
+        private static void ValidateCollisionCeiling(
+            ProductionAssetLedgerRecord record,
+            bool required,
+            ProductionAssetValidationMode mode,
+            ProductionAssetValidationReport report)
+        {
             string ceilingText = record.Get("collision_ceiling_tris");
-            if (meshPolicy || report.Measurements.CollisionTriangles > 0 ||
-                !string.IsNullOrWhiteSpace(ceilingText))
+            if (!required && string.IsNullOrWhiteSpace(ceilingText))
             {
-                if (!TryGetPositiveInt(record, "collision_ceiling_tris", out int ceiling))
-                {
-                    report.AddError("Mesh collider catalog records require a positive collision_ceiling_tris value.");
-                }
-                else if (report.Measurements.CollisionTriangles > ceiling)
-                {
-                    report.AddError($"Collision meshes use {report.Measurements.CollisionTriangles} triangles and exceed the catalog ceiling of {ceiling}.");
-                }
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(ceilingText) &&
+                mode == ProductionAssetValidationMode.IntakeMeasurement)
+            {
+                return;
+            }
+
+            if (!TryGetPositiveInt(record, "collision_ceiling_tris", out int ceiling))
+            {
+                report.AddError("Mesh collider catalog records require a positive collision_ceiling_tris value.");
+            }
+            else if (report.Measurements.CollisionTriangles > ceiling)
+            {
+                report.AddError($"Collision meshes use {report.Measurements.CollisionTriangles} triangles and exceed the catalog ceiling of {ceiling}.");
             }
         }
 
