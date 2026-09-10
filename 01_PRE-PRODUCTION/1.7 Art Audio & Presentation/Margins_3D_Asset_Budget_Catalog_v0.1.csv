@@ -7,7 +7,7 @@ STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,5
 STR_006,Structural roof truss,Structural Architecture,Roof Structure,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_007,Structural cross-brace module,Structural Architecture,Structural Supports,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_008,Exterior stair flight module,Structural Architecture,Exterior Access Structure,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_009,Exterior stair landing / platform module,Structural Architecture,Exterior Access Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_009,Exterior stair landing / platform module,Structural Architecture,Exterior Access Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_010,Exterior fixed access ladder,Structural Architecture,Exterior Access Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_011,Balcony structural support frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
 STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
