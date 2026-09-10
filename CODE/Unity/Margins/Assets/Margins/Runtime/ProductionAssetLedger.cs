@@ -229,5 +229,35 @@ namespace Margins
                    value >= 0;
         }
     }
+
+    public sealed class ProductionAssetBudgetCatalog
+    {
+        private readonly ProductionAssetLedger rows;
+
+        private ProductionAssetBudgetCatalog(ProductionAssetLedger parsedRows)
+        {
+            rows = parsedRows;
+        }
+
+        public bool TryGetRecord(
+            string assetId,
+            out ProductionAssetLedgerRecord record)
+        {
+            return rows.TryGetRecord(assetId, out record);
+        }
+
+        public static bool TryParse(
+            string csv,
+            out ProductionAssetBudgetCatalog catalog,
+            out IReadOnlyList<string> errors)
+        {
+            bool parsed = ProductionAssetLedger.TryParse(
+                csv,
+                out ProductionAssetLedger table,
+                out errors);
+            catalog = new ProductionAssetBudgetCatalog(table);
+            return parsed;
+        }
+    }
 }
 #endif

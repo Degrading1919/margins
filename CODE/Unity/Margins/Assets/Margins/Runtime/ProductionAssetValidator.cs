@@ -1,10 +1,17 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 namespace Margins
 {
+    public enum ProductionAssetValidationMode
+    {
+        IntakeMeasurement,
+        ProductionReadiness
+    }
+
     public enum ProductionAssetValidationSeverity
     {
         Warning,
@@ -25,11 +32,60 @@ namespace Margins
         public string Message { get; }
     }
 
+    public sealed class ProductionAssetMeasurements
+    {
+        internal readonly HashSet<Transform> Lod0Bones = new();
+        internal readonly HashSet<Texture> Lod0Textures = new();
+        internal readonly HashSet<Material> Lod0Materials = new();
+
+        public int Lod0Triangles { get; internal set; }
+        public int Lod1Triangles { get; internal set; }
+        public int Lod2Triangles { get; internal set; }
+        public int CollisionTriangles { get; internal set; }
+        public int Lod0MaterialSlots { get; internal set; }
+        public int MaximumTextureDimension { get; internal set; }
+        public int Lod0SkinnedRendererCount { get; internal set; }
+        public int Lod0BoneCount => Lod0Bones.Count;
+        public int MaximumInfluencesPerVertex { get; internal set; }
+        public int AlphaTestedMaterialCount { get; internal set; }
+        public int HighestLodLevel { get; internal set; }
+
+        public int TrianglesFor(int level)
+        {
+            return level switch
+            {
+                0 => Lod0Triangles,
+                1 => Lod1Triangles,
+                2 => Lod2Triangles,
+                _ => 0
+            };
+        }
+
+        internal void AddTriangles(int level, int count)
+        {
+            switch (level)
+            {
+                case 0:
+                    Lod0Triangles += count;
+                    break;
+                case 1:
+                    Lod1Triangles += count;
+                    break;
+                case 2:
+                    Lod2Triangles += count;
+                    break;
+            }
+
+            HighestLodLevel = Mathf.Max(HighestLodLevel, level);
+        }
+    }
+
     public sealed class ProductionAssetValidationReport
     {
         private readonly List<ProductionAssetValidationIssue> issues = new();
 
         public IReadOnlyList<ProductionAssetValidationIssue> Issues => issues;
+        public ProductionAssetMeasurements Measurements { get; } = new();
         public bool TechnicalRequirementsPassed { get; internal set; }
         public bool ProductionReady { get; internal set; }
 
@@ -63,11 +119,8 @@ namespace Margins
 
     public static class ProductionAssetValidator
     {
-        private static readonly string[] RequiredRecordFields =
+        private static readonly string[] RequiredProvenanceFields =
         {
-            "asset_name",
-            "asset_class",
-            "intended_use",
             "source_type",
             "source_name",
             "creator_or_vendor",
@@ -86,11 +139,11 @@ namespace Margins
             "ai_tool_or_service",
             "ai_terms_archive",
             "source_files_retained",
-            "modifications_summary",
-            "max_texture_resolution",
-            "expected_max_visible_instances",
-            "expected_closest_view_distance",
-            "animation_or_interaction_requirements",
+            "modifications_summary"
+        };
+
+        private static readonly string[] RequiredFinalFields =
+        {
             "normalization_status",
             "unity_import_status",
             "performance_review_status",
@@ -104,7 +157,9 @@ namespace Margins
 
         public static ProductionAssetValidationReport Validate(
             ProductionAssetMetadata metadata,
-            ProductionAssetLedger ledger)
+            ProductionAssetLedger ledger,
+            ProductionAssetBudgetCatalog catalog,
+            ProductionAssetValidationMode mode)
         {
             ProductionAssetValidationReport report = new();
             if (metadata == null)
@@ -113,435 +168,205 @@ namespace Margins
                 return report;
             }
 
-            if (ledger == null)
-            {
-                report.AddError("The production asset ledger could not be loaded.");
-                return report;
-            }
+            ValidateProceduralContract(metadata, report);
+            ValidateTransformsAndDimensions(metadata, report);
+            MeasureMeshes(metadata, report);
+            Collider[] colliders = MeasureColliders(metadata, report.Measurements);
 
             string assetId = metadata.AssetId?.Trim();
             if (string.IsNullOrEmpty(assetId))
             {
-                report.AddError("ProductionAssetMetadata requires an asset_id.");
-                return report;
+                report.AddError("ProductionAssetMetadata requires a production catalog asset_id.");
             }
 
-            if (!ledger.TryGetRecord(assetId, out ProductionAssetLedgerRecord record))
+            ProductionAssetLedgerRecord catalogRecord = null;
+            if (catalog == null)
             {
-                report.AddError($"No production ledger row matches asset_id '{assetId}'.");
-                return report;
+                report.AddError("The production asset budget catalog could not be loaded.");
+            }
+            else if (!catalog.TryGetRecord(assetId, out catalogRecord))
+            {
+                report.AddError($"No production budget catalog row matches asset_id '{assetId}'.");
+            }
+            else
+            {
+                ValidateCatalogBudgets(
+                    metadata,
+                    catalogRecord,
+                    colliders,
+                    mode,
+                    report);
             }
 
-            ValidateProceduralContract(metadata, assetId, report);
-            ValidateRecordCompleteness(record, report);
-            ValidateTransformsAndDimensions(metadata, report);
-            MeshMeasurements measurements = MeasureMeshes(metadata, report);
-            ValidateMeshBudgets(record, measurements, report);
-            ValidateMaterials(record, measurements, report);
-            ValidateCharacterBudgets(record, measurements, report);
-            ValidateVegetationBudgets(record, measurements, report);
-            ValidateColliders(metadata, record, report);
-            ValidateReviewState(record, report);
+            ProductionAssetLedgerRecord ledgerRecord = null;
+            if (ledger == null)
+            {
+                report.AddError("The production asset provenance ledger could not be loaded.");
+            }
+            else if (!ledger.TryGetRecord(assetId, out ledgerRecord))
+            {
+                report.AddError($"No provenance ledger row matches asset_id '{assetId}'. Measurements are still available for first-time intake.");
+            }
+            else
+            {
+                ValidateProvenance(ledgerRecord, report);
+                if (mode == ProductionAssetValidationMode.ProductionReadiness)
+                {
+                    ValidateRecordedMeasurements(
+                        ledgerRecord,
+                        catalogRecord,
+                        report);
+                    ValidateReviewState(ledgerRecord, report);
+                }
+            }
 
             report.TechnicalRequirementsPassed = !report.HasErrors();
-            report.ProductionReady = report.TechnicalRequirementsPassed &&
-                                     Is(record.Get("visual_consistency_review_status"), "accepted") &&
-                                     Is(record.Get("interaction_readability_review_status"), "accepted") &&
-                                     Is(record.Get("owner_acceptance_status"), "accepted") &&
-                                     Is(record.Get("disposition"), "production");
+            report.ProductionReady =
+                mode == ProductionAssetValidationMode.ProductionReadiness &&
+                report.TechnicalRequirementsPassed &&
+                ledgerRecord != null &&
+                Is(ledgerRecord.Get("visual_consistency_review_status"), "accepted") &&
+                Is(ledgerRecord.Get("interaction_readability_review_status"), "accepted") &&
+                Is(ledgerRecord.Get("owner_acceptance_status"), "accepted") &&
+                Is(ledgerRecord.Get("disposition"), "production");
             return report;
         }
 
         private static void ValidateProceduralContract(
             ProductionAssetMetadata metadata,
-            string assetId,
             ProductionAssetValidationReport report)
         {
             ProceduralAssetComponent procedural =
                 metadata.GetComponent<ProceduralAssetComponent>();
-            if (procedural == null)
-            {
-                return;
-            }
-
-            if (!string.Equals(
-                    procedural.StableAssetId,
-                    assetId,
-                    StringComparison.Ordinal))
-            {
-                report.AddError(
-                    $"Production asset_id '{assetId}' must match procedural StableAssetId '{procedural.StableAssetId}'.");
-            }
-
-            if (!procedural.TryValidateConfiguration(out string error))
+            if (procedural != null &&
+                !procedural.TryValidateConfiguration(out string error))
             {
                 report.AddError($"Procedural asset configuration is invalid: {error}");
             }
         }
 
-        private static void ValidateRecordCompleteness(
+        private static void ValidateProvenance(
             ProductionAssetLedgerRecord record,
             ProductionAssetValidationReport report)
         {
-            foreach (string field in RequiredRecordFields)
+            foreach (string field in RequiredProvenanceFields)
             {
-                if (!record.HasColumn(field))
-                {
-                    report.AddError($"The ledger schema is missing required field '{field}'.");
-                }
-                else if (string.IsNullOrWhiteSpace(record.Get(field)))
-                {
-                    report.AddError($"Ledger row {record.RowNumber} requires '{field}' (use 'n/a' when applicable).");
-                }
+                RequireText(record, field, report);
             }
-
-            RequireNonNegativeInt(record, "lod0_triangle_ceiling", report);
-            RequireNonNegativeInt(record, "lod0_measured_triangles", report);
-            RequireNonNegativeInt(record, "max_material_slots", report);
-            RequireNonNegativeInt(record, "measured_material_slots", report);
         }
 
-        private static void ValidateTransformsAndDimensions(
+        private static void ValidateCatalogBudgets(
             ProductionAssetMetadata metadata,
-            ProductionAssetValidationReport report)
-        {
-            Transform root = metadata.transform;
-            if (!Approximately(root.localScale, Vector3.one))
-            {
-                report.AddError("The production prefab root must use unit local scale; exporter-compensation scale is not accepted.");
-            }
-
-            if (!Approximately(root.localRotation, Quaternion.identity))
-            {
-                report.AddError("The production prefab root must use identity local rotation (+Y up, +Z forward).");
-            }
-
-            Transform visual = metadata.VisualRoot;
-            if (visual == null || visual.parent != root)
-            {
-                report.AddError("ProductionAssetMetadata requires a direct Visual child.");
-                return;
-            }
-
-            if (!string.Equals(visual.name, "Visual", StringComparison.Ordinal) ||
-                !Approximately(visual.localPosition, Vector3.zero) ||
-                !Approximately(visual.localRotation, Quaternion.identity) ||
-                !Approximately(visual.localScale, Vector3.one))
-            {
-                report.AddError("The direct Visual child must be named 'Visual' with zero position, identity rotation, and unit scale.");
-            }
-
-            Vector3 expected = metadata.ExpectedDimensionsMeters;
-            if (!PositiveFinite(expected.x) || !PositiveFinite(expected.y) ||
-                !PositiveFinite(expected.z) ||
-                !PositiveFinite(metadata.DimensionToleranceMeters))
-            {
-                report.AddError("Expected meter dimensions and dimension tolerance must be positive finite values.");
-                return;
-            }
-
-            if (!TryMeasureLocalBounds(metadata, out Bounds bounds))
-            {
-                report.AddError("The production prefab contains no measurable render mesh.");
-                return;
-            }
-
-            Vector3 difference = bounds.size - expected;
-            if (Mathf.Abs(difference.x) > metadata.DimensionToleranceMeters ||
-                Mathf.Abs(difference.y) > metadata.DimensionToleranceMeters ||
-                Mathf.Abs(difference.z) > metadata.DimensionToleranceMeters)
-            {
-                report.AddError(
-                    $"Measured size {bounds.size:F4} m does not match expected size {expected:F4} m within {metadata.DimensionToleranceMeters:F4} m.");
-            }
-
-            foreach (Transform descendant in visual.GetComponentsInChildren<Transform>(true))
-            {
-                if (!Approximately(descendant.localScale, Vector3.one))
-                {
-                    report.AddError($"Visual transform '{descendant.name}' must use unit local scale after Blender normalization.");
-                }
-
-                if (descendant.parent == visual &&
-                    !Approximately(descendant.localRotation, Quaternion.identity))
-                {
-                    report.AddError($"Direct visual child '{descendant.name}' must use identity local rotation; axis-conversion rotations must be fixed during normalization.");
-                }
-            }
-        }
-
-        private static MeshMeasurements MeasureMeshes(
-            ProductionAssetMetadata metadata,
-            ProductionAssetValidationReport report)
-        {
-            Transform visual = metadata.VisualRoot;
-            MeshMeasurements result = new();
-            if (visual == null)
-            {
-                return result;
-            }
-
-            HashSet<Renderer> assigned = new();
-            LODGroup[] groups = visual.GetComponentsInChildren<LODGroup>(true);
-            foreach (LODGroup group in groups)
-            {
-                LOD[] lods = group.GetLODs();
-                for (int level = 0; level < lods.Length; level++)
-                {
-                    foreach (Renderer renderer in lods[level].renderers)
-                    {
-                        if (renderer == null || !assigned.Add(renderer))
-                        {
-                            continue;
-                        }
-
-                        result.Add(level, renderer, report);
-                    }
-                }
-            }
-
-            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
-            {
-                if (assigned.Add(renderer))
-                {
-                    result.Add(0, renderer, report);
-                }
-            }
-
-            return result;
-        }
-
-        private static void ValidateMeshBudgets(
             ProductionAssetLedgerRecord record,
-            MeshMeasurements measurements,
+            IReadOnlyList<Collider> colliders,
+            ProductionAssetValidationMode mode,
             ProductionAssetValidationReport report)
         {
-            ValidateLod(record, measurements, 0, true, report);
-            ValidateLod(record, measurements, 1, false, report);
-            ValidateLod(record, measurements, 2, false, report);
+            ProductionAssetMeasurements measured = report.Measurements;
+            ValidateLodBudget(record, measured, 0, true, report);
+            ValidateLodBudget(record, measured, 1, false, report);
+            ValidateLodBudget(record, measured, 2, false, report);
+
+            if (!TryGetPositiveInt(record, "material_slots_max", out int materialMaximum))
+            {
+                report.AddError("Budget catalog field 'material_slots_max' requires a positive integer.");
+            }
+            else if (measured.Lod0MaterialSlots > materialMaximum)
+            {
+                report.AddError($"LOD0 uses {measured.Lod0MaterialSlots} material slots and exceeds the catalog ceiling of {materialMaximum}.");
+            }
+
+            if (!TryGetPositiveInt(record, "texture_max_px", out int textureMaximum))
+            {
+                report.AddError("Budget catalog field 'texture_max_px' requires a positive integer.");
+            }
+            else if (measured.MaximumTextureDimension > textureMaximum)
+            {
+                report.AddError($"A material uses a {measured.MaximumTextureDimension}px texture and exceeds the catalog ceiling of {textureMaximum}px.");
+            }
+
+            ValidateColliderBudget(metadata, record, colliders, report);
+            ValidateCatalogContext(record, mode, report);
+            ValidateCatalogClassConstraints(record, mode, report);
         }
 
-        private static void ValidateLod(
+        private static void ValidateCatalogContext(
             ProductionAssetLedgerRecord record,
-            MeshMeasurements measurements,
+            ProductionAssetValidationMode mode,
+            ProductionAssetValidationReport report)
+        {
+            if (mode != ProductionAssetValidationMode.ProductionReadiness)
+            {
+                return;
+            }
+
+            if (!TryGetPositiveInt(record, "expected_visible_instances", out _))
+            {
+                report.AddError("Strict production validation requires a positive catalog expected_visible_instances value.");
+            }
+
+            if (!TryGetPositiveFloat(record, "closest_view_m", out _))
+            {
+                report.AddError("Strict production validation requires a positive catalog closest_view_m value.");
+            }
+
+            if (string.IsNullOrWhiteSpace(record.Get("interaction_level")))
+            {
+                report.AddError("Strict production validation requires catalog interaction_level context.");
+            }
+
+            if (string.IsNullOrWhiteSpace(record.Get("animation_requirement")))
+            {
+                report.AddError("Strict production validation requires catalog animation_requirement context.");
+            }
+        }
+
+        private static void ValidateLodBudget(
+            ProductionAssetLedgerRecord record,
+            ProductionAssetMeasurements measured,
             int level,
             bool required,
             ProductionAssetValidationReport report)
         {
-            string ceilingField = $"lod{level}_triangle_ceiling";
-            string measuredField = $"lod{level}_measured_triangles";
-            string ceilingText = record.Get(ceilingField);
-            string measuredText = record.Get(measuredField);
-            bool configured = !string.IsNullOrWhiteSpace(ceilingText) ||
-                              !string.IsNullOrWhiteSpace(measuredText);
-            if (!required && !configured)
+            string field = $"lod{level}_ceiling_tris";
+            string text = record.Get(field);
+            int actual = measured.TrianglesFor(level);
+            if (!required && string.IsNullOrWhiteSpace(text) && actual == 0)
             {
                 return;
             }
 
-            if (!record.TryGetNonNegativeInt(ceilingField, out int ceiling) || ceiling <= 0)
+            if (!TryGetPositiveInt(record, field, out int ceiling))
             {
-                report.AddError($"Ledger field '{ceilingField}' requires a positive integer when LOD{level} is used.");
+                report.AddError($"Budget catalog field '{field}' requires a positive integer when LOD{level} is present.");
                 return;
             }
 
-            if (!record.TryGetNonNegativeInt(measuredField, out int recorded))
-            {
-                report.AddError($"Ledger field '{measuredField}' requires a non-negative integer.");
-                return;
-            }
-
-            int actual = measurements.TrianglesFor(level);
             if (level > 0 && actual == 0)
             {
-                report.AddError($"The ledger declares LOD{level}, but the prefab has no LOD{level} render mesh.");
+                report.AddError($"The catalog declares LOD{level}, but the prefab has no LOD{level} render mesh.");
             }
-
-            if (actual > ceiling)
+            else if (actual > ceiling)
             {
-                report.AddError($"LOD{level} uses {actual} triangles and exceeds its {ceiling} triangle ceiling.");
-            }
-
-            if (actual != recorded)
-            {
-                report.AddError($"LOD{level} ledger measurement is {recorded}, but Unity measured {actual} triangles.");
+                report.AddError($"LOD{level} uses {actual} triangles and exceeds its catalog ceiling of {ceiling}.");
             }
         }
 
-        private static void ValidateMaterials(
-            ProductionAssetLedgerRecord record,
-            MeshMeasurements measurements,
-            ProductionAssetValidationReport report)
-        {
-            if (!record.TryGetNonNegativeInt("max_material_slots", out int maximum))
-            {
-                return;
-            }
-
-            if (measurements.Lod0MaterialSlots > maximum)
-            {
-                report.AddError($"LOD0 uses {measurements.Lod0MaterialSlots} material slots and exceeds its {maximum}-slot ceiling.");
-            }
-
-            if (record.TryGetNonNegativeInt("measured_material_slots", out int recorded) &&
-                recorded != measurements.Lod0MaterialSlots)
-            {
-                report.AddError($"Ledger material measurement is {recorded}, but Unity measured {measurements.Lod0MaterialSlots} LOD0 slots.");
-            }
-
-            if (!TryReadPositiveLeadingInt(record.Get("max_texture_resolution"), out int textureMaximum))
-            {
-                report.AddError("Ledger field 'max_texture_resolution' must begin with a positive pixel dimension, such as 2048 or 2048x2048.");
-            }
-            else if (measurements.MaximumTextureDimension > textureMaximum)
-            {
-                report.AddError($"A material uses a {measurements.MaximumTextureDimension}px texture and exceeds the {textureMaximum}px ceiling.");
-            }
-        }
-
-        private static void ValidateCharacterBudgets(
-            ProductionAssetLedgerRecord record,
-            MeshMeasurements measurements,
-            ProductionAssetValidationReport report)
-        {
-            if (!Is(record.Get("asset_class"), "character"))
-            {
-                return;
-            }
-
-            if (measurements.Lod0SkinnedRendererCount == 0)
-            {
-                report.AddError("A character asset requires at least one LOD0 SkinnedMeshRenderer.");
-                return;
-            }
-
-            ValidateMeasuredLimit(
-                record,
-                "max_bones",
-                "measured_bones",
-                measurements.Lod0BoneCount,
-                "bones",
-                report);
-            ValidateMeasuredLimit(
-                record,
-                "max_skinned_mesh_renderers",
-                "measured_skinned_mesh_renderers",
-                measurements.Lod0SkinnedRendererCount,
-                "skinned mesh renderers",
-                report);
-
-            if (!record.TryGetNonNegativeInt("max_influences_per_vertex", out int influenceLimit) ||
-                influenceLimit <= 0)
-            {
-                report.AddError("Skinned assets require a positive max_influences_per_vertex.");
-            }
-            else if (measurements.MaximumInfluencesPerVertex > influenceLimit)
-            {
-                report.AddError($"The skinned asset uses {measurements.MaximumInfluencesPerVertex} influences per vertex and exceeds its {influenceLimit} limit.");
-            }
-
-            if (!record.TryGetNonNegativeInt("complete_character_max_material_slots", out int characterMaterialLimit) ||
-                characterMaterialLimit <= 0)
-            {
-                report.AddError("Skinned assets require a positive complete_character_max_material_slots value.");
-            }
-            else if (measurements.Lod0MaterialSlots > characterMaterialLimit)
-            {
-                report.AddError($"The skinned asset uses {measurements.Lod0MaterialSlots} material slots and exceeds its {characterMaterialLimit}-slot character limit.");
-            }
-        }
-
-        private static void ValidateVegetationBudgets(
-            ProductionAssetLedgerRecord record,
-            MeshMeasurements measurements,
-            ProductionAssetValidationReport report)
-        {
-            if (!Is(record.Get("asset_class"), "vegetation"))
-            {
-                return;
-            }
-
-            if (!record.TryGetNonNegativeInt(
-                    "alpha_tested_material_count",
-                    out int recordedAlphaMaterials))
-            {
-                report.AddError("Vegetation assets require a non-negative alpha_tested_material_count.");
-            }
-            else if (recordedAlphaMaterials != measurements.AlphaTestedMaterialCount)
-            {
-                report.AddError($"Ledger alpha-tested material count is {recordedAlphaMaterials}, but Unity measured {measurements.AlphaTestedMaterialCount}.");
-            }
-
-            if (measurements.AlphaTestedMaterialCount > 1)
-            {
-                report.AddWarning("Vegetation uses more than one alpha-tested material; the approved default requires technical and visual exception review.");
-            }
-
-            string finalRepresentation = Normalize(record.Get("final_distance_representation"));
-            if (string.IsNullOrEmpty(finalRepresentation) ||
-                finalRepresentation == "na" || finalRepresentation == "none")
-            {
-                report.AddError("Vegetation assets require a recorded billboard, impostor, or very-low-cost final-distance representation.");
-            }
-
-            if (measurements.HighestLodLevel == 0)
-            {
-                report.AddError("Vegetation assets require an LODGroup with a final-distance renderer.");
-            }
-        }
-
-        private static void ValidateMeasuredLimit(
-            ProductionAssetLedgerRecord record,
-            string maximumField,
-            string measuredField,
-            int actual,
-            string label,
-            ProductionAssetValidationReport report)
-        {
-            if (!record.TryGetNonNegativeInt(maximumField, out int maximum) || maximum <= 0)
-            {
-                report.AddError($"Skinned assets require a positive {maximumField} value.");
-                return;
-            }
-
-            if (!record.TryGetNonNegativeInt(measuredField, out int measured))
-            {
-                report.AddError($"Skinned assets require a non-negative {measuredField} value.");
-                return;
-            }
-
-            if (actual > maximum)
-            {
-                report.AddError($"The skinned asset uses {actual} {label} and exceeds its {maximum} limit.");
-            }
-
-            if (actual != measured)
-            {
-                report.AddError($"Ledger {label} measurement is {measured}, but Unity measured {actual}.");
-            }
-        }
-
-        private static void ValidateColliders(
+        private static void ValidateColliderBudget(
             ProductionAssetMetadata metadata,
             ProductionAssetLedgerRecord record,
+            IReadOnlyList<Collider> colliders,
             ProductionAssetValidationReport report)
         {
-            Collider[] colliders = metadata.GetComponentsInChildren<Collider>(true);
-            if (colliders.Length == 0)
+            if (colliders.Count == 0)
             {
                 report.AddError("The production prefab requires at least one Unity collider.");
                 return;
             }
 
             string policy = Normalize(record.Get("collider_type"));
-            int collisionTriangles = 0;
             foreach (Collider collider in colliders)
             {
-                if (collider is MeshCollider meshCollider)
-                {
-                    collisionTriangles += TriangleCount(meshCollider.sharedMesh);
-                }
-
                 bool allowed = policy switch
                 {
                     "primitive" => IsPrimitive(collider),
@@ -550,53 +375,230 @@ namespace Margins
                     "staticmesh" => collider is MeshCollider nonConvex && !nonConvex.convex,
                     _ => false
                 };
-
                 if (!allowed)
                 {
-                    report.AddError($"Collider '{collider.name}' does not match ledger collider_type '{record.Get("collider_type")}'.");
+                    report.AddError($"Collider '{collider.name}' does not match catalog collider_type '{record.Get("collider_type")}'.");
                 }
             }
 
-            if (policy == "primitive" && colliders.Length != 1)
+            if (policy == "primitive" && colliders.Count != 1)
             {
-                report.AddError("A primitive collider record requires exactly one primitive collider; use compound primitive for multiple colliders.");
+                report.AddError("A primitive catalog policy requires exactly one primitive collider.");
             }
-            else if (policy == "compoundprimitive" && colliders.Length < 2)
+            else if (policy == "compoundprimitive" && colliders.Count < 2)
             {
-                report.AddError("A compound primitive collider record requires at least two primitive colliders.");
+                report.AddError("A compound primitive catalog policy requires at least two primitive colliders.");
             }
             else if (policy == "staticmesh" && !metadata.gameObject.isStatic)
             {
                 report.AddError("A static mesh collider asset must be marked Static in Unity.");
             }
-            else if (string.IsNullOrEmpty(policy) ||
-                     (policy != "primitive" && policy != "compoundprimitive" &&
-                      policy != "convexmesh" && policy != "staticmesh"))
+            else if (policy != "primitive" && policy != "compoundprimitive" &&
+                     policy != "convexmesh" && policy != "staticmesh")
             {
-                report.AddError("Ledger collider_type must be primitive, compound primitive, convex mesh, or static mesh.");
+                report.AddError("Budget catalog collider_type must be primitive, compound primitive, convex mesh, or static mesh.");
             }
 
             bool meshPolicy = policy == "convexmesh" || policy == "staticmesh";
-            if (meshPolicy)
+            string ceilingText = record.Get("collision_ceiling_tris");
+            if (meshPolicy || report.Measurements.CollisionTriangles > 0 ||
+                !string.IsNullOrWhiteSpace(ceilingText))
             {
-                if (!record.TryGetNonNegativeInt("collision_triangle_ceiling", out int ceiling) ||
-                    ceiling <= 0)
+                if (!TryGetPositiveInt(record, "collision_ceiling_tris", out int ceiling))
                 {
-                    report.AddError("Mesh collider records require a positive collision_triangle_ceiling.");
+                    report.AddError("Mesh collider catalog records require a positive collision_ceiling_tris value.");
                 }
-                else if (collisionTriangles > ceiling)
+                else if (report.Measurements.CollisionTriangles > ceiling)
                 {
-                    report.AddError($"Collision meshes use {collisionTriangles} triangles and exceed their {ceiling} triangle ceiling.");
+                    report.AddError($"Collision meshes use {report.Measurements.CollisionTriangles} triangles and exceed the catalog ceiling of {ceiling}.");
+                }
+            }
+        }
+
+        private static void ValidateCatalogClassConstraints(
+            ProductionAssetLedgerRecord record,
+            ProductionAssetValidationMode mode,
+            ProductionAssetValidationReport report)
+        {
+            if (IsCharacter(record))
+            {
+                ValidateCharacterConstraints(record, mode, report);
+            }
+
+            if (IsVegetation(record))
+            {
+                ProductionAssetMeasurements measured = report.Measurements;
+                if (measured.HighestLodLevel == 0)
+                {
+                    report.AddError("Vegetation assets require an LODGroup with a final-distance renderer.");
+                }
+
+                if (measured.AlphaTestedMaterialCount > 1)
+                {
+                    report.AddWarning("Vegetation uses more than one alpha-tested material; the approved default requires technical and visual exception review.");
+                }
+            }
+        }
+
+        private static void ValidateCharacterConstraints(
+            ProductionAssetLedgerRecord record,
+            ProductionAssetValidationMode mode,
+            ProductionAssetValidationReport report)
+        {
+            ProductionAssetMeasurements measured = report.Measurements;
+            if (measured.Lod0SkinnedRendererCount == 0)
+            {
+                report.AddError("A catalog-classified character requires at least one LOD0 SkinnedMeshRenderer.");
+            }
+
+            string[] constraintFields =
+            {
+                "max_bones",
+                "max_influences_per_vertex",
+                "max_skinned_mesh_renderers",
+                "complete_character_max_material_slots"
+            };
+            bool constraintsAvailable = true;
+            foreach (string field in constraintFields)
+            {
+                if (!TryGetPositiveInt(record, field, out _))
+                {
+                    constraintsAvailable = false;
                 }
             }
 
-            if (!record.TryGetNonNegativeInt("collision_measured_triangles", out int recorded))
+            if (!constraintsAvailable)
             {
-                report.AddError("Ledger field 'collision_measured_triangles' requires a non-negative integer.");
+                if (mode == ProductionAssetValidationMode.ProductionReadiness)
+                {
+                    report.AddError("The production budget catalog does not yet expose authoritative character bone, influence, renderer, and complete-character material limits; strict readiness cannot be established.");
+                }
+
+                return;
             }
-            else if (recorded != collisionTriangles)
+
+            ValidateMaximum(
+                record,
+                "max_bones",
+                measured.Lod0BoneCount,
+                "bones",
+                report);
+            ValidateMaximum(
+                record,
+                "max_influences_per_vertex",
+                measured.MaximumInfluencesPerVertex,
+                "influences per vertex",
+                report);
+            ValidateMaximum(
+                record,
+                "max_skinned_mesh_renderers",
+                measured.Lod0SkinnedRendererCount,
+                "skinned mesh renderers",
+                report);
+            ValidateMaximum(
+                record,
+                "complete_character_max_material_slots",
+                measured.Lod0MaterialSlots,
+                "complete-character material slots",
+                report);
+        }
+
+        private static void ValidateMaximum(
+            ProductionAssetLedgerRecord record,
+            string field,
+            int actual,
+            string label,
+            ProductionAssetValidationReport report)
+        {
+            if (TryGetPositiveInt(record, field, out int maximum) && actual > maximum)
             {
-                report.AddError($"Ledger collision measurement is {recorded}, but Unity measured {collisionTriangles} triangles.");
+                report.AddError($"The character uses {actual} {label} and exceeds the catalog limit of {maximum}.");
+            }
+        }
+
+        private static void ValidateRecordedMeasurements(
+            ProductionAssetLedgerRecord ledger,
+            ProductionAssetLedgerRecord catalog,
+            ProductionAssetValidationReport report)
+        {
+            ProductionAssetMeasurements measured = report.Measurements;
+            RequireMeasurement(
+                ledger,
+                "lod0_measured_triangles",
+                measured.Lod0Triangles,
+                report);
+
+            bool catalogHasLod1 = catalog != null &&
+                                  !string.IsNullOrWhiteSpace(catalog.Get("lod1_ceiling_tris"));
+            bool catalogHasLod2 = catalog != null &&
+                                  !string.IsNullOrWhiteSpace(catalog.Get("lod2_ceiling_tris"));
+            if (catalogHasLod1 || measured.Lod1Triangles > 0)
+            {
+                RequireMeasurement(
+                    ledger,
+                    "lod1_measured_triangles",
+                    measured.Lod1Triangles,
+                    report);
+            }
+
+            if (catalogHasLod2 || measured.Lod2Triangles > 0)
+            {
+                RequireMeasurement(
+                    ledger,
+                    "lod2_measured_triangles",
+                    measured.Lod2Triangles,
+                    report);
+            }
+
+            RequireMeasurement(
+                ledger,
+                "collision_measured_triangles",
+                measured.CollisionTriangles,
+                report);
+            RequireMeasurement(
+                ledger,
+                "measured_material_slots",
+                measured.Lod0MaterialSlots,
+                report);
+            RequireMeasurement(
+                ledger,
+                "measured_max_texture_px",
+                measured.MaximumTextureDimension,
+                report);
+
+            if (measured.Lod0SkinnedRendererCount > 0)
+            {
+                RequireMeasurement(
+                    ledger,
+                    "measured_bones",
+                    measured.Lod0BoneCount,
+                    report);
+                RequireMeasurement(
+                    ledger,
+                    "measured_max_influences_per_vertex",
+                    measured.MaximumInfluencesPerVertex,
+                    report);
+                RequireMeasurement(
+                    ledger,
+                    "measured_skinned_mesh_renderers",
+                    measured.Lod0SkinnedRendererCount,
+                    report);
+            }
+
+            if (catalog != null && IsVegetation(catalog))
+            {
+                RequireMeasurement(
+                    ledger,
+                    "alpha_tested_material_count",
+                    measured.AlphaTestedMaterialCount,
+                    report);
+                string finalRepresentation = Normalize(
+                    ledger.Get("final_distance_representation"));
+                if (string.IsNullOrEmpty(finalRepresentation) ||
+                    finalRepresentation == "na" || finalRepresentation == "none")
+                {
+                    report.AddError("Vegetation provenance records require the reviewed final-distance representation.");
+                }
             }
         }
 
@@ -604,6 +606,11 @@ namespace Margins
             ProductionAssetLedgerRecord record,
             ProductionAssetValidationReport report)
         {
+            foreach (string field in RequiredFinalFields)
+            {
+                RequireText(record, field, report);
+            }
+
             RequireStatus(record, "normalization_status", "complete", report);
             RequireStatus(record, "unity_import_status", "complete", report);
             RequireStatus(record, "performance_review_status", "passed", report);
@@ -647,6 +654,37 @@ namespace Margins
             }
         }
 
+        private static void RequireMeasurement(
+            ProductionAssetLedgerRecord record,
+            string field,
+            int actual,
+            ProductionAssetValidationReport report)
+        {
+            if (!record.TryGetNonNegativeInt(field, out int recorded))
+            {
+                report.AddError($"Strict production validation requires a non-negative ledger value for '{field}'.");
+            }
+            else if (recorded != actual)
+            {
+                report.AddError($"Ledger measurement '{field}' is {recorded}, but Unity measured {actual}.");
+            }
+        }
+
+        private static void RequireText(
+            ProductionAssetLedgerRecord record,
+            string field,
+            ProductionAssetValidationReport report)
+        {
+            if (!record.HasColumn(field))
+            {
+                report.AddError($"The provenance ledger schema is missing required field '{field}'.");
+            }
+            else if (string.IsNullOrWhiteSpace(record.Get(field)))
+            {
+                report.AddError($"Provenance ledger row {record.RowNumber} requires '{field}' (use 'n/a' when applicable).");
+            }
+        }
+
         private static void RequireStatus(
             ProductionAssetLedgerRecord record,
             string field,
@@ -655,23 +693,207 @@ namespace Margins
         {
             if (!Is(record.Get(field), required))
             {
-                report.AddError($"Ledger field '{field}' must be '{required}' for technical validation.");
+                report.AddError($"Ledger field '{field}' must be '{required}' for production readiness.");
             }
         }
 
-        private static void RequireNonNegativeInt(
-            ProductionAssetLedgerRecord record,
-            string field,
+        private static void ValidateTransformsAndDimensions(
+            ProductionAssetMetadata metadata,
             ProductionAssetValidationReport report)
         {
-            if (!record.HasColumn(field))
+            Transform root = metadata.transform;
+            if (!Approximately(root.localScale, Vector3.one))
             {
-                report.AddError($"The ledger schema is missing required field '{field}'.");
+                report.AddError("The production prefab root must use unit local scale; exporter-compensation scale is not accepted.");
             }
-            else if (!record.TryGetNonNegativeInt(field, out _))
+
+            if (!Approximately(root.localRotation, Quaternion.identity))
             {
-                report.AddError($"Ledger field '{field}' requires a non-negative integer.");
+                report.AddError("The production prefab root must use identity local rotation (+Y up, +Z forward).");
             }
+
+            Transform visual = metadata.VisualRoot;
+            if (visual == null || visual.parent != root)
+            {
+                report.AddError("ProductionAssetMetadata requires a direct Visual child.");
+                return;
+            }
+
+            if (!string.Equals(visual.name, "Visual", StringComparison.Ordinal) ||
+                !Approximately(visual.localPosition, Vector3.zero) ||
+                !Approximately(visual.localRotation, Quaternion.identity) ||
+                !Approximately(visual.localScale, Vector3.one))
+            {
+                report.AddError("The direct Visual child must be named 'Visual' with zero position, identity rotation, and unit scale.");
+            }
+
+            Vector3 expected = metadata.ExpectedDimensionsMeters;
+            if (!PositiveFinite(expected.x) || !PositiveFinite(expected.y) ||
+                !PositiveFinite(expected.z) ||
+                !PositiveFinite(metadata.DimensionToleranceMeters))
+            {
+                report.AddError("Expected meter dimensions and dimension tolerance must be positive finite values.");
+            }
+            else if (!TryMeasureLocalBounds(metadata, out Bounds bounds))
+            {
+                report.AddError("The production prefab contains no measurable render mesh.");
+            }
+            else
+            {
+                Vector3 difference = bounds.size - expected;
+                if (Mathf.Abs(difference.x) > metadata.DimensionToleranceMeters ||
+                    Mathf.Abs(difference.y) > metadata.DimensionToleranceMeters ||
+                    Mathf.Abs(difference.z) > metadata.DimensionToleranceMeters)
+                {
+                    report.AddError($"Measured size {bounds.size:F4} m does not match expected size {expected:F4} m within {metadata.DimensionToleranceMeters:F4} m.");
+                }
+            }
+
+            foreach (Transform descendant in
+                     visual.GetComponentsInChildren<Transform>(true))
+            {
+                if (!Approximately(descendant.localScale, Vector3.one))
+                {
+                    report.AddError($"Visual transform '{descendant.name}' must use unit local scale after Blender normalization.");
+                }
+
+                if (descendant.parent == visual &&
+                    !Approximately(descendant.localRotation, Quaternion.identity))
+                {
+                    report.AddError($"Direct visual child '{descendant.name}' must use identity local rotation; axis-conversion rotations must be fixed during normalization.");
+                }
+            }
+        }
+
+        private static void MeasureMeshes(
+            ProductionAssetMetadata metadata,
+            ProductionAssetValidationReport report)
+        {
+            Transform visual = metadata.VisualRoot;
+            if (visual == null)
+            {
+                return;
+            }
+
+            HashSet<Renderer> assigned = new();
+            foreach (LODGroup group in visual.GetComponentsInChildren<LODGroup>(true))
+            {
+                LOD[] lods = group.GetLODs();
+                for (int level = 0; level < lods.Length; level++)
+                {
+                    foreach (Renderer renderer in lods[level].renderers)
+                    {
+                        if (renderer != null && assigned.Add(renderer))
+                        {
+                            AddRendererMeasurement(level, renderer, report);
+                        }
+                    }
+                }
+            }
+
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                if (assigned.Add(renderer))
+                {
+                    AddRendererMeasurement(0, renderer, report);
+                }
+            }
+        }
+
+        private static void AddRendererMeasurement(
+            int level,
+            Renderer renderer,
+            ProductionAssetValidationReport report)
+        {
+            if (level > 2)
+            {
+                return;
+            }
+
+            Mesh mesh = renderer switch
+            {
+                MeshRenderer => renderer.GetComponent<MeshFilter>()?.sharedMesh,
+                SkinnedMeshRenderer skinned => skinned.sharedMesh,
+                _ => null
+            };
+            if (mesh == null)
+            {
+                report.AddError($"Renderer '{renderer.name}' has no mesh to validate.");
+                return;
+            }
+
+            ProductionAssetMeasurements measured = report.Measurements;
+            measured.AddTriangles(level, TriangleCount(mesh));
+            if (level != 0)
+            {
+                return;
+            }
+
+            Material[] materials = renderer.sharedMaterials;
+            measured.Lod0MaterialSlots += materials.Length;
+            foreach (Material material in materials)
+            {
+                if (material == null)
+                {
+                    report.AddError($"Renderer '{renderer.name}' has an unassigned material slot.");
+                    continue;
+                }
+
+                if (measured.Lod0Materials.Add(material) && IsAlphaTested(material))
+                {
+                    measured.AlphaTestedMaterialCount++;
+                }
+
+                foreach (string propertyName in material.GetTexturePropertyNames())
+                {
+                    Texture texture = material.GetTexture(propertyName);
+                    if (texture != null && measured.Lod0Textures.Add(texture))
+                    {
+                        measured.MaximumTextureDimension = Mathf.Max(
+                            measured.MaximumTextureDimension,
+                            Mathf.Max(texture.width, texture.height));
+                    }
+                }
+            }
+
+            if (renderer is not SkinnedMeshRenderer skinnedRenderer)
+            {
+                return;
+            }
+
+            measured.Lod0SkinnedRendererCount++;
+            foreach (Transform bone in skinnedRenderer.bones)
+            {
+                if (bone != null)
+                {
+                    measured.Lod0Bones.Add(bone);
+                }
+            }
+
+            using var influences = mesh.GetBonesPerVertex();
+            foreach (byte influenceCount in influences)
+            {
+                measured.MaximumInfluencesPerVertex = Mathf.Max(
+                    measured.MaximumInfluencesPerVertex,
+                    influenceCount);
+            }
+        }
+
+        private static Collider[] MeasureColliders(
+            ProductionAssetMetadata metadata,
+            ProductionAssetMeasurements measured)
+        {
+            Collider[] colliders = metadata.GetComponentsInChildren<Collider>(true);
+            foreach (Collider collider in colliders)
+            {
+                if (collider is MeshCollider meshCollider)
+                {
+                    measured.CollisionTriangles +=
+                        TriangleCount(meshCollider.sharedMesh);
+                }
+            }
+
+            return colliders;
         }
 
         private static bool TryMeasureLocalBounds(
@@ -680,40 +902,36 @@ namespace Margins
         {
             bounds = default;
             bool found = false;
-            Matrix4x4 worldToRoot = metadata.transform.worldToLocalMatrix;
             Transform visual = metadata.VisualRoot;
             if (visual == null)
             {
                 return false;
             }
 
+            Matrix4x4 worldToRoot = metadata.transform.worldToLocalMatrix;
             foreach (MeshFilter filter in visual.GetComponentsInChildren<MeshFilter>(true))
             {
-                if (filter.sharedMesh == null)
+                if (filter.sharedMesh != null)
                 {
-                    continue;
+                    Encapsulate(
+                        filter.sharedMesh.bounds,
+                        worldToRoot * filter.transform.localToWorldMatrix,
+                        ref bounds,
+                        ref found);
                 }
-
-                Encapsulate(
-                    filter.sharedMesh.bounds,
-                    worldToRoot * filter.transform.localToWorldMatrix,
-                    ref bounds,
-                    ref found);
             }
 
             foreach (SkinnedMeshRenderer renderer in
                      visual.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (renderer.sharedMesh == null)
+                if (renderer.sharedMesh != null)
                 {
-                    continue;
+                    Encapsulate(
+                        renderer.localBounds,
+                        worldToRoot * renderer.transform.localToWorldMatrix,
+                        ref bounds,
+                        ref found);
                 }
-
-                Encapsulate(
-                    renderer.localBounds,
-                    worldToRoot * renderer.transform.localToWorldMatrix,
-                    ref bounds,
-                    ref found);
             }
 
             return found;
@@ -751,6 +969,39 @@ namespace Margins
             }
         }
 
+        private static bool IsVegetation(ProductionAssetLedgerRecord record)
+        {
+            return Is(record.Get("technical_class"), "vegetation") ||
+                   Normalize(record.Get("asset_bin")).Contains("vegetation");
+        }
+
+        private static bool IsCharacter(ProductionAssetLedgerRecord record)
+        {
+            return Is(record.Get("technical_class"), "character") ||
+                   Normalize(record.Get("asset_bin")).Contains("character");
+        }
+
+        private static bool TryGetPositiveInt(
+            ProductionAssetLedgerRecord record,
+            string field,
+            out int value)
+        {
+            return record.TryGetNonNegativeInt(field, out value) && value > 0;
+        }
+
+        private static bool TryGetPositiveFloat(
+            ProductionAssetLedgerRecord record,
+            string field,
+            out float value)
+        {
+            return float.TryParse(
+                       record.Get(field),
+                       NumberStyles.Float,
+                       CultureInfo.InvariantCulture,
+                       out value) &&
+                   value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
         private static bool IsPrimitive(Collider collider)
         {
             return collider is BoxCollider || collider is SphereCollider ||
@@ -774,6 +1025,13 @@ namespace Margins
             }
 
             return triangles;
+        }
+
+        private static bool IsAlphaTested(Material material)
+        {
+            return material.IsKeywordEnabled("_ALPHATEST_ON") ||
+                   (material.HasProperty("_AlphaClip") &&
+                    material.GetFloat("_AlphaClip") > 0.5f);
         }
 
         private static bool Is(string value, string expected)
@@ -804,128 +1062,6 @@ namespace Margins
         private static bool Approximately(Quaternion left, Quaternion right)
         {
             return Quaternion.Angle(left, right) <= 0.01f;
-        }
-
-        private static bool TryReadPositiveLeadingInt(string value, out int result)
-        {
-            result = 0;
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            int length = 0;
-            while (length < value.Length && char.IsDigit(value[length]))
-            {
-                length++;
-            }
-
-            return length > 0 && int.TryParse(value.Substring(0, length), out result) &&
-                   result > 0;
-        }
-
-        private sealed class MeshMeasurements
-        {
-            private readonly int[] triangles = new int[3];
-            private readonly HashSet<Transform> lod0Bones = new();
-            private readonly HashSet<Texture> lod0Textures = new();
-            private readonly HashSet<Material> lod0Materials = new();
-
-            public int Lod0MaterialSlots { get; private set; }
-            public int Lod0SkinnedRendererCount { get; private set; }
-            public int Lod0BoneCount => lod0Bones.Count;
-            public int MaximumInfluencesPerVertex { get; private set; }
-            public int MaximumTextureDimension { get; private set; }
-            public int AlphaTestedMaterialCount { get; private set; }
-            public int HighestLodLevel { get; private set; }
-
-            public int TrianglesFor(int level)
-            {
-                return level >= 0 && level < triangles.Length ? triangles[level] : 0;
-            }
-
-            public void Add(
-                int level,
-                Renderer renderer,
-                ProductionAssetValidationReport report)
-            {
-                if (level > 2)
-                {
-                    return;
-                }
-
-                Mesh mesh = renderer switch
-                {
-                    MeshRenderer => renderer.GetComponent<MeshFilter>()?.sharedMesh,
-                    SkinnedMeshRenderer skinned => skinned.sharedMesh,
-                    _ => null
-                };
-                if (mesh == null)
-                {
-                    report.AddError($"Renderer '{renderer.name}' has no mesh to validate.");
-                    return;
-                }
-
-                triangles[level] += TriangleCount(mesh);
-                HighestLodLevel = Mathf.Max(HighestLodLevel, level);
-                if (level == 0)
-                {
-                    Material[] materials = renderer.sharedMaterials;
-                    Lod0MaterialSlots += materials.Length;
-                    for (int index = 0; index < materials.Length; index++)
-                    {
-                        if (materials[index] == null)
-                        {
-                            report.AddError($"Renderer '{renderer.name}' has an unassigned material slot.");
-                            continue;
-                        }
-
-                        if (lod0Materials.Add(materials[index]) &&
-                            IsAlphaTested(materials[index]))
-                        {
-                            AlphaTestedMaterialCount++;
-                        }
-
-                        foreach (string propertyName in materials[index].GetTexturePropertyNames())
-                        {
-                            Texture texture = materials[index].GetTexture(propertyName);
-                            if (texture != null && lod0Textures.Add(texture))
-                            {
-                                MaximumTextureDimension = Mathf.Max(
-                                    MaximumTextureDimension,
-                                    Mathf.Max(texture.width, texture.height));
-                            }
-                        }
-                    }
-
-                    if (renderer is SkinnedMeshRenderer skinnedRenderer)
-                    {
-                        Lod0SkinnedRendererCount++;
-                        foreach (Transform bone in skinnedRenderer.bones)
-                        {
-                            if (bone != null)
-                            {
-                                lod0Bones.Add(bone);
-                            }
-                        }
-
-                        using var influences = mesh.GetBonesPerVertex();
-                        foreach (byte influenceCount in influences)
-                        {
-                            MaximumInfluencesPerVertex = Mathf.Max(
-                                MaximumInfluencesPerVertex,
-                                influenceCount);
-                        }
-                    }
-                }
-            }
-
-            private static bool IsAlphaTested(Material material)
-            {
-                return material.IsKeywordEnabled("_ALPHATEST_ON") ||
-                       (material.HasProperty("_AlphaClip") &&
-                        material.GetFloat("_AlphaClip") > 0.5f);
-            }
         }
     }
 }
