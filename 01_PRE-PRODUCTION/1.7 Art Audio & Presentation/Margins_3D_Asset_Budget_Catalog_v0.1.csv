@@ -20,10 +20,11 @@ AOF_002,Storefront window bay module,Architectural Openings & Finish,Storefront 
 BIN_03,[category reference],"Site, Lot & Hardscape",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_05,[category reference],Business Fixtures & Furniture,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_06,[category reference],"Operational Tools, Handling & Support",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_07,[category reference],"Products, Supplies & Consumables",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_08,[category reference],"Signage, Branding & Advertising Hardware",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_09,[category reference],Characters & Wearables,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_10,[category reference],Vehicles & Mobile Equipment,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_11,[category reference],Vegetation & Environmental Dressing,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
-BIN_12,[category reference],"Property Development, Lifestyle & Prestige",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_06,[category reference],Business Equipment & Machines,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_07,[category reference],"Operational Tools, Handling & Support",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_08,[category reference],"Products, Supplies & Consumables",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_09,[category reference],"Signage, Branding & Advertising Hardware",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_10,[category reference],Characters & Wearables,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_11,[category reference],Vehicles & Mobile Equipment,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_12,[category reference],Vegetation & Environmental Dressing,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+BIN_13,[category reference],"Property Development, Lifestyle & Prestige",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
