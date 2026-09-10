@@ -1,22 +1,38 @@
 asset_id,asset_name,asset_bin,subcategory,business_use,procedural_category,capabilities,technical_class,raw_source_tris,lod0_ceiling_tris,lod0_measured_tris,lod1_ceiling_tris,lod1_measured_tris,lod2_ceiling_tris,lod2_measured_tris,collider_type,collision_ceiling_tris,collision_measured_tris,material_slots_max,material_slots_measured,texture_max_px,expected_visible_instances,closest_view_m,interaction_level,animation_requirement,source_pipeline,source_or_license,ai_involvement,normalization_status,production_status,notes
-STR_001,Square structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_002,Rectangular structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_003,Round structural column,Structural Architecture,Structural Supports,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,1500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_006,Structural roof truss,Structural Architecture,Roof Structure,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_007,Structural cross-brace module,Structural Architecture,Structural Supports,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_008,Exterior stair flight module,Structural Architecture,Exterior Access Structure,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_009,Exterior stair landing / platform module,Structural Architecture,Exterior Access Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_010,Exterior fixed access ladder,Structural Architecture,Exterior Access Structure,Shared,,,,,2500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_011,Balcony structural support frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,3500,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_013,Wall-attached commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_014,Freestanding commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_015,Loading / service canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,8000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-STR_016,Rooftop equipment support frame,Structural Architecture,Rooftop Structure,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,None,,,,,Planned,
-AOF_001,Commercial glass entrance door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,,,,,Planned,
-AOF_002,Storefront window bay module,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+STR_001,Square structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_002,Rectangular structural column,Structural Architecture,Structural Supports,Shared,,,,,1000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_003,Round structural column,Structural Architecture,Structural Supports,Shared,,,,,2500,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_004,Exposed structural beam / girder,Structural Architecture,Structural Supports,Shared,,,,,1500,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_005,Open-web steel joist,Structural Architecture,Roof Structure,Shared,,,,,5000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_006,Structural roof truss,Structural Architecture,Roof Structure,Shared,,,,,4000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_007,Structural cross-brace module,Structural Architecture,Structural Supports,Shared,,,,,3000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_008,Exterior stair flight module,Structural Architecture,Exterior Access Structure,Shared,,,,,3000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_009,Exterior stair landing / platform module,Structural Architecture,Exterior Access Structure,Shared,,,,,5000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_010,Exterior fixed access ladder,Structural Architecture,Exterior Access Structure,Shared,,,,,2500,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_011,Balcony structural support frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,3500,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_012,Covered walkway / arcade structural frame,Structural Architecture,Balcony & Walkway Structure,Shared,,,,,5000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_013,Wall-attached commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,6000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_014,Freestanding commercial canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,5000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_015,Loading / service canopy structural frame,Structural Architecture,Canopy Structure,Shared,,,,,8000,,,,,,,,,,,,,,,None,,,,,Planned,
+STR_016,Rooftop equipment support frame,Structural Architecture,Rooftop Structure,Shared,,,,,6000,,,,,,,,,,,,,,,None,,,,,Planned,
+AOF_001,Commercial glass entrance door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_002,Storefront window bay module,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,4 ft / 6 ft / 8 ft authored family.
+AOF_003,Rear / service commercial door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_004,Interior commercial door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_005,Double commercial glass entrance door,Architectural Openings & Finish,Doors & Entrances,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_006,General commercial window module,Architectural Openings & Finish,Windows & Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,Supports non-storefront and repeated upper-floor use.
+AOF_007,Storefront mullion / transom framing kit,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,Repeatable storefront framing components.
+AOF_008,Tall storefront / curtain-wall extension module,Architectural Openings & Finish,Storefront Glazing,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,For mixed-use and tower ground-floor glazing contexts.
+AOF_009,Interior baseboard / door casing / trim kit,Architectural Openings & Finish,Interior Trim,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_010,Exterior corner trim / pilaster / cap kit,Architectural Openings & Finish,Exterior Trim,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_011,Parapet coping / cap module,Architectural Openings & Finish,Roofline Finish,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,Repeatable roofline finish module.
+AOF_012,Commercial awning body / finish module,Architectural Openings & Finish,Awnings & Facade Finish,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,Structural support frame is cataloged separately in Bin 1.
+AOF_013,Suspended ceiling grid / acoustic tile kit,Architectural Openings & Finish,Ceiling Systems,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,2 ft x 4 ft family with 2 ft x 2 ft half-module support.
+AOF_014,Rectangular fluorescent troffer fixture,Architectural Openings & Finish,Ceiling Lighting,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_015,Recessed ceiling light,Architectural Openings & Finish,Ceiling Lighting,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_016,Electrical outlet / switch / thermostat kit,Architectural Openings & Finish,Architectural Devices,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,
+AOF_017,Commercial guardrail / handrail module,Architectural Openings & Finish,Railings & Guards,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,"Repeatable railing family for stairs, landings, balconies, and walkways."
+AOF_018,Older Main Street cornice / facade trim module,Architectural Openings & Finish,Exterior Trim,Shared,,,,,,,,,,,,,,,,,,,,,,,,,Planned,Authored decorative module for older mixed-use facade variation.
 BIN_03,[category reference],"Site, Lot & Hardscape",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_04,[category reference],City & Streetscape Infrastructure,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_05,[category reference],Business Fixtures & Furniture,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
