@@ -224,6 +224,11 @@ namespace Margins
             return true;
         }
 
+        public void ResolveCarriedObjectsForSessionExit()
+        {
+            persistenceMapper?.ResolveCarriedObjectsForSessionExit();
+        }
+
         public bool TrySave()
         {
             return TrySaveToPath(SavePath);

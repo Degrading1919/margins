@@ -103,6 +103,10 @@ namespace Margins.Tests.PlayMode
                 context.Cleaning.NeedsCleaning ||
                 context.Cleaning.TryCreateMess(),
                 Is.True);
+            Assert.That(context.CleaningTool.StorageTool.TryPrimary(out error), Is.True, error);
+            Assert.That(
+                Object.FindAnyObjectByType<PlayerCarryableToolController>()
+                    .TrySetDownHeldTool(out error), Is.True, error);
             Assert.That(context.CleaningTool.TryPrimary(out error), Is.True, error);
             while (!context.Cleaning.IsComplete)
             {

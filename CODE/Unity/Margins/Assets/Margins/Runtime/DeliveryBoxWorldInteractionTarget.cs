@@ -13,18 +13,22 @@ namespace Margins
         [SerializeField] private string stableTargetId;
         [SerializeField] private DeliveryBoxComponent deliveryBox;
         [SerializeField] private StockingController stocking;
+        [SerializeField] private PlayerCarryableToolController toolCarrier;
         [SerializeField] private Transform carryPoint;
         [SerializeField] private Transform playerBody;
         [SerializeField, Min(0.25f)] private float setDownDistance = 1.25f;
         [SerializeField] private float setDownHeight = 0.48f;
 
         public string StableTargetId => stableTargetId;
+        public bool IsCarriedByPlayer => deliveryBox != null && deliveryBox.IsCarried &&
+            carryPoint != null && deliveryBox.transform.IsChildOf(carryPoint);
         public FirstStoreWorldInteractionPriority Priority =>
             FirstStoreWorldInteractionPriority.Delivery;
         public bool IsAvailable =>
             FirstStoreIdentifier.IsValid(stableTargetId) &&
             deliveryBox != null &&
             deliveryBox.IsInitialized &&
+            !deliveryBox.IsRecycled &&
             stocking != null &&
             carryPoint != null &&
             playerBody != null;
@@ -41,6 +45,10 @@ namespace Margins
                         "unavailable");
                 }
 
+                if (deliveryBox.IsOpen && deliveryBox.IsEmpty)
+                {
+                    return new FirstStoreWorldInteractionPrompt("E", "Recycle empty box");
+                }
                 if (deliveryBox.IsCarried && deliveryBox.IsSealed)
                 {
                     return new FirstStoreWorldInteractionPrompt(
@@ -89,6 +97,11 @@ namespace Margins
 
             if (!deliveryBox.IsCarried)
             {
+                if (toolCarrier != null && toolCarrier.HasHeldTool)
+                {
+                    error = "Return the mop or set down the bucket first.";
+                    return false;
+                }
                 if (stocking.HasHeldUnit)
                 {
                     error = stocking.PlayerHasHeldUnit
@@ -96,8 +109,13 @@ namespace Margins
                         : "A team member is moving stock. Try again in a moment.";
                     return false;
                 }
-                return deliveryBox.TryPickUp(carryPoint, out error);
+                return deliveryBox.IsOpen && deliveryBox.IsEmpty
+                    ? deliveryBox.TryRecycle(out error)
+                    : deliveryBox.TryPickUp(carryPoint, out error);
             }
+
+            if (deliveryBox.IsOpen && deliveryBox.IsEmpty)
+                return deliveryBox.TryRecycle(out error);
 
             if (deliveryBox.IsSealed)
             {

@@ -27,6 +27,21 @@ namespace Margins
         public bool IsOpen => Container != null && Container.IsOpen;
         public bool IsSealed => Container != null && !Container.IsOpen;
         public bool IsCarried { get; private set; }
+        public bool IsRecycled => Container?.IsRecycled == true;
+        public bool IsEmpty => Container?.IsEmpty == true;
+
+        public bool TryRecycle(out string error)
+        {
+            if (Container == null)
+            {
+                error = "The delivery box is unavailable.";
+                return false;
+            }
+            if (!Container.TryRecycle(out error)) return false;
+            ResetCarriedStateAfterRestore();
+            gameObject.SetActive(false);
+            return true;
+        }
 
         private void Start()
         {
@@ -39,7 +54,7 @@ namespace Margins
 
         public bool TryPickUp(Transform carryPoint, out string error)
         {
-            if (!IsInitialized || carryPoint == null)
+            if (!IsInitialized || IsRecycled || carryPoint == null)
             {
                 error = "The delivery box cannot be carried right now.";
                 return false;
@@ -208,6 +223,11 @@ namespace Margins
             }
 
             result = Container.TryOpen();
+            if (result == DeliveryContainerOpenResult.Recycled)
+            {
+                error = "This delivery box has been recycled.";
+                return false;
+            }
             error = null;
             return true;
         }
@@ -233,6 +253,7 @@ namespace Margins
             }
 
             Container = replacement;
+            gameObject.SetActive(true);
             error = null;
             return true;
         }
@@ -354,6 +375,7 @@ namespace Margins
             }
 
             Container = restored;
+            gameObject.SetActive(!IsRecycled);
             return true;
         }
 

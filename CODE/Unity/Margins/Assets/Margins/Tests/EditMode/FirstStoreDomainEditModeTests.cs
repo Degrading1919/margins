@@ -7,6 +7,40 @@ namespace Margins.Tests
     public sealed class FirstStoreDomainEditModeTests
     {
         [Test]
+        public void RecycledDeliveryPreservesInventoryAndRoundTripsWithoutAcceptingInvalidState()
+        {
+            FirstStoreInventory inventory = CreateInventory();
+            Assert.That(DeliveryContainer.TryCreate(inventory, "box", "loc-box", false,
+                out DeliveryContainer box, out string error), Is.True, error);
+            Assert.That(box.TryRecycle(out _), Is.False);
+            box.TryOpen();
+            Assert.That(box.TryRecycle(out _), Is.False, "Cannot destroy remaining merchandise.");
+            Assert.That(box.TryRemoveTo("prod-cola", "loc-loose", 10, out _, out _), Is.True);
+            FirstStoreInventorySnapshot before = inventory.CreateSnapshot();
+            Assert.That(box.TryRecycle(out error), Is.True, error);
+            Assert.That(inventory.CreateSnapshot(), Is.EqualTo(before));
+            Assert.That(box.TryRecycle(out _), Is.False);
+            Assert.That(box.TryOpen(), Is.EqualTo(DeliveryContainerOpenResult.Recycled));
+            Assert.That(box.TryRemoveTo("prod-cola", "loc-loose", 1,
+                out DeliveryContainerFailure failure, out _), Is.False);
+            Assert.That(failure, Is.EqualTo(DeliveryContainerFailure.Recycled));
+            var snapshot = UnityEngine.JsonUtility.FromJson<DeliveryContainerSnapshot>(
+                UnityEngine.JsonUtility.ToJson(box.CreateSnapshot()));
+            Assert.That(DeliveryContainer.TryRestore(inventory, snapshot, out var restored, out error),
+                Is.True, error);
+            Assert.That(restored.IsRecycled, Is.True);
+            snapshot.isOpen = false;
+            Assert.That(DeliveryContainer.TryRestore(inventory, snapshot, out _, out _), Is.False);
+            snapshot.isOpen = true;
+            Assert.That(inventory.TryTransfer("prod-cola", "loc-loose", "loc-box", 1).IsSuccess, Is.True);
+            Assert.That(DeliveryContainer.TryRestore(inventory, snapshot, out _, out _), Is.False);
+            var legacy = UnityEngine.JsonUtility.FromJson<DeliveryContainerSnapshot>(
+                "{\"containerId\":\"box\",\"inventoryLocationId\":\"loc-box\",\"isOpen\":true}");
+            Assert.That(DeliveryContainer.TryRestore(inventory, legacy, out restored, out error), Is.True, error);
+            Assert.That(restored.IsRecycled, Is.False);
+        }
+
+        [Test]
         public void PreviewPlaceRespectsRotatedFootprintAndMatchesCommitValidation()
         {
             FixtureLayout layout = new(4, 4);

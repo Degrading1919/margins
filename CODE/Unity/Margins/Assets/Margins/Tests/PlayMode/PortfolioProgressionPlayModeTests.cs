@@ -390,6 +390,9 @@ namespace Margins.Tests
                 ConvenienceStoreProcurement.ChipsProductId);
             RemoveAllFromDelivery(delivery, inventory, cola, chips);
 
+            Assert.That(delivery.TryRecycle(out string recycleError), Is.True, recycleError);
+            Assert.That(delivery.gameObject.activeSelf, Is.False);
+
             int inventoryBeforeOrder = TotalInventory(
                 inventory,
                 Object.FindAnyObjectByType<CheckoutStationComponent>());
@@ -421,6 +424,8 @@ namespace Margins.Tests
             PurchaseOrderSnapshot delivered = portfolio.Progression.PurchaseOrders.Single();
             Assert.That(delivered.status, Is.EqualTo(PurchaseOrderStatus.Delivered));
             Assert.That(delivery.IsSealed, Is.True);
+            Assert.That(delivery.IsRecycled, Is.False);
+            Assert.That(delivery.gameObject.activeSelf, Is.True);
             Assert.That(
                 inventory.Inventory.GetQuantity(
                     delivery.InventoryLocationId,

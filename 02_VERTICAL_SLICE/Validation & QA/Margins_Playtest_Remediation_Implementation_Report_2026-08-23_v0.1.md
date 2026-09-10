@@ -53,10 +53,10 @@ No parallel inventory, transaction, customer, operating-state, portfolio, overni
 
 ## Verification evidence
 
-- Unity EditMode: **172 passed, 0 failed, 0 skipped**.
-- Unity PlayMode: **84 passed, 0 failed, 0 skipped**.
+- Unity EditMode: **173 passed, 0 failed, 0 skipped**.
+- Unity PlayMode: **86 passed, 0 failed, 0 skipped**.
 - Workflow regressions cover title/setup state and player-facing copy, clean customized New Business initialization, guarded Return to Title, startup-profile save/load, explicit version `4` to `5` portfolio and disk migration, opening without shelved stock, zero-stock close and End Day exact-once progression, visible exact-item checkout, interaction lock, scan/payment/undo/cancel cleanup, stale-checkout repair, legitimate-customer closing drain and service, customer/front versus employee/back checkout routing, and disk round-trip continuity.
-- Windows player: Unity `StandaloneWindows64` build succeeded using the enabled project scenes. Build report size was `105,217,856` bytes; the generated executable PE machine is `0x8664` (AMD64).
+- Windows player: Unity `StandaloneWindows64` build succeeded using the enabled project scenes. Build report size was `105,222,816` bytes; the generated executable PE machine is `0x8664` (AMD64).
 - `git diff --check`: clean.
 
 ## Remaining owner-playtest items
@@ -64,8 +64,7 @@ No parallel inventory, transaction, customer, operating-state, portfolio, overni
 The following findings are not silently closed by this implementation:
 
 - A fresh owner playtest must still complete **Launch → New Business → setup → first day → checkout → close store → End Day/review → save → title → load → continue**. Automated state correctness is verified; human usability acceptance is not.
-- Wave D delivery cleanup remains: discoverable sealed-box opening while carried, an intentional empty-box discard/recycle/flatten outcome, and removal or meaningful repurposing of the receiving-station artifact.
-- Wave D mop/bucket cleanup remains: bucket-first carry, set-down/take-mop/use/return lifecycle, and removal of arbitrary mop placement as the completion path.
+- Wave D delivery and bucket/mop handling now require owner playtesting of the implementation described below.
 - Exact difficulty design and gameplay modifiers remain unresolved. No player-facing difficulty choice is presented while it has no gameplay effect; the existing default purpose identifier is retained only for compatibility.
 - The exact logo catalog/final logo asset pipeline and the next title/menu art pass remain unresolved.
 - Full procedural-city generation remains outside current direction under FD-005. The saved seed has no city-generation effect.
@@ -75,7 +74,7 @@ The following findings are not silently closed by this implementation:
 
 ## Next acceptance action
 
-Complete the bounded Wave D object-lifecycle cleanup and replay the full first-business journey before fresh owner acceptance. Delivery and cleaning lifecycle work is required remediation, not deferred scope. Do not reopen the city, difficulty, map, or final-art decisions by implication.
+Owner-playtest the Wave D object lifecycles and replay the full first-business journey before fresh owner acceptance. Do not reopen the city, difficulty, map, or final-art decisions by implication.
 
 ## September 9, 2026 executable follow-up
 
@@ -100,4 +99,29 @@ The Windows x64 player was built from PR head `3fce2ef` and launched through the
 
 Mouse-driven setup and camera input reached the running player, but repeated keyboard input through the computer-use tool, including movement and Escape after explicit activation, produced no visible response. The cause has not been established as a game defect or an automation limitation. A physical-key check was requested from the owner.
 
-The agent therefore did **not** complete receiving/stocking, checkout, close, End Day, save/title/load continuation, or a full fresh-start replay in the executable. No hands-on acceptance claim is made for those paths. Wave D delivery/empty-box/receiving-station and bucket/mop remediation remains unfinished, and PR #42 is **not yet ready for owner acceptance** under the requested gate.
+The agent therefore did **not** complete receiving/stocking, checkout, close, End Day, save/title/load continuation, or a full fresh-start replay in that executable pass. No hands-on acceptance claim is made for those paths. Wave D was unfinished at that point; the subsequent bounded implementation is recorded below.
+
+## Wave D object-lifecycle follow-up — September 10, 2026
+
+### Changes and authority
+
+- A carried delivery has a persistent contextual **E Open carried delivery** action and **Q Set down** guidance, independent of the aimed-at object. Held boxes also prevent conflicting tool pickup and Build Mode entry.
+- Open, empty boxes expose **E Recycle empty box**. `DeliveryContainer` owns recycling and rejects sealed, nonempty, repeated, and invalid restored recycling states. Recycling does not destroy inventory or award money.
+- The existing `DeliveryContainerSnapshot` stores the additive `isRecycled` flag. Older saves default it to false. The referenced scene component remains available to persistence and procurement while its physical presentation is inactive; a later procurement delivery reactivates it as a sealed box through the existing materialization path.
+- Removed the obsolete indoor Receiving sign, rail, and floor marking, and updated delivery guidance. The exterior delivery-drop fixture remains because existing stock-clerk work uses it; its inventory, fixture, and employee-work authority is preserved.
+- The bucket and mop reuse `CarryableToolComponent` and `PlayerCarryableToolController`. Carrying the bucket carries its stored mop but does not grant cleaning capability. Place the bucket, target the mop to take it, clean through `CleaningTaskComponent`, then return near the bucket and press Q (or interact with the bucket) to put the mop away. Q never places the mop arbitrarily in the world.
+- Held tools block save/load with actionable instructions. Loose kit positioning is transient staging: successful restore puts the paired kit back in storage. Confirmed Return to Title resolves held delivery boxes and returns the kit to storage so title-menu New Business/Load cannot be stranded behind a held-object guard; the initial unsaved-progress confirmation leaves carried state intact. Generated-location transitions move the kit root and reject travel while either part is carried.
+- No new managers, inventory ledgers, cleaning-progress owners, procurement flows, or business-operation states were added. No difficulty, map, city, art, or animation scope was changed.
+
+### Automated verification
+
+- Full EditMode suite: **173 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/wave-d-editmode-final.xml`).
+- Full PlayMode suite: **86 passed, 0 failed, 0 skipped** (`CODE/Unity/Margins/TestResults/wave-d-playmode-final.xml`).
+- Focused coverage exercises aim-independent carried delivery actions; recycling/JSON restore without stock loss; invalid recycling rejection and legacy saves; later procurement reactivation; bucket-first cleaning, mop-return distance and kit restore; generated-location cleaning; and guarded title/New Business/load continuity while carrying objects.
+- Windows `StandaloneWindows64` build: **Success**, **105,222,816 bytes**, PE machine **0x8664 (AMD64)** (`CODE/Unity/Margins/Logs/wave-d-windows-build.log`).
+- Test results and build logs are local generated evidence. No executable launch or manual control was performed.
+- `git diff --check`: clean.
+
+### Owner acceptance
+
+The executable was not launched or manually controlled for this Wave D follow-up, as instructed. Owner playtesting must assess prompt discoverability, bucket/mop targeting and placement, empty-box recycling, later deliveries, and the full first-business/save/title/load journey. Automated evidence does not substitute for that acceptance.

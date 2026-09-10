@@ -411,9 +411,9 @@ namespace Margins
                 return false;
             }
 
-            if (cleaningTool.IsCarried)
+            if (cleaningTool.IsKitCarried)
             {
-                error = "Set down the cleaning tool before saving.";
+                error = "Return the mop and set down its bucket before saving.";
                 return false;
             }
             bool hasBlocker = requireDiskSaveSafeState
@@ -930,9 +930,9 @@ namespace Margins
                     "Finish the current delivery or stocking move before leaving this location.";
                 return false;
             }
-            if (cleaningTool.IsCarried)
+            if (cleaningTool.IsKitCarried)
             {
-                error = "Set down the cleaning tool before leaving this location.";
+                error = "Return the mop and set down its bucket before leaving this location.";
                 return false;
             }
             if (!portfolio.TrySynchronizeDetailedProcurement(out error))
@@ -993,9 +993,9 @@ namespace Margins
                 error = "Set down the delivery container before changing locations.";
                 return false;
             }
-            if (cleaningTool.IsCarried)
+            if (cleaningTool.IsKitCarried)
             {
-                error = "Set down the cleaning tool before changing locations.";
+                error = "Return the mop and set down its bucket before changing locations.";
                 return false;
             }
             if (!portfolio.TrySynchronizeDetailedShift(out error))
@@ -1110,9 +1110,9 @@ namespace Margins
                     "Finish the current delivery or stocking move before leaving this location.";
                 return false;
             }
-            if (cleaningTool.IsCarried)
+            if (cleaningTool.IsKitCarried)
             {
-                error = "Set down the cleaning tool before leaving this location.";
+                error = "Return the mop and set down its bucket before leaving this location.";
                 return false;
             }
             if (!portfolio.TrySynchronizeDetailedProcurement(out error))
@@ -1293,7 +1293,7 @@ namespace Margins
                 checkoutFixture.transform,
                 deliveryBox.transform,
                 cleaningTarget.transform,
-                cleaningTool.transform,
+                cleaningTool.KitRoot,
                 operatingControl.transform
             };
             targets.AddRange(stocking.AuthoredProductMappings
@@ -1413,7 +1413,7 @@ namespace Margins
             cleaningTarget.transform.SetPositionAndRotation(
                 activeBindings.CleaningPoint.position,
                 locations.ActiveBuilding.transform.rotation);
-            cleaningTool.transform.SetPositionAndRotation(
+            cleaningTool.KitRoot.SetPositionAndRotation(
                 activeBindings.ToolRestPoint.position,
                 locations.ActiveBuilding.transform.rotation);
             operatingControl.transform.SetPositionAndRotation(
@@ -1686,6 +1686,7 @@ namespace Margins
                 state.Target.localScale = state.LocalScale;
                 state.Target.gameObject.SetActive(state.ActiveSelf);
             }
+            deliveryBox.gameObject.SetActive(!deliveryBox.IsRecycled);
             Physics.SyncTransforms();
         }
 

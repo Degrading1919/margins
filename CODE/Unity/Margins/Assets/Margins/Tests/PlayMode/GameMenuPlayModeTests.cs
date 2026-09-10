@@ -842,6 +842,11 @@ namespace Margins.Tests
             PortfolioStartupProfileSnapshot savedProfile =
                 portfolio.StartupProfile;
 
+            PlayerCarryableToolController carrier =
+                Object.FindAnyObjectByType<PlayerCarryableToolController>();
+            CarryableToolComponent bucket = GameObject.Find("Mop Bucket")
+                .GetComponent<CarryableToolComponent>();
+            Assert.That(bucket.TryPrimary(out error), Is.True, error);
             MoveCheckoutFixture(new GridPosition(4, 3), 2);
             menu.Resume();
             menu.OpenMenu();
@@ -851,9 +856,12 @@ namespace Margins.Tests
             Assert.That(
                 menu.PendingReplacement,
                 Is.EqualTo(SessionReplacementAction.ReturnToTitle));
+            Assert.That(carrier.HasHeldTool, Is.True);
             StringAssert.Contains("unsaved progress", menu.StatusMessage);
             menu.ReturnToTitle();
             Assert.That(menu.HasActiveSession, Is.False);
+            Assert.That(carrier.HasHeldTool, Is.False);
+            Assert.That(bucket.HasBeenPlaced, Is.False);
             menu.RequestNewBusiness();
             Assert.That(
                 menu.Screen,
@@ -895,6 +903,10 @@ namespace Margins.Tests
             Assert.That(profile.logoSelectionId,
                 Is.EqualTo("placeholder-mark-b"));
             Assert.That(profile.seed, Is.EqualTo(741));
+            DeliveryBoxWorldInteractionTarget boxTarget =
+                Object.FindAnyObjectByType<DeliveryBoxWorldInteractionTarget>();
+            Assert.That(boxTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(boxTarget.IsCarriedByPlayer, Is.True);
             Assert.That(File.Exists(createdSavePath), Is.True);
 
             menu.OpenMenu();
@@ -902,6 +914,7 @@ namespace Margins.Tests
             Assert.That(menu.HasActiveSession, Is.True);
             menu.ReturnToTitle();
             Assert.That(menu.HasActiveSession, Is.False);
+            Assert.That(boxTarget.IsCarriedByPlayer, Is.False);
             menu.RequestLoadBusiness();
             Assert.That(menu.IsOpen, Is.False);
             Assert.That(

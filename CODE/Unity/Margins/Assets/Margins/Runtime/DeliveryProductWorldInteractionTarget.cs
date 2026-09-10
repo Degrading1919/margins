@@ -14,7 +14,7 @@ namespace Margins
         public ProductDefinition ProductDefinition => productDefinition;
         public bool AutoHoldOnTake => autoHoldOnTake;
         public FirstStoreWorldInteractionPriority Priority => FirstStoreWorldInteractionPriority.Delivery;
-        public bool IsAvailable => HasValidReference() && !deliveryBox.IsCarried;
+        public bool IsAvailable => HasValidReference() && !deliveryBox.IsRecycled && !deliveryBox.IsCarried;
         public FirstStoreWorldInteractionPrompt Prompt
         {
             get
@@ -47,7 +47,7 @@ namespace Margins
 
         public bool TryPrimary(out string error)
         {
-            if (!HasValidReference())
+            if (!HasValidReference() || deliveryBox.IsRecycled)
             {
                 error = "This delivery product is unavailable.";
                 return false;
@@ -104,7 +104,7 @@ namespace Margins
                     out string pickupError))
             {
                 error =
-                    $"{productName} was moved to the receiving table: {pickupError}";
+                    $"{productName} was set down: {pickupError}";
                 return true;
             }
 

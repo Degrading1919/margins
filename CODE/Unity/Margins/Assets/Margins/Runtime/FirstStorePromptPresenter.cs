@@ -18,7 +18,8 @@ namespace Margins
         BeginClosing,
         FinalizeClosing,
         ReviewResult,
-        Complete
+        Complete,
+        ReturnMop
     }
 
     /// <summary>
@@ -203,6 +204,9 @@ namespace Margins
                 return FirstStoreObjectiveKind.ClockIn;
             }
 
+            if (toolCarrier?.HeldTool?.StorageTool != null && cleaning.IsComplete)
+                return FirstStoreObjectiveKind.ReturnMop;
+
             if (store.IsContinuousOperation)
             {
                 return FirstStoreObjectiveKind.Complete;
@@ -286,7 +290,7 @@ namespace Margins
                 FirstStoreObjectiveKind.PlaceCheckout =>
                     "Place the checkout counter",
                 FirstStoreObjectiveKind.OpenDelivery =>
-                    "Open the delivery in Receiving",
+                    "Pick up and open the delivery outside",
                 FirstStoreObjectiveKind.TakeCola =>
                     "Take cola from the delivery",
                 FirstStoreObjectiveKind.TakeChips =>
@@ -298,7 +302,9 @@ namespace Margins
                 FirstStoreObjectiveKind.CompleteCheckout =>
                     "Serve the waiting customer",
                 FirstStoreObjectiveKind.CleanSpill =>
-                    "Pick up the mop and clean the spill",
+                    "Carry and place the bucket, then take the mop to clean",
+                FirstStoreObjectiveKind.ReturnMop =>
+                    "Return to the bucket and press Q to put the mop away",
                 FirstStoreObjectiveKind.BeginClosing =>
                     "Begin closing at the front control",
                 FirstStoreObjectiveKind.FinalizeClosing =>
@@ -344,6 +350,7 @@ namespace Margins
                         : colaShelfTarget,
                 FirstStoreObjectiveKind.CompleteCheckout => checkoutTarget,
                 FirstStoreObjectiveKind.CleanSpill => cleaningTarget,
+                FirstStoreObjectiveKind.ReturnMop => toolCarrier?.HeldTool?.StorageTool?.transform,
                 _ => null
             };
         }
@@ -596,7 +603,8 @@ namespace Margins
         {
             ProductItem held = stocking?.HeldPhysicalUnit;
             CarryableToolComponent heldTool = toolCarrier?.HeldTool;
-            if (held == null && heldTool == null)
+            bool heldDelivery = interaction.CarriedDeliveryTarget != null;
+            if (held == null && heldTool == null && !heldDelivery)
             {
                 return;
             }
@@ -606,11 +614,11 @@ namespace Margins
             DrawPanel(new Rect(panel.x, panel.y, 5f, panel.height), Amber);
             GUI.Label(
                 new Rect(panel.x + 18f, panel.y + 8f, panel.width - 36f, 24f),
-                held != null ? HeldProductName() : heldTool.DisplayName,
+                held != null ? HeldProductName() : heldDelivery ? "Delivery box" : heldTool.DisplayName,
                 bodyStyle);
             GUI.Label(
                 new Rect(panel.x + 18f, panel.y + 34f, panel.width - 36f, 20f),
-                "Q  Put down",
+                heldTool?.StorageTool != null ? "Q  Return mop to bucket" : "Q  Set down",
                 smallStyle);
         }
 

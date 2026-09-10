@@ -470,13 +470,6 @@ namespace Margins.Editor
             CreateShape(root, "Back Wall Stripe", PrimitiveType.Cube,
                 new Vector3(0f, 1.95f, 5.76f), new Vector3(13.4f, 0.18f, 0.05f), teal, false);
 
-            CreateShape(root, "Receiving Floor Zone", PrimitiveType.Cube,
-                new Vector3(-4.8f, 0.012f, 4.35f), new Vector3(3.5f, 0.025f, 2.5f), charcoal, false);
-            CreateText(root, "Receiving Wall Sign", "RECEIVING",
-                new Vector3(-4.6f, 2.45f, 5.72f), 0.09f, cream.color, TextAnchor.MiddleCenter);
-            CreateShape(root, "Receiving Rail", PrimitiveType.Cube,
-                new Vector3(-4.6f, 2.16f, 5.74f), new Vector3(3.8f, 0.05f, 0.06f), orange, false);
-
             CreateShape(root, "Backroom Rack Left Post", PrimitiveType.Cube,
                 new Vector3(-6.35f, 1f, 3.78f), new Vector3(0.1f, 2f, 0.1f), charcoal, true);
             CreateShape(root, "Backroom Rack Right Post", PrimitiveType.Cube,

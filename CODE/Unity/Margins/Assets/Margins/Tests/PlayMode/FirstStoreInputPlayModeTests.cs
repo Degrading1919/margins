@@ -629,6 +629,9 @@ namespace Margins.Tests
             CarryableToolComponent mop =
                 GameObject.Find("Mop Tool").GetComponent<CarryableToolComponent>();
             Assert.That(cleaning.NeedsCleaning, Is.True);
+            Assert.That(mop.StorageTool.TryPrimary(out error), Is.True, error);
+            Assert.That(Object.FindAnyObjectByType<PlayerCarryableToolController>()
+                .TrySetDownHeldTool(out error), Is.True, error);
             Assert.That(mop.TryPrimary(out error), Is.True, error);
             while (cleaning.NeedsCleaning)
             {

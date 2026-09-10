@@ -194,6 +194,7 @@ namespace Margins
                 return;
             }
 
+            persistence?.ResolveCarriedObjectsForSessionExit();
             menuState.ReturnToTitle();
             notification.Clear();
             ApplyMenuEnvironment();

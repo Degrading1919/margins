@@ -11,6 +11,7 @@ namespace Margins
         [SerializeField] private Camera viewCamera;
         [SerializeField] private StockingController stocking;
         [SerializeField] private PlayerCarryableToolController toolCarrier;
+        [SerializeField] private DeliveryBoxWorldInteractionTarget deliveryBoxTarget;
         [SerializeField] private FirstStoreFixturePlacementModeController fixturePlacementMode;
         [SerializeField] private InputActionAsset inputActions;
         [SerializeField] private string inputActionMapName = "Player";
@@ -38,6 +39,9 @@ namespace Margins
         public event Action<FirstStoreInteractionFeedback> InteractionResolved;
 
         public ProductItem HeldProduct => stocking?.HeldPhysicalUnit;
+        public DeliveryBoxWorldInteractionTarget CarriedDeliveryTarget =>
+            deliveryBoxTarget != null && deliveryBoxTarget.IsCarriedByPlayer
+                ? deliveryBoxTarget : null;
         public bool IsWorldInteractionEnabled =>
             firstPersonController != null &&
             firstPersonController.IsGameplayInputActive;
@@ -191,6 +195,19 @@ namespace Margins
                 return true;
             }
 
+            // Held-container actions belong to held state, not a raycast target.
+            IFirstStoreWorldInteractionTarget heldTarget = CarriedDeliveryTarget;
+            if (heldTarget == null && toolCarrier?.HeldTool?.StoredTool != null)
+                heldTarget = toolCarrier.HeldTool;
+            if (heldTarget != null)
+            {
+                focusedTarget = heldTarget;
+                currentPrompt = heldTarget.Prompt;
+                hasFocusedWorldPoint = false;
+                focusedWorldTransform = null;
+                return true;
+            }
+
             RaycastHit[] hits = Physics.RaycastAll(
                 ray,
                 pickupDistance,
@@ -266,6 +283,9 @@ namespace Margins
                 return TryDedicatedCheckoutPrimary(out error);
             }
 
+            if (CarriedDeliveryTarget != null || toolCarrier?.HeldTool?.StoredTool != null)
+                RefreshFocus();
+
             if (focusedTarget == null && !RefreshFocus())
             {
                 error = "No world interaction target is focused.";
@@ -278,7 +298,9 @@ namespace Margins
                 focusedTarget.Priority != FirstStoreWorldInteractionPriority.Operating &&
                 focusedTarget.Priority != FirstStoreWorldInteractionPriority.Tool)
             {
-                error = $"Put down {toolCarrier.HeldToolName} before using that object.";
+                error = toolCarrier.HeldTool.StorageTool != null
+                    ? "Return the mop to its bucket before using that object."
+                    : $"Set down {toolCarrier.HeldToolName} before using that object.";
                 RecordInteraction(
                     false,
                     focusedTarget.StableTargetId,
@@ -347,6 +369,15 @@ namespace Margins
                 return TryDedicatedCheckoutCancel(out error);
             }
 
+            if (CarriedDeliveryTarget != null)
+            {
+                var carried = CarriedDeliveryTarget;
+                bool released = carried.TryCancel(out error);
+                RecordInteraction(released, carried.StableTargetId, "Set delivery down", error);
+                RefreshFocus();
+                return released;
+            }
+
             if (fixturePlacementMode != null && fixturePlacementMode.IsActive)
             {
                 string placementTargetId = fixturePlacementMode.StableTargetId;
@@ -369,11 +400,13 @@ namespace Margins
             if (toolCarrier != null && toolCarrier.HasHeldTool)
             {
                 string toolId = toolCarrier.HeldTool?.StableToolId;
+                string toolAction = toolCarrier.HeldTool.StorageTool != null
+                    ? "Return mop to bucket" : "Place bucket";
                 bool released = toolCarrier.TrySetDownHeldTool(out error);
                 RecordInteraction(
                     released,
                     toolId,
-                    "Put down tool",
+                    toolAction,
                     error);
                 RefreshFocus();
                 return released;
@@ -539,9 +572,10 @@ namespace Margins
 
             if (!fixturePlacementMode.IsBuildModeActive &&
                 ((stocking != null && stocking.HasHeldUnit) ||
-                 (toolCarrier != null && toolCarrier.HasHeldTool)))
+                 (toolCarrier != null && toolCarrier.HasHeldTool) ||
+                 CarriedDeliveryTarget != null))
             {
-                error = "Put down the carried product or tool before entering Build Mode.";
+                error = "Set down the carried item or return the mop before entering Build Mode.";
                 RecordInteraction(
                     false,
                     fixturePlacementMode.StableTargetId,

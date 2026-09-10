@@ -30,6 +30,106 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator CarriedDeliveryActionsAndRecyclingSurviveRestoreWithoutLosingStock()
+        {
+            yield return LoadValidationScene();
+            var interaction = Object.FindAnyObjectByType<FirstStoreInteractionController>();
+            var box = Require("Mixed Starter Delivery").GetComponent<DeliveryBoxComponent>();
+            var target = box.GetComponent<DeliveryBoxWorldInteractionTarget>();
+            var mapper = Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            var bucket = Require("Mop Bucket").GetComponent<CarryableToolComponent>();
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot fresh, out string error), Is.True, error);
+            Assert.That(target.TryPrimary(out error), Is.True, error);
+            Camera.main.transform.rotation = Quaternion.Euler(-85f, 0f, 0f);
+            Physics.SyncTransforms();
+            Assert.That(interaction.RefreshFocus(), Is.True);
+            Assert.That(interaction.CurrentPromptText, Is.EqualTo("[E] Open carried delivery"));
+            Assert.That(interaction.TryToggleBuildMode(out _), Is.False);
+            Assert.That(bucket.TryPrimary(out _), Is.False);
+            Assert.That(interaction.TryPrimaryInteraction(out error), Is.True, error);
+            Assert.That(box.IsOpen, Is.True);
+            Assert.That(interaction.TryCancelInteraction(out error), Is.True, error);
+            Assert.That(box.IsCarried, Is.False);
+            Assert.That(box.TryRecycle(out _), Is.False);
+            var products = Resources.FindObjectsOfTypeAll<ProductDefinition>()
+                .Where(product => box.TryGetConfiguredProductRemaining(product, out _, out _, out _))
+                .GroupBy(product => product.StableProductId).Select(group => group.First()).ToArray();
+            foreach (var product in products)
+            {
+                while (box.InventoryComponent.Inventory.GetQuantity(box.InventoryLocationId, product.StableProductId) > 0)
+                    Assert.That(box.TryRemoveOneUnit(product, out _, out _, out _, out error), Is.True, error);
+            }
+            var inventoryBefore = box.InventoryComponent.Inventory.CreateSnapshot();
+            Assert.That(target.Prompt.FormattedText, Is.EqualTo("[E] Recycle empty box"));
+            Assert.That(target.TryPrimary(out error), Is.True, error);
+            Assert.That(box.gameObject.activeSelf, Is.False);
+            Assert.That(box.InventoryComponent.Inventory.CreateSnapshot(), Is.EqualTo(inventoryBefore));
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot recycled, out error), Is.True, error);
+            recycled = JsonUtility.FromJson<FirstStoreSnapshot>(JsonUtility.ToJson(recycled));
+            Assert.That(mapper.TryRestore(fresh, out error), Is.True, error);
+            Assert.That(box.gameObject.activeSelf, Is.True);
+            Assert.That(box.IsRecycled, Is.False);
+            Assert.That(mapper.TryRestore(recycled, out error), Is.True, error);
+            Assert.That(box.IsRecycled, Is.True);
+            Assert.That(box.gameObject.activeSelf, Is.False);
+            Assert.That(target.TryPrimary(out _), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator BucketFirstCleaningRequiresReturnAndResolvesKitOnRestore()
+        {
+            yield return LoadValidationScene();
+            var mop = Require("Mop Tool").GetComponent<CarryableToolComponent>();
+            var bucket = Require("Mop Bucket").GetComponent<CarryableToolComponent>();
+            var carrier = Object.FindAnyObjectByType<PlayerCarryableToolController>();
+            var interaction = Object.FindAnyObjectByType<FirstStoreInteractionController>();
+            var mapper = Object.FindAnyObjectByType<FirstStorePersistenceMapperComponent>();
+            var cleaning = Object.FindAnyObjectByType<CleaningTaskComponent>();
+            var cleanTarget = Object.FindAnyObjectByType<CleaningWorldInteractionTarget>();
+            var player = Object.FindAnyObjectByType<FirstPersonController>();
+            Assert.That(GameObject.Find("Receiving Wall Sign"), Is.Null);
+            Assert.That(GameObject.Find("Receiving Floor Zone"), Is.Null);
+            Assert.That(GameObject.Find("Receiving Rail"), Is.Null);
+            Assert.That(Require("Stockroom Delivery Drop"), Is.Not.Null, "Retain the employee delivery fixture.");
+            Assert.That(mapper.TryCapture(out FirstStoreSnapshot fresh, out string error), Is.True, error);
+            Vector3 storagePosition = bucket.transform.position;
+            Assert.That(carrier.TryPickUp(mop, out _), Is.False);
+            Assert.That(mop.TryPrimary(out error), Is.True, error);
+            Assert.That(carrier.HeldTool, Is.SameAs(bucket));
+            Assert.That(mop.transform.parent, Is.EqualTo(bucket.transform));
+            Assert.That(carrier.HasCapability("clean-floor"), Is.False);
+            Assert.That(cleanTarget.TryPrimary(out _), Is.False);
+            Assert.That(mapper.TryGetDiskSaveBlocker(out _), Is.True);
+            Assert.That(mapper.TryGetLoadRollbackBlocker(out _), Is.True);
+            Assert.That(interaction.TryPrimaryInteraction(out error), Is.True, error);
+            Assert.That(bucket.IsCarried, Is.False);
+            Assert.That(mop.Prompt.Action, Is.EqualTo("Take mop from bucket"));
+            Assert.That(mop.TryPrimary(out error), Is.True, error);
+            Assert.That(carrier.HasCapability("clean-floor"), Is.True);
+            while (cleaning.NeedsCleaning)
+                Assert.That(cleanTarget.TryPrimary(out error), Is.True, error);
+            Assert.That(Object.FindAnyObjectByType<FirstStorePromptPresenter>().CurrentObjectiveKind,
+                Is.EqualTo(FirstStoreObjectiveKind.ReturnMop));
+            Vector3 playerPosition = player.transform.position;
+            player.transform.position += Vector3.right * 10f;
+            Assert.That(carrier.TrySetDownHeldTool(out error), Is.False);
+            Assert.That(error, Does.Contain("closer to the bucket"));
+            Assert.That(carrier.HeldTool, Is.SameAs(mop));
+            player.transform.position = playerPosition;
+            Assert.That(interaction.TryCancelInteraction(out error), Is.True, error);
+            Assert.That(carrier.HasHeldTool, Is.False);
+            Assert.That(mop.transform.parent, Is.EqualTo(bucket.transform));
+            Assert.That(mapper.TryGetDiskSaveBlocker(out _), Is.False);
+            Assert.That(bucket.TryPrimary(out error), Is.True, error);
+            Assert.That(carrier.TrySetDownHeldTool(out error), Is.True, error);
+            Assert.That(mapper.TryRestore(fresh, out error), Is.True, error);
+            Assert.That(carrier.HasHeldTool, Is.False);
+            Assert.That(bucket.transform.position, Is.EqualTo(storagePosition));
+            Assert.That(mop.transform.parent, Is.EqualTo(bucket.transform));
+            Assert.That(bucket.HasBeenPlaced, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator ExplicitTargetsAndPresenterExposeExactlyFormattedFocusedPrompt()
         {
             yield return LoadValidationScene();
@@ -249,7 +349,9 @@ namespace Margins.Tests
                 cleaningTarget.Prompt.FormattedText);
             Assert.That(cleaningTarget.TryPrimary(out string blocker), Is.False);
             StringAssert.Contains("Pick up", blocker);
-            Assert.That(mop.TryPrimary(out string error), Is.True, error);
+            Assert.That(mop.StorageTool.TryPrimary(out string error), Is.True, error);
+            Assert.That(carrier.TrySetDownHeldTool(out error), Is.True, error);
+            Assert.That(mop.TryPrimary(out error), Is.True, error);
             Assert.That(carrier.HeldTool, Is.SameAs(mop));
             StringAssert.DoesNotContain("0/4", cleaningTarget.Prompt.FormattedText);
             for (int index = 0; index < cleaning.RequiredProgressUnits; index++)
