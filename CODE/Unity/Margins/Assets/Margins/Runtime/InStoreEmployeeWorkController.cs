@@ -141,11 +141,11 @@ namespace Margins
             if (cashier != null)
             {
                 MoveAvatar(cashierAvatar, cashierWorkPoint);
-                if (Time.unscaledTime >= nextCashierActionAt &&
+                if (Time.time >= nextCashierActionAt &&
                     IsAt(cashierAvatar, cashierWorkPoint))
                 {
                     TryPerformCashierAction();
-                    nextCashierActionAt = Time.unscaledTime +
+                    nextCashierActionAt = Time.time +
                                           ActionDelay(
                                               cashier,
                                               manager,
@@ -157,12 +157,12 @@ namespace Margins
             {
                 Transform destination = GetStockerDestination();
                 MoveAvatar(stockerAvatar, destination);
-                if (Time.unscaledTime >= nextStockerActionAt &&
+                if (Time.time >= nextStockerActionAt &&
                     IsAt(stockerAvatar, destination))
                 {
                     TryPerformStockerAction(
                         store.State == StoreOperatingState.Open);
-                    nextStockerActionAt = Time.unscaledTime +
+                    nextStockerActionAt = Time.time +
                                           ActionDelay(
                                               stocker,
                                               manager,
@@ -173,12 +173,12 @@ namespace Margins
             if (manager != null)
             {
                 MoveAvatar(managerAvatar, managerWorkPoint);
-                if (Time.unscaledTime >= nextStandardsActionAt &&
+                if (Time.time >= nextStandardsActionAt &&
                     IsAt(managerAvatar, managerWorkPoint) &&
                     cleaning.NeedsCleaning)
                 {
                     cleaning.TryApplyProgress(1);
-                    nextStandardsActionAt = Time.unscaledTime +
+                    nextStandardsActionAt = Time.time +
                                             ActionDelay(
                                                 manager,
                                                 null,
@@ -187,13 +187,13 @@ namespace Margins
             }
             else if (stocker != null &&
                      stocker.taskFocus == PortfolioTaskFocus.Standards &&
-                     Time.unscaledTime >= nextStandardsActionAt &&
+                     Time.time >= nextStandardsActionAt &&
                      cleaning.NeedsCleaning &&
                      stockerUnit == null &&
                      !employeeMovingBox)
             {
                 cleaning.TryApplyProgress(1);
-                nextStandardsActionAt = Time.unscaledTime +
+                nextStandardsActionAt = Time.time +
                                         ActionDelay(
                                             stocker,
                                             null,
@@ -311,9 +311,9 @@ namespace Margins
         {
             stockerUnit = null;
             employeeMovingBox = false;
-            nextCashierActionAt = Time.unscaledTime;
-            nextStockerActionAt = Time.unscaledTime;
-            nextStandardsActionAt = Time.unscaledTime;
+            nextCashierActionAt = Time.time;
+            nextStockerActionAt = Time.time;
+            nextStandardsActionAt = Time.time;
             deliveryRelocated = deliveryBox != null &&
                                 deliveryWorkPoint != null &&
                                 HorizontalDistance(
