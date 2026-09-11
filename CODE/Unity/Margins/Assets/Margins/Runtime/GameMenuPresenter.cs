@@ -1159,6 +1159,32 @@ namespace Margins
                 $"Customer satisfaction {HealthLabel(selected.customerSatisfaction)}   •   " +
                 $"Products available {selected.productAvailabilityBasisPoints / 100f:0.#}%");
 
+            AddManagementSection("OPERATIONAL TIME");
+            bool canAccelerate = portfolio.CanAccelerateOperationalTime(
+                out string accelerationBlocker);
+            VisualElement time = AddManagementCard(
+                portfolio.IsOperationalTimeAccelerated
+                    ? "Running at 4× speed"
+                    : "Running at normal speed",
+                canAccelerate
+                    ? "Use 4× while the Owner Phone is open to move live store work and deliveries forward together."
+                    : PlayerFacingText(accelerationBlocker));
+            VisualElement timeActions = AddManagementRow(time);
+            AddManagementButton(
+                timeActions,
+                "Normal",
+                "management-time-normal",
+                () => portfolio.TrySetOperationalTimeAcceleration(false, out _),
+                selected: !portfolio.IsOperationalTimeAccelerated);
+            AddManagementButton(
+                timeActions,
+                "4×",
+                "management-time-accelerated",
+                () => portfolio.TrySetOperationalTimeAcceleration(true, out _),
+                selected: portfolio.IsOperationalTimeAccelerated,
+                primary: true,
+                enabled: canAccelerate);
+
             string activeId = portfolio.ActiveDetailedSimulationLocationId;
             bool detailedSimulationActive =
                 portfolio.HasActiveDetailedSimulation;

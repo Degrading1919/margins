@@ -12,6 +12,9 @@ namespace Margins
     /// </summary>
     public sealed class PortfolioProgressionController : MonoBehaviour
     {
+        public const float NormalOperationalTimeScale = 1f;
+        public const float AcceleratedOperationalTimeScale = 4f;
+
         private static readonly Color Ink =
             new(0.94f, 0.96f, 0.95f, 1f);
         private static readonly Color MutedInk =
@@ -58,6 +61,7 @@ namespace Margins
         private Vector2 reportScroll;
         private float lastActionUntil;
         private float nextProcurementTickAt;
+        private float operationalTimeScale = NormalOperationalTimeScale;
         private GUIStyle humanBrandStyle;
         private GUIStyle humanTitleStyle;
         private GUIStyle humanSectionStyle;
@@ -97,6 +101,9 @@ namespace Margins
         public string ActiveDetailedSimulationLocationId =>
             locationSceneAdapter?.ActiveLocationId ?? progression?
                 .CreateSnapshot().company.activeDetailedLocationId;
+        public float OperationalTimeScale => operationalTimeScale;
+        public bool IsOperationalTimeAccelerated =>
+            operationalTimeScale > NormalOperationalTimeScale;
 
         public void SetToolkitManagementAvailable(bool available)
         {
@@ -115,11 +122,17 @@ namespace Margins
                 Debug.LogError(error, this);
                 enabled = false;
             }
-            nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
+            nextProcurementTickAt = Time.time + procurementTickSeconds;
+        }
+
+        private void OnDisable()
+        {
+            ResetOperationalTimeAcceleration();
         }
 
         private void Update()
         {
+            EnforceOperationalTimeScale();
             bool detailedSimulationActive =
                 locationSceneAdapter == null ||
                 locationSceneAdapter.IsDetailedSimulationActive;
@@ -138,9 +151,9 @@ namespace Margins
             }
             if (progression != null && progression.FirstShiftCompleted &&
                 !GamePauseMenuController.IsAnyMenuOpen &&
-                Time.unscaledTime >= nextProcurementTickAt)
+                Time.time >= nextProcurementTickAt)
             {
-                nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
+                nextProcurementTickAt = Time.time + procurementTickSeconds;
                 if (!progression.TryAdvanceProcurementTicks(
                         1,
                         out _,
@@ -221,6 +234,61 @@ namespace Margins
             }
 
             return firstStore.TrySetLivePayrollCents(payrollCents, out error);
+        }
+
+        public bool CanAccelerateOperationalTime(out string blocker)
+        {
+            if (progression == null || !progression.FirstShiftCompleted)
+            {
+                blocker = "Finish the first shift before accelerating operational time.";
+                return false;
+            }
+            if (GamePauseMenuController.IsAnyMenuOpen)
+            {
+                blocker = "Close the current menu before accelerating operational time.";
+                return false;
+            }
+            if (firstPersonController == null)
+            {
+                blocker = "Player interaction state is unavailable.";
+                return false;
+            }
+            if (firstPersonController.IsInteractionMovementLocked)
+            {
+                blocker = "Finish or cancel the current interaction before accelerating time.";
+                return false;
+            }
+            if (firstPersonController.IsGameplayMode)
+            {
+                blocker = "Open the Owner Phone before accelerating operational time.";
+                return false;
+            }
+
+            blocker = null;
+            return true;
+        }
+
+        public bool TrySetOperationalTimeAcceleration(
+            bool accelerated,
+            out string error)
+        {
+            if (accelerated && !CanAccelerateOperationalTime(out error))
+            {
+                RecordResult(false, error);
+                return false;
+            }
+
+            operationalTimeScale = accelerated
+                ? AcceleratedOperationalTimeScale
+                : NormalOperationalTimeScale;
+            ApplyOperationalTimeScale();
+            error = null;
+            RecordResult(
+                true,
+                accelerated
+                    ? "Operational time is running at 4× while the Owner Phone is open."
+                    : "Operational time returned to normal speed.");
+            return true;
         }
 
         public bool TryValidateConfiguration(out string error)
@@ -1283,7 +1351,8 @@ namespace Margins
             }
 
             progression = restored;
-            nextProcurementTickAt = Time.unscaledTime + procurementTickSeconds;
+            ResetOperationalTimeAcceleration();
+            nextProcurementTickAt = Time.time + procurementTickSeconds;
             if (!progression.Locations.Any(location => string.Equals(
                     location.locationId,
                     selectedLocationId,
@@ -3743,6 +3812,31 @@ namespace Margins
                 Debug.LogWarning(message, this);
             }
             ManagementChanged?.Invoke();
+        }
+
+        private void EnforceOperationalTimeScale()
+        {
+            if (IsOperationalTimeAccelerated &&
+                !CanAccelerateOperationalTime(out _))
+            {
+                operationalTimeScale = NormalOperationalTimeScale;
+            }
+
+            ApplyOperationalTimeScale();
+        }
+
+        private void ApplyOperationalTimeScale()
+        {
+            if (!GamePauseMenuController.IsAnyMenuOpen)
+            {
+                Time.timeScale = operationalTimeScale;
+            }
+        }
+
+        private void ResetOperationalTimeAcceleration()
+        {
+            operationalTimeScale = NormalOperationalTimeScale;
+            ApplyOperationalTimeScale();
         }
 
         private static string FriendlyRole(PortfolioEmployeeRole role)

@@ -525,6 +525,89 @@ namespace Margins.Tests
         }
 
         [UnityTest]
+        public IEnumerator OwnerPhoneAccelerationUsesScaledTimeAndResetsAtSafetyBoundaries()
+        {
+            yield return LoadValidationScene();
+            PortfolioProgressionController portfolio =
+                Object.FindAnyObjectByType<PortfolioProgressionController>();
+            FirstPersonController player =
+                Object.FindAnyObjectByType<FirstPersonController>();
+            GameMenuPresenter presenter =
+                Object.FindAnyObjectByType<GameMenuPresenter>();
+            Assert.That(portfolio, Is.Not.Null);
+            Assert.That(player, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+
+            CompleteManagementFirstShift(portfolio);
+            Object.FindAnyObjectByType<StoreCustomerFlowController>().enabled = false;
+            Object.FindAnyObjectByType<InStoreEmployeeWorkController>().enabled = false;
+            player.SetGameplayMode(false);
+            yield return null;
+
+            VisualElement root = presenter.Root;
+            Button accelerated = root.Q<Button>("management-time-accelerated");
+            Assert.That(accelerated, Is.Not.Null);
+            Assert.That(accelerated.enabledInHierarchy, Is.True);
+            Submit(accelerated);
+            yield return null;
+            Assert.That(portfolio.IsOperationalTimeAccelerated, Is.True);
+            Assert.That(
+                Time.timeScale,
+                Is.EqualTo(
+                    PortfolioProgressionController.AcceleratedOperationalTimeScale));
+
+            long procurementTick = portfolio.Progression.ProcurementTick;
+            int currentDay = portfolio.Progression.CurrentDay;
+            SetPrivateField(portfolio, "nextProcurementTickAt", Time.time + 0.75f);
+            yield return new WaitForSecondsRealtime(0.4f);
+            Assert.That(
+                portfolio.Progression.ProcurementTick,
+                Is.EqualTo(procurementTick + 1),
+                "Procurement should observe the same accelerated scaled clock.");
+            Assert.That(
+                portfolio.Progression.CurrentDay,
+                Is.EqualTo(currentDay),
+                "Operational acceleration must not advance the calendar authority.");
+
+            player.SetGameplayMode(true);
+            yield return null;
+            Assert.That(portfolio.IsOperationalTimeAccelerated, Is.False);
+            Assert.That(
+                Time.timeScale,
+                Is.EqualTo(PortfolioProgressionController.NormalOperationalTimeScale));
+
+            player.SetGameplayMode(false);
+            player.SetInteractionMovementLocked(true);
+            yield return null;
+            accelerated = root.Q<Button>("management-time-accelerated");
+            Assert.That(accelerated, Is.Not.Null);
+            Assert.That(accelerated.enabledInHierarchy, Is.False);
+            Assert.That(
+                portfolio.TrySetOperationalTimeAcceleration(true, out string error),
+                Is.False);
+            Assert.That(error, Does.Contain("current interaction"));
+            Assert.That(
+                Time.timeScale,
+                Is.EqualTo(PortfolioProgressionController.NormalOperationalTimeScale));
+
+            player.SetInteractionMovementLocked(false);
+            Assert.That(
+                portfolio.TrySetOperationalTimeAcceleration(true, out error),
+                Is.True,
+                error);
+            PortfolioProgressionSnapshot snapshot =
+                portfolio.Progression.CreateSnapshot();
+            Assert.That(
+                portfolio.TryRestoreSnapshot(snapshot, out error),
+                Is.True,
+                error);
+            Assert.That(portfolio.IsOperationalTimeAccelerated, Is.False);
+            Assert.That(
+                Time.timeScale,
+                Is.EqualTo(PortfolioProgressionController.NormalOperationalTimeScale));
+        }
+
+        [UnityTest]
         public IEnumerator OwnerPhoneGuidesStoreClosureAndRevealsDetailsOnRequest()
         {
             yield return LoadValidationScene();
