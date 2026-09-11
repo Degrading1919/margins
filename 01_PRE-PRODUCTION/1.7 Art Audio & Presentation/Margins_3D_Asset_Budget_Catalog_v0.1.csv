@@ -322,7 +322,34 @@ SBA_037,Vehicle-sales windshield / roof-placard family,"Signage, Branding & Adve
 SBA_038,Service-bay / lane-marker sign family,"Signage, Branding & Advertising Hardware",Automotive Service Signage,Automotive / Dealership,,,,,1500,,,,,,,,,,,,,,,,,,,,Planned,
 SBA_039,Real-estate / leasing-sign frame family,"Signage, Branding & Advertising Hardware",Property Signage,Property,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
 SBA_040,Construction / development-site signboard family,"Signage, Branding & Advertising Hardware",Property Signage,Property Development,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
-BIN_10,[category reference],Characters & Wearables,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
+CWR_001,Complete visible modular character assembly,Characters & Wearables,Character Assembly,Shared,,,,,30000,,,,,,,,,,,,,,,,,,,,Planned,"Hard assembled LOD0 envelope for body, visible clothing, hair, footwear, and accessories; module ceilings below are not additive allowances and hidden body geometry should be culled."
+CWR_002,Base body / head mesh family,Characters & Wearables,Character Body,Shared,,,,,12000,,,,,,,,,,,,,,,,,,,,Planned,Ceiling applies to the visible body/head contribution after clothing occlusion and hidden-geometry culling.
+CWR_003,Short / close-cut hairstyle family,Characters & Wearables,Hair,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_004,Medium hairstyle family,Characters & Wearables,Hair,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_005,Long hairstyle family,Characters & Wearables,Hair,Shared,,,,,8000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_006,Facial-hair family,Characters & Wearables,Hair,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_007,Casual shirt / top family,Characters & Wearables,Civilian Clothing,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_008,Casual pants / shorts / skirt family,Characters & Wearables,Civilian Clothing,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_009,Full-body dress / jumpsuit / coverall family,Characters & Wearables,Civilian Clothing,Shared,,,,,8000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_010,Jacket / coat / outerwear family,Characters & Wearables,Civilian Clothing,Shared,,,,,10000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_011,Employee polo / work-shirt family,Characters & Wearables,Workwear,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_012,Employee apron family,Characters & Wearables,Workwear,Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_013,Mechanic / industrial coverall family,Characters & Wearables,Workwear,Automotive / Warehouse / Shared,,,,,8000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_014,Service / housekeeping uniform family,Characters & Wearables,Workwear,Motel / Salon / Shared,,,,,7000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_015,Food-service coat / kitchen-workwear family,Characters & Wearables,Workwear,Restaurant / Coffee / Shared,,,,,7000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_016,High-visibility vest family,Characters & Wearables,Workwear / Safety,Warehouse / Automotive / Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,Reflective strips and printed safety detail should be material-driven rather than modeled.
+CWR_017,Casual shoe / sneaker family,Characters & Wearables,Footwear,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_018,Work shoe / boot family,Characters & Wearables,Footwear,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_019,Cap / visor / beanie family,Characters & Wearables,Headwear,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_020,Brimmed / structured hat family,Characters & Wearables,Headwear,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_021,Protective hard-hat family,Characters & Wearables,Headwear / Safety,Construction / Warehouse / Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_022,Eyeglasses / sunglasses family,Characters & Wearables,Accessories,Shared,,,,,3000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_023,Employee name-badge / lanyard family,Characters & Wearables,Accessories,Shared,,,,,2000,,,,,,,,,,,,,,,,,,,,Planned,Name text and identification graphics should be material-driven.
+CWR_024,Wristwatch / bracelet family,Characters & Wearables,Accessories,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_025,Necklace / earring accessory family,Characters & Wearables,Accessories,Shared,,,,,4000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_026,Backpack family,Characters & Wearables,Carried Wearables,Shared,,,,,10000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_027,Purse / shoulder-bag family,Characters & Wearables,Carried Wearables,Shared,,,,,6000,,,,,,,,,,,,,,,,,,,,Planned,
+CWR_028,Work-glove family,Characters & Wearables,Wearable Safety,Warehouse / Automotive / Shared,,,,,5000,,,,,,,,,,,,,,,,,,,,Planned,
 BIN_11,[category reference],Vehicles & Mobile Equipment,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_12,[category reference],Vegetation & Environmental Dressing,,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
 BIN_13,[category reference],"Property Development, Lifestyle & Prestige",,,,,,,,,,,,,,,,,,,,,,,,,,,Reference,Taxonomy reference row; replace or remove when populating real assets.
